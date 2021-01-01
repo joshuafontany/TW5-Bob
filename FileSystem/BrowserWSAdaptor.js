@@ -17,7 +17,7 @@ const delayRecord = {};
 const sendToServer = function (message, callback) {
   const connectionIndex = 0;
   // If the connection is open, send the message
-  if($tw.connections[connectionIndex].socket.readyState === 1) {
+  if($tw.connections[connectionIndex].socket.readyState === 1 && $tw.readOnly !== 'yes') {
     const messageData = $tw.Bob.Shared.sendMessage(message, 0);
     return messageData.id;
   } else {
@@ -164,11 +164,22 @@ function BrowserWSAdaptor(options) {
       }
 
       const fields = {};
-      fields.type = 'application/json';
 
+      const viewableWikiList = Object.keys(data['available_wikis']).filter(function(wikiName) {
+        return data['available_wikis'][wikiName].indexOf('view') > -1
+      })
+      const editableWikiList = Object.keys(data['available_wikis']).filter(function(wikiName) {
+        return data['available_wikis'][wikiName].indexOf('edit') > -1
+      })
       // Set available wikis
       fields.title = '$:/state/ViewableWikis';
-      fields.list = $tw.utils.stringifyList(data['available_wikis']);
+      fields.list = $tw.utils.stringifyList(viewableWikiList);
+      fields.type = 'application/json';
+      $tw.wiki.addTiddler(new $tw.Tiddler(fields));
+
+      // Set available wikis
+      fields.title = '$:/state/EditableWikis';
+      fields.list = $tw.utils.stringifyList(editableWikiList);
       fields.type = 'application/json';
       $tw.wiki.addTiddler(new $tw.Tiddler(fields));
 
@@ -218,16 +229,19 @@ function BrowserWSAdaptor(options) {
 
       doThisLevel(data['settings'], '$:/WikiSettings/split');
 
+      $tw.wiki.addTiddler(new $tw.Tiddler({title:'$:/ServerIP', text: (data.settings.serverInfo ? data.settings.serverInfo.ipAddress : window.location.protocol + '//' + window.location.hostname), port: window.location.port}))
+
       $tw.wiki.addTiddler(new $tw.Tiddler({title:'$:/status/IsLoggedIn', text:data.logged_in}));
 
       $tw.wiki.addTiddler(new $tw.Tiddler({title:'$:/status/IsReadOnly', text:data.read_only}));
+      $tw.readOnly = data.read_only;
 
       if(data.owned_wikis) {
         // save any info about owned wikis for the currently logged in person
         Object.keys(data.owned_wikis).forEach(function(wikiName) {
           const tidFields = {
             title: "$:/Bob/OwnedWikis/" + wikiName,
-            public: data.owned_wikis[wikiName].public ? 'yes' : 'no',
+            visibility: data.owned_wikis[wikiName].visibility,
             editors: $tw.utils.stringifyList(data.owned_wikis[wikiName].editors),
             viewers: $tw.utils.stringifyList(data.owned_wikis[wikiName].viewers),
             fetchers: $tw.utils.stringifyList(data.owned_wikis[wikiName].fetchers),
@@ -654,7 +668,12 @@ BrowserWSAdaptor.prototype.getUpdatedTiddlers = function() {
 // This can be updated at any time, it gets checked when a syncing task is
 // being run so its value can change over time.
 BrowserWSAdaptor.prototype.isReady = function() {
-  return true
+  const tid = $tw.wiki.getTiddler('$:/state/EditableWikis');
+  if(tid.fields.list.indexOf($tw.wikiName) > -1) {
+    return true;
+  } else {
+    return false;
+  }
 }
 /*
 // OPTIONAL
