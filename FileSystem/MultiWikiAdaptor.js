@@ -33,19 +33,21 @@ if($tw.node) {
 
   function MultiWikiAdaptor(options) {
     var self = this;
-    self.rootwiki = options.wiki;
+    this.rootwiki = options.wiki;
   }
 
-  MultiWikiAdaptor.prototype.name = "MultiWikiAdaptor";
+  MultiWikiAdaptor.prototype.name = "MultiWikiAdaptor"
+
+  MultiWikiAdaptor.prototype.supportsLazyLoading = false
 
   MultiWikiAdaptor.prototype.isReady = function() {
     // The file system adaptor is always ready
     return true;
   };
 
-  MultiWikiAdaptor.prototype.getTiddlerInfo = function(tiddler, prefix) {
+  MultiWikiAdaptor.prototype.getTiddlerInfo = function(tiddler, options) {
     //Returns the existing fileInfo for the tiddler. To regenerate, call getTiddlerFileInfo().
-    prefix = prefix || 'RootWiki';
+    const prefix = options.wiki.getTiddlerText('$:/WikiName') || 'RootWiki';
     $tw.Bob.Files[prefix] = $tw.Bob.Files[prefix] || {};
     var title = tiddler.fields.title;
     return $tw.Bob.Files[prefix][title] || {};
@@ -142,8 +144,7 @@ if($tw.node) {
       }
     }
     const self = this;
-    const prefix = options.prefix || 'RootWiki';
-    const connectionInd = options.connectionInd;
+    const prefix = options.wiki.getTiddlerText('$:/WikiName') || 'RootWiki';
     let syncerInfo = options.tiddlerInfo || {};
     if(tiddler.fields && $tw.Bob.Wikis[prefix].wiki.filterTiddlers($tw.Bob.ExcludeFilter).indexOf(tiddler.fields.title) === -1) {
       let promiseGetTiddlerFileInfo = util.promisify(self.getTiddlerFileInfo);
@@ -151,11 +152,11 @@ if($tw.node) {
       let promiseCleanupTiddlerFiles = util.promisify($tw.utils.cleanupTiddlerFiles);
       promiseGetTiddlerFileInfo(tiddler, prefix)
         .then(fileInfo => {
-          $tw.Bob.logger.log(`${prefix}[${connectionInd}] Save Tidder:`, tiddler.fields.title, {level:2});
+          $tw.Bob.logger.log(`[${prefix}] Save Tidder:`, tiddler.fields.title, {level:2});
           return promiseSaveTiddlerToFile(tiddler, fileInfo);
         })
         .then(fileInfo => {
-          $tw.Bob.logger.log('Saved file ', fileInfo.filepath, {level:3});
+          $tw.Bob.logger.log(`[${prefix}] Saved File:`, fileInfo.filepath, {level:3});
           // Store the new file location
           $tw.Bob.Files[prefix][tiddler.fields.title] = fileInfo;
           // Cleanup duplicates if the file moved or changed extensions
@@ -168,15 +169,14 @@ if($tw.node) {
         })
         .catch(err => {
           debugger;
-          $tw.Bob.logger.log(`${prefix}[${connectionInd}] Save Error:`, tiddler.fields.title, {level:2});
+          $tw.Bob.logger.error(`[${prefix}] Save Error:`, tiddler.fields.title, err, {level:1});
           if(err) {
             // If there's an error, exit without changing any internal wiki state
-            $tw.Bob.logger.log('Error Saving Tiddler ', tiddler.fields.title, err, {level:1});
             if ((err.code == "EPERM" || err.code == "EACCES") && err.syscall == "open") {
+              tw.Bob.logger.log(`Sync failed for '${tiddler.fields.title}' and will be retried with encoded filepath`, encodeURIComponent(bootInfo.filepath), {level:2});
               fileInfo = fileInfo || $tw.Bob.Files[prefix][tiddler.fields.title];
               fileInfo.writeError = true;
               $tw.Bob.Files[prefix][tiddler.fields.title] = fileInfo;
-              tw.Bob.logger.log(`Sync failed for '${tiddler.fields.title}' and will be retried with encoded filepath`, encodeURIComponent(bootInfo.filepath), {level:1});
               return callback(err);
             } else {
               return callback(err);
@@ -199,7 +199,6 @@ if($tw.node) {
       callback = options;
       options = optionsArg || {};
     }
-    const self = this;
     if(!callback) {
       callback = function (err) {
         return err;
@@ -207,6 +206,8 @@ if($tw.node) {
     }
     // call internalSave, for FileSystemWatchers on new files?
     // store and return fileInfo?
+    //const self = this;
+    //const prefix = options.wiki.getTiddlerText('$:/WikiName') || 'RootWiki';
     callback(null,null);
   };
 
@@ -229,25 +230,25 @@ if($tw.node) {
       }
     }
     const self = this;
-    const prefix = options.prefix || 'RootWiki';
-    const connectionInd = Number.isInteger(+options.connectionInd) ? options.connectionInd : null;
+    const prefix = options.wiki.getTiddlerText('$:/WikiName') || 'RootWiki';
     const fileInfo = self.getTiddlerInfo({fields: {title: title}}, prefix);
     // Only delete the tiddler if we have writable information for the file
     if(fileInfo) {
       // Delete the file
-      $tw.Bob.logger.log(`${prefix}[${connectionInd}] Delete Tidder:`, tiddler.fields.title, {level:2});
+      $tw.Bob.logger.log(`[${prefix}] Delete Tidder:`, tiddler.fields.title, {level:2});
       let promiseDeleteTiddlerFile = util.promisify($tw.utils.deleteTiddlerFile);
       promiseDeleteTiddlerFile(fileInfo)
       .then(fileInfo => {
-        $tw.Bob.logger.log('Deleted file ', fileInfo.filepath, {level:3});
+        $tw.Bob.logger.log(`[${prefix}] Deleted File:`, fileInfo.filepath, {level:3});
         // Delete the tiddler from the internal tiddlywiki side of things
         delete $tw.Bob.Files[prefix][title];
         return callback(null, {});
       })
       .catch(err => {
+        $tw.Bob.logger.error(`[${prefix}] Delete Error:`, tiddler.fields.title, err, {level:1});
         if ((err.code == "EPERM" || err.code == "EACCES") && err.syscall == "unlink") {
           // Error deleting the file on disk, should fail gracefully
-          $tw.Bob.logger.log('Server desynchronized. Error deleting file for deleted tiddler:'+title, err, {level:1});
+          $tw.Bob.logger.log('Server desynchronized. Error deleting file for deleted tiddler:'+title, {level:2});
           return callback(null, {})
         }
         return callback(err);

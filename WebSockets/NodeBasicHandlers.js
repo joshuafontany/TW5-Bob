@@ -136,12 +136,12 @@ if($tw.node) {
       });
       debugger;
       $tw.Bob.logger.log('Node Message Save Tiddler', data, {level: 4}); 
-      $tw.Bob.logger.log(`${prefix}[${connectionIndex}] adaptorInfo`, JSON.stringify(data.adaptorInfo), {level: 3});  
+      $tw.Bob.logger.log(`[${prefix}][${connectionIndex}] adaptorInfo`, JSON.stringify(data.adaptorInfo), {level: 3});  
       // Save the tiddler to the wiki
       let promiseLoadWiki = util.promisify($tw.ServerSide.loadWiki);
       promiseLoadWiki(prefix)
       .then(prefix => {
-        $tw.Bob.logger.log(`${prefix}[${connectionIndex}] addTiddler`, data.tiddler.fields.title, {level: 3}); 
+        $tw.Bob.logger.log(`[${prefix}][${connectionIndex}] addTiddler`, data.tiddler.fields.title, {level: 3}); 
         $tw.Bob.Wikis[prefix].wiki.addTiddler(new $tw.Tiddler(data.tiddler.fields));
         if($tw.Bob.Wikis[prefix].tiddlers.indexOf(tiddler.fields.title) === -1) {
           $tw.Bob.Wikis[prefix].tiddlers.push(tiddler.fields.title);
@@ -163,7 +163,7 @@ if($tw.node) {
         return;
       })
       .catch(err => {
-        $tw.Bob.logger.log(`${prefix}[${connectionIndex}] Handler error. Unable to save '${data.tiddler.fields.title}'`, err, {level: 1});
+        $tw.Bob.logger.error(`[${prefix}][${connectionIndex}] Handler error. Unable to save '${data.tiddler.fields.title}'`, err, {level: 1});
         return;
       });
     }
@@ -182,12 +182,12 @@ if($tw.node) {
       const prefix = data.wiki || '';
       const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
       $tw.Bob.logger.log('Node Message Delete Tiddler', data, {level: 4});
-      $tw.Bob.logger.log(`${prefix}[${connectionIndex}] adaptorInfo`, JSON.stringify(data.adaptorInfo), {level: 3});  
+      $tw.Bob.logger.log(`[${prefix}][${connectionIndex}] adaptorInfo`, JSON.stringify(data.adaptorInfo), {level: 3});  
       // Delete the tiddler file from the wiki
       let promiseLoadWiki = util.promisify($tw.ServerSide.loadWiki);
       promiseLoadWiki(prefix)
       .then(prefix => {
-        $tw.Bob.logger.log(`${prefix}[${connectionIndex}] deleteTiddler`, {level: 3}); 
+        $tw.Bob.logger.log(`[${prefix}][${connectionIndex}] deleteTiddler`, {level: 3}); 
         $tw.Bob.Wikis[prefix].wiki.deleteTiddler(title);
         if($tw.Bob.Wikis[prefix].tiddlers.indexOf(title) > -1){
           $tw.Bob.Wikis[prefix].tiddlers.splice($tw.Bob.Wikis[prefix].tiddlers.indexOf(title), 1)
@@ -207,7 +207,7 @@ if($tw.node) {
         return;
       })
       .catch(err => {
-        $tw.Bob.logger.log(`${prefix}[${connectionIndex}] Handler error. Unable to delete '${data.tiddler.fields.title}'`, err, {level: 1});
+        $tw.Bob.logger.error(`[${prefix}][${connectionIndex}] Handler error. Unable to delete '${data.tiddler.fields.title}'`, err, {level: 1});
         return;
       });
     }
