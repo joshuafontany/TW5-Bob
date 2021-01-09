@@ -188,6 +188,8 @@ This is server functions that can be shared between different server types
         if(wikiName == 'RootWiki') {
           // Assign the boot wiki object for this wiki
           $tw.Bob.Wikis[wikiName].wiki = $tw.wiki;
+          // Save the wikiTiddlers path
+          $tw.Bob.Wikis[wikiName].wikiTiddlersPath = $tw.boot.wikiTiddlersPath;
           // Setup syncers here
           $tw.Bob.Wikis[wikiName].syncer = $tw.syncer;
           $tw.Bob.Files[wikiName] = $tw.boot.files;
@@ -203,7 +205,7 @@ This is server functions that can be shared between different server types
           // Load the core tiddlers
           $tw.Bob.Wikis[wikiName].wiki.addTiddler($tw.loadPluginFolder($tw.boot.corePath));
           // Add tiddlers to the wiki as defined by the tiddlywiki.info file
-          $tw.Bob.Wikis[wikiName].wikiInfo = loadWikiTiddlers($tw.Bob.Wikis[wikiName].wikiPath, {prefix: wikiName});
+          $tw.Bob.Wikis[wikiName].wikiInfo = loadWikiTiddlers($tw.Bob.Wikis[wikiName].wikiPath, {wikiName: wikiName});
 
           // From $tw.boot.execStartup
           $tw.Bob.Wikis[wikiName].wiki.readPluginInfo();
@@ -285,7 +287,7 @@ This is server functions that can be shared between different server types
   */
   function loadWikiTiddlers(wikiPath,options) {
     options = options || {};
-    options.prefix = options.prefix || '';
+    const wikiName = options.wikiName || '';
     const parentPaths = options.parentPaths || [];
     const wikiInfoPath = path.resolve(wikiPath,$tw.config.wikiInfo);
     let wikiInfo;
@@ -303,7 +305,7 @@ This is server functions that can be shared between different server types
     }
     // Save the wikiTiddlersPath for the MultiWikiAdaptor
     let config = wikiInfo.config || {};
-    $tw.Bob.Wikis[options.prefix].wikiTiddlersPath = path.resolve($tw.Bob.Wikis[options.prefix].wikiPath,config["default-tiddler-location"] || $tw.config.wikiTiddlersSubDir);
+    $tw.Bob.Wikis[wikiName].wikiTiddlersPath = path.resolve($tw.Bob.Wikis[wikiName].wikiPath,config["default-tiddler-location"] || $tw.config.wikiTiddlersSubDir);
     // Load any parent wikis
     if(wikiInfo.includeWikis) {
       $tw.Bob.logger.log('Load Wiki: includeWikis!', {level:1});
@@ -327,9 +329,9 @@ This is server functions that can be shared between different server types
       });
     }
     // Load any plugins, themes and languages listed in the wiki info file
-    loadPlugins(wikiInfo.plugins,$tw.config.pluginsPath,$tw.config.pluginsEnvVar, options.prefix);
-    loadPlugins(wikiInfo.themes,$tw.config.themesPath,$tw.config.themesEnvVar, options.prefix);
-    loadPlugins(wikiInfo.languages,$tw.config.languagesPath,$tw.config.languagesEnvVar, options.prefix);
+    loadPlugins(wikiInfo.plugins,$tw.config.pluginsPath,$tw.config.pluginsEnvVar, wikiName);
+    loadPlugins(wikiInfo.themes,$tw.config.themesPath,$tw.config.themesEnvVar, wikiName);
+    loadPlugins(wikiInfo.languages,$tw.config.languagesPath,$tw.config.languagesEnvVar, wikiName);
     // Load the wiki files, registering them as writable
     const resolvedWikiPath = path.resolve(wikiPath,$tw.config.wikiTiddlersSubDir);
     const exlcudePlugins = ['$:/plugins/tiddlywiki/tiddlyweb', '$:/plugins/tiddlywiki/filesystem'];
@@ -350,11 +352,11 @@ This is server functions that can be shared between different server types
             if(exlcudePlugins.indexOf(tiddler.title) !== -1) {
               use = false;
             } else {
-              $tw.Bob.Files[options.prefix][tiddler.title] ={
+              $tw.Bob.Files[wikiName][tiddler.title] ={
                 filepath: tiddlerFile.filepath,
                 type: tiddlerFile.type,
                 hasMetaFile: tiddlerFile.hasMetaFile,
-                isEditableFile: config["retain-original-tiddler-path"] || tiddlerFile.isEditableFile || tiddlerFile.filepath.indexOf($tw.Bob.Wikis[options.prefix].wikiTiddlersPath) !== 0
+                isEditableFile: config["retain-original-tiddler-path"] || tiddlerFile.isEditableFile || tiddlerFile.filepath.indexOf($tw.Bob.Wikis[wikiName].wikiTiddlersPath) !== 0
               };
             }
           });
@@ -367,16 +369,16 @@ This is server functions that can be shared between different server types
             }
           }
         }
-        $tw.Bob.Wikis[options.prefix].wiki.addTiddlers(tiddlerFile.tiddlers);
+        $tw.Bob.Wikis[wikiName].wiki.addTiddlers(tiddlerFile.tiddlers);
       }
     );
-    if ($tw.Bob.Wikis[options.prefix].wikiPath == wikiPath) {
+    if ($tw.Bob.Wikis[wikiName].wikiPath == wikiPath) {
       // Save the original tiddler file locations if requested
       var output = {}, relativePath, fileInfo;
-      for(let title in $tw.Bob.Files[options.prefix]) {
-        fileInfo =  $tw.Bob.Files[options.prefix][title];
+      for(let title in $tw.Bob.Files[wikiName]) {
+        fileInfo =  $tw.Bob.Files[wikiName][title];
         if(fileInfo.isEditableFile) {
-          relativePath = path.relative($tw.Bob.Wikis[options.prefix].wikiTiddlersPath,fileInfo.filepath);
+          relativePath = path.relative($tw.Bob.Wikis[wikiName].wikiTiddlersPath,fileInfo.filepath);
           output[title] =
             path.sep === "/" ?
             relativePath :
@@ -384,7 +386,7 @@ This is server functions that can be shared between different server types
         }
       }
       if(Object.keys(output).length > 0){
-        $tw.Bob.Wikis[options.prefix].wiki.addTiddler({title: "$:/config/OriginalTiddlerPaths", type: "application/json", text: JSON.stringify(output)});
+        $tw.Bob.Wikis[wikiName].wiki.addTiddler({title: "$:/config/OriginalTiddlerPaths", type: "application/json", text: JSON.stringify(output)});
       }
     }
     // Load any plugins within the wiki folder
@@ -395,7 +397,7 @@ This is server functions that can be shared between different server types
         for(let t=0; t<pluginFolders.length; t++) {
           pluginFields = $tw.loadPluginFolder(path.resolve(wikiPluginsPath,"./" + pluginFolders[t]));
           if(pluginFields) {
-            $tw.Bob.Wikis[options.prefix].wiki.addTiddler(pluginFields);
+            $tw.Bob.Wikis[wikiName].wiki.addTiddler(pluginFields);
           }
         }
       } catch (e) {
@@ -410,7 +412,7 @@ This is server functions that can be shared between different server types
         for(let t=0; t<themeFolders.length; t++) {
           pluginFields = $tw.loadPluginFolder(path.resolve(wikiThemesPath,"./" + themeFolders[t]));
           if(pluginFields) {
-            $tw.Bob.Wikis[options.prefix].wiki.addTiddler(pluginFields);
+            $tw.Bob.Wikis[wikiName].wiki.addTiddler(pluginFields);
           }
         }
       } catch (e) {
@@ -425,7 +427,7 @@ This is server functions that can be shared between different server types
         for(let t=0; t<languageFolders.length; t++) {
           pluginFields = $tw.loadPluginFolder(path.resolve(wikiLanguagesPath,"./" + languageFolders[t]));
           if(pluginFields) {
-            $tw.Bob.Wikis[options.prefix].wiki.addTiddler(pluginFields);
+            $tw.Bob.Wikis[wikiName].wiki.addTiddler(pluginFields);
           }
         }
       } catch (e) {

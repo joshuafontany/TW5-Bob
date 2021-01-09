@@ -576,8 +576,6 @@ if($tw.node) {
       }
     }
 
-    // Load the RootWiki
-    $tw.ServerSide.loadWiki("RootWiki");
     const bobVersion = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob').fields.version;
     $tw.Bob.version = bobVersion;
     //$tw.Bob.logger.log('TiddlyWiki version', $tw.version, 'with Bob version', bobVersion, {level:0})

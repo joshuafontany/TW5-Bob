@@ -23,6 +23,7 @@ if($tw.node) {
 
   $tw.Bob = $tw.Bob || {};
   $tw.Bob.Files = $tw.Bob.Files || {};
+  $tw.ServerSide = $tw.ServerSide || require('$:/plugins/OokTech/Bob/ServerSide.js');
 
   /*
     TODO Create a message that lets us set excluded tiddlers from inside the wikis
@@ -34,6 +35,8 @@ if($tw.node) {
   function MultiWikiAdaptor(options) {
     var self = this;
     this.rootwiki = options.wiki;
+    // Load the RootWiki
+    $tw.ServerSide.loadWiki("RootWiki");
   }
 
   MultiWikiAdaptor.prototype.name = "MultiWikiAdaptor"
@@ -79,7 +82,6 @@ if($tw.node) {
         }
       }
     }
-    const tiddlersPath = $tw.Bob.Wikis[prefix].wikiTiddlersPath;
     // Always generate a fileInfo object when this fuction is called
     var title = tiddler.fields.title, newInfo, pathFilters, extFilters;
     if($tw.Bob.Wikis[prefix].wiki.tiddlerExists("$:/config/FileSystemPaths")){
@@ -89,7 +91,7 @@ if($tw.node) {
       extFilters = $tw.Bob.Wikis[prefix].wiki.getTiddlerText("$:/config/FileSystemExtensions","").split("\n");
     }
     newInfo = $tw.utils.generateTiddlerFileInfo(tiddler,{
-      directory: tiddlersPath,
+      directory: $tw.Bob.Wikis[prefix].wikiTiddlersPath,
       pathFilters: pathFilters,
       extFilters: extFilters,
       wiki: $tw.Bob.Wikis[prefix].wiki,
