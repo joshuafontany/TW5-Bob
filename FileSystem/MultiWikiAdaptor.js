@@ -32,7 +32,8 @@ if($tw.node) {
   $tw.Bob.ExcludeFilter = $tw.Bob.ExcludeFilter || "[prefix[$:/state/]][prefix[$:/temp/]][prefix[$:/HistoryList]][prefix[$:/WikiSettings]][[$:/status/UserName]][[$:/Import]][[$:/plugins/OokTech/Bob/Server Warning]]";
 
   function MultiWikiAdaptor(options) {
-    self = this;
+    var self = this;
+    self.rootwiki = options.wiki;
   }
 
   MultiWikiAdaptor.prototype.name = "MultiWikiAdaptor";
