@@ -45,6 +45,18 @@ exports.startup = function() {
     $tw.Bob.logger = $tw.Bob.logger || {};
 
     /*
+      Global unhandled exception catch
+    */
+    process.on('unhandledRejection', function (err) {
+      $tw.Bob.logger.error('unhandledRejection ', err, {level:1});
+      let abort = $tw.settings.logger.abortUnhandledRejections || false;
+      if(abort) {
+        process.abort()
+      }
+      process.exit(1)
+    })    
+
+    /*
       Set up file logging
     */
     if($tw.settings.logger.useFileLogging === 'yes') {

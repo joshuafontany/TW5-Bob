@@ -29,7 +29,8 @@ if($tw.node) {
   $tw.nodeMessageHandlers.browserTiddlerList = function(data) {
     // Save the list of tiddlers in the browser as part of the $tw object so it
     // can be used elsewhere.
-    $tw.BrowserTiddlerList[data.source_connection] = data.titles;
+    const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
+    $tw.BrowserTiddlerList[connectionIndex] = data.titles;
     $tw.Bob.Shared.sendAck(data);
   }
 
@@ -40,19 +41,28 @@ if($tw.node) {
     $tw.Bob.Shared.sendAck(data);
     // We need at least the name of the wiki
     if(data.wiki) {
-      $tw.ServerSide.loadWiki(data.wiki);
-      // Get the skinny tiddlers
-      const tiddlers = []
-      $tw.Bob.Wikis[data.wiki].wiki.allTitles().forEach(function(title) {
-        if(title.slice(0,3) !== '$:/') {
-          tiddlers.push($tw.Bob.Wikis[data.wiki].wiki.getTiddler(title).getFieldStrings({exclude:['text']}))
+      const prefix = data.wiki || 'RootWiki';
+      const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
+      let promiseLoadWiki = util.promisify($tw.ServerSide.loadWiki);
+      promiseLoadWiki(prefix)
+      .then(prefix => {
+        // Get the skinny tiddlers
+        const tiddlers = []
+        $tw.Bob.Wikis[prefix].wiki.allTitles().forEach(function(title) {
+          if(title.slice(0,3) !== '$:/') {
+            tiddlers.push($tw.Bob.Wikis[prefix].wiki.getTiddler(title).getFieldStrings({exclude:['text']}))
+          }
+        })
+        const message = {
+          type: 'skinnyTiddlers',
+          tiddlers: tiddlers
         }
+        $tw.Bob.Shared.sendMessage(message, connectionIndex)
       })
-      const message = {
-        type: 'skinnyTiddlers',
-        tiddlers: tiddlers
-      }
-      $tw.Bob.Shared.sendMessage(message, data.source_connection)
+      .catch(err => {
+        $tw.Bob.logger.log(`${prefix}[${connectionIndex}] Handler error. Unable to getSkinnyTiddlers`, err, {level: 1});
+        return;
+      });
     }
   }
 
@@ -61,13 +71,22 @@ if($tw.node) {
   */
   $tw.nodeMessageHandlers.getFullTiddler = function(data) {
     $tw.Bob.Shared.sendAck(data);
-    $tw.ServerSide.loadWiki(data.wiki);
-    const tiddler = $tw.Bob.Wikis[data.wiki].wiki.getTiddler(data.title)
-    const message = {
-      type: 'loadTiddler',
-      tiddler: tiddler || {}
-    }
-    $tw.Bob.Shared.sendMessage(message, data.source_connection)
+    const prefix = data.wiki || 'RootWiki';
+    const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
+    let promiseLoadWiki = util.promisify($tw.ServerSide.loadWiki);
+    promiseLoadWiki(prefix)
+    .then(prefix => {
+      const tiddler = $tw.Bob.Wikis[prefix].wiki.getTiddler(data.title)
+      const message = {
+        type: 'loadTiddler',
+        tiddler: tiddler || {}
+      }
+      $tw.Bob.Shared.sendMessage(message, connectionIndex)
+    })
+    .catch(err => {
+      $tw.Bob.logger.log(`${prefix}[${connectionIndex}] Handler error. Unable to getFullTiddler for '${data.title}'`, err, {level: 1});
+      return;
+    });
   }
 
   /*
@@ -87,7 +106,8 @@ if($tw.node) {
     }
     // When the server receives a ping it sends back a pong.
     const response = JSON.stringify(message);
-    $tw.connections[data.source_connection].socket.send(response);
+    const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
+    $tw.connections[connectionIndex].socket.send(response);
   }
 
   /*
@@ -101,7 +121,8 @@ if($tw.node) {
     $tw.Bob.Shared.sendAck(data);
     // Make sure there is actually a tiddler sent & it has fields
     if(data.tiddler && data.tiddler.fields) {
-      const prefix = data.wiki || '';
+      const prefix = data.wiki || 'RootWiki';
+      const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
       // Set the saved tiddler as no longer being edited. It isn't always
       // being edited but checking each time is more complex than just
       // always setting it this way and doesn't benifit us.
@@ -115,32 +136,34 @@ if($tw.node) {
       });
       debugger;
       $tw.Bob.logger.log('Node Message Save Tiddler', data, {level: 4}); 
-      $tw.Bob.logger.log(prefix+' ['+data.source_connection+'] adaptorInfo', JSON.stringify(data.adaptorInfo), {level: 3});  
-      let promiseSaveTiddler = util.promisify($tw.syncadaptor.saveTiddler);
-      promiseSaveTiddler(data.tiddler,
-        {
-          prefix: prefix, 
-          connectionInd: data.source_connection
-        })
-      .then(fileInfo => {
-        $tw.Bob.logger.log("Saved file", fileInfo.filepath, {level: 3}); 
+      $tw.Bob.logger.log(`${prefix}[${connectionIndex}] adaptorInfo`, JSON.stringify(data.adaptorInfo), {level: 3});  
+      // Save the tiddler to the wiki
+      let promiseLoadWiki = util.promisify($tw.ServerSide.loadWiki);
+      promiseLoadWiki(prefix)
+      .then(prefix => {
+        $tw.Bob.logger.log(`${prefix}[${connectionIndex}] addTiddler`, data.tiddler.fields.title, {level: 3}); 
+        $tw.Bob.Wikis[prefix].wiki.addTiddler(new $tw.Tiddler(data.tiddler.fields));
+        if($tw.Bob.Wikis[prefix].tiddlers.indexOf(tiddler.fields.title) === -1) {
+          $tw.Bob.Wikis[prefix].tiddlers.push(tiddler.fields.title);
+        }
+        //Mark as modified
+        $tw.Bob.Wikis[prefix].modified = true;
+        $tw.hooks.invokeHook('wiki-modified', prefix);
         delete $tw.Bob.EditingTiddlers[data.wiki][data.tiddler.fields.title];
         $tw.ServerSide.UpdateEditingTiddlers(false, data.wiki);
+        // Notify the other connections
+        const message = {
+          type: 'saveTiddler',
+          wiki: prefix,
+          tiddler: {
+            fields: tiddler.fields
+          }
+        };
+        $tw.Bob.SendToBrowsers(message, connectionIndex);
         return;
       })
       .catch(err => {
-        if(err) {
-          if(fileInfo.writeError == true){
-            $tw.Bob.logger.log(`Sync error while processing Save of '${data.tiddler.fields.title}'. Retrying.`, err, {level: 1});
-            //Retry Save message
-            $tw.nodeMessageHandlers.saveTiddler({
-              tiddler: data.tiddler,
-              wiki: prefix
-            });
-          } else {
-            $tw.Bob.logger.log(`Sync error. Unable to save '${data.tiddler.fields.title}'`, err, {level: 1});
-          }
-        }
+        $tw.Bob.logger.log(`${prefix}[${connectionIndex}] Handler error. Unable to save '${data.tiddler.fields.title}'`, err, {level: 1});
         return;
       });
     }
@@ -152,32 +175,39 @@ if($tw.node) {
   $tw.nodeMessageHandlers.deleteTiddler = function(data) {
     // Acknowledge the message.
     $tw.Bob.Shared.sendAck(data);
-    $tw.Bob.logger.log('Node Message Delete Tiddler', data, {level: 4});
-    $tw.Bob.logger.log(prefix+' ['+data.source_connection+'] adaptorInfo', JSON.stringify(data.adaptorInfo), {level: 3});
     data.tiddler = data.tiddler || {};
     data.tiddler.fields = data.tiddler.fields || {};
     const title = data.tiddler.fields.title;
     if(title) {
-      // Delete the tiddler file from the file system
-      let promiseDeleteTiddler = util.promisify($tw.syncadaptor.deleteTiddler);
-      promiseDeleteTiddler(title,
-        {
-          prefix: data.wiki, 
-          connectionInd: data.source_connection
-        })
-      .then(fileInfo => {
-        $tw.Bob.logger.log("Deleted tiddler '" + data.tiddler.fields.title + "' file at "+fileInfo.filepath, {level: 2}); 
+      const prefix = data.wiki || '';
+      const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
+      $tw.Bob.logger.log('Node Message Delete Tiddler', data, {level: 4});
+      $tw.Bob.logger.log(`${prefix}[${connectionIndex}] adaptorInfo`, JSON.stringify(data.adaptorInfo), {level: 3});  
+      // Delete the tiddler file from the wiki
+      let promiseLoadWiki = util.promisify($tw.ServerSide.loadWiki);
+      promiseLoadWiki(prefix)
+      .then(prefix => {
+        $tw.Bob.logger.log(`${prefix}[${connectionIndex}] deleteTiddler`, {level: 3}); 
+        $tw.Bob.Wikis[prefix].wiki.deleteTiddler(title);
+        if($tw.Bob.Wikis[prefix].tiddlers.indexOf(title) > -1){
+          $tw.Bob.Wikis[prefix].tiddlers.splice($tw.Bob.Wikis[prefix].tiddlers.indexOf(title), 1)
+        }
+        // I guess unconditionally say the wiki is modified in this case.
+        $tw.Bob.Wikis[prefix].modified = true;
+        $tw.hooks.invokeHook('wiki-modified', prefix);
         // Remove the tiddler from the list of tiddlers being edited.
         if($tw.Bob.EditingTiddlers[data.wiki][title]) {
           delete $tw.Bob.EditingTiddlers[data.wiki][title];
           $tw.ServerSide.UpdateEditingTiddlers(false, data.wiki);
         }
+        // Create a message saying to remove the tiddler
+        const message = {type: 'deleteTiddler', tiddler: {fields:{title: title}}, prefix: prefix};
+        // Send the message to each connected browser
+        $tw.Bob.SendToBrowsers(message);
         return;
       })
-      .catch((err, fileInfo) => {
-        if(err) {
-          $tw.Bob.logger.log("Error deleteing tiddler '" + data.tiddler.fields.title + "'file at "+fileInfo.filepath, err, {level: 2});
-        }
+      .catch(err => {
+        $tw.Bob.logger.log(`${prefix}[${connectionIndex}] Handler error. Unable to delete '${data.tiddler.fields.title}'`, err, {level: 1});
         return;
       });
     }
@@ -240,13 +270,14 @@ if($tw.node) {
     data = data || {};
     $tw.Bob.Shared.sendAck(data);
     const viewableWikis = $tw.ServerSide.getViewableWikiList(data);
+    const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
     // Send viewableWikis back to the browser
     const message = {
       type: 'setViewableWikis',
       list: $tw.utils.stringifyList(viewableWikis),
       wiki: data.wiki
     };
-    $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message);
+    $tw.Bob.SendToBrowser($tw.connections[connectionIndex], message);
   }
 
   /*
