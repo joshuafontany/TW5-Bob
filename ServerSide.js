@@ -20,7 +20,7 @@ This is server functions that can be shared between different server types
   
   // A polyfilL to make this work with older node installs
   
-
+  
   // START POLYFILL
   const reduce = Function.bind.call(Function.call, Array.prototype.reduce);
   const isEnumerable = Function.bind.call(Function.call, Object.prototype.propertyIsEnumerable);
@@ -170,102 +170,78 @@ This is server functions that can be shared between different server types
   }
   
   /*
-    This function loads a wiki and returns a timeout with any callback.
+    This function loads a wiki that has a route listed.
   */
-  ServerSide.loadWikiTest = function (wikiName, cb) {
-    if(typeof cb === 'function') {
-      cb(null, wikiName);
-    } else {
-      return wikiName;
-    }
-  }
   ServerSide.loadWiki = function (wikiName, cb) {
-    $tw.settings['ws-server'] = $tw.settings['ws-server'] || {}
-    $tw.Bob = $tw.Bob || {};
-    $tw.Bob.Wikis = $tw.Bob.Wikis || {};
-    $tw.Bob.Wikis[wikiName] = $tw.Bob.Wikis[wikiName] || {};
-    $tw.Bob.Files[wikiName] = $tw.Bob.Files[wikiName] || {};
-    $tw.Bob.EditingTiddlers[wikiName] = $tw.Bob.EditingTiddlers[wikiName] || {};
     const wikiFolder = ServerSide.existsListed(wikiName);
-    // Make sure it isn't loaded already
-    if(wikiFolder && $tw.Bob.Wikis[wikiName].State !== 'loaded') {
-      try{
+    // Add tiddlers to the node process
+    if(wikiFolder) {
+      $tw.settings['ws-server'] = $tw.settings['ws-server'] || {}
+      $tw.Bob = $tw.Bob || {};
+      $tw.Bob.Wikis = $tw.Bob.Wikis || {};
+      $tw.Bob.Wikis[wikiName] = $tw.Bob.Wikis[wikiName] || {};
+      $tw.Bob.Files[wikiName] = $tw.Bob.Files[wikiName] || {};
+      $tw.Bob.EditingTiddlers[wikiName] = $tw.Bob.EditingTiddlers[wikiName] || {};
+      // Make sure it isn't loaded already
+      if($tw.Bob.Wikis[wikiName].State !== 'loaded') {
+        // If the wiki isn't loaded yet set the wiki as loaded
+        $tw.Bob.Wikis[wikiName].State = 'loaded';
         // Save the wiki path and tiddlers path
         $tw.Bob.Wikis[wikiName].wikiPath = wikiFolder;
+        $tw.Bob.Wikis[wikiName].wikiTiddlersPath = path.resolve(wikiFolder, 'tiddlers');
+        // Make sure that the tiddlers folder exists
+        const error = $tw.utils.createDirectory($tw.Bob.Wikis[wikiName].wikiTiddlersPath);
+        // Recursively build the folder tree structure
+        $tw.Bob.Wikis[wikiName].FolderTree = buildTree('.', $tw.Bob.Wikis[wikiName].wikiTiddlersPath, {});
+  
+        if($tw.settings.disableFileWatchers !== 'yes') {
+          // Watch the root tiddlers folder for chanegs
+          $tw.Bob.WatchAllFolders($tw.Bob.Wikis[wikiName].FolderTree, wikiName);
+        }
+  
+        // Add tiddlers to the node process
         // Create a wiki object for this wiki
         $tw.Bob.Wikis[wikiName].wiki = new $tw.Wiki();
-        // From $tw.loadTiddlersNode
         // Load the boot tiddlers
         $tw.utils.each($tw.loadTiddlersFromPath($tw.boot.bootPath),function(tiddlerFile) {
           $tw.Bob.Wikis[wikiName].wiki.addTiddlers(tiddlerFile.tiddlers);
         });
         // Load the core tiddlers
-        $tw.Bob.Wikis[wikiName].wiki.addTiddler($tw.loadPluginFolder($tw.boot.corePath));
+        if(!$tw.Bob.Wikis[wikiName].wiki.getTiddler('$:/core')) {
+          $tw.Bob.Wikis[wikiName].wiki.addTiddler($tw.loadPluginFolder($tw.boot.corePath));
+        }
         // Add tiddlers to the wiki
-        $tw.Bob.Wikis[wikiName].wikiInfo = loadWikiTiddlers($tw.Bob.Wikis[wikiName].wikiPath, {prefix: wikiName});
-        // From $tw.boot.execStartup
-        $tw.Bob.Wikis[wikiName].wiki.readPluginInfo();
+        const wikiInfo = loadWikiTiddlers($tw.Bob.Wikis[wikiName].wikiPath, {prefix: wikiName});
         $tw.Bob.Wikis[wikiName].wiki.registerPluginTiddlers("plugin",$tw.safeMode ? ["$:/core"] : undefined);
         // Unpack plugin tiddlers
+        $tw.Bob.Wikis[wikiName].wiki.readPluginInfo();
         $tw.Bob.Wikis[wikiName].wiki.unpackPluginTiddlers();
-        // Process "safe mode"
-        if($tw.safeMode) {
-          $tw.Bob.Wikis[wikiName].wiki.processSafeMode();
-        }
-        // Register typed modules from the tiddlers we've just loaded
-        // instead of calling $tw.Bob.Wikis[wikiName].wiki.defineTiddlerModules();
-        // defineTiddlerModules(wikiName);
-        // And any modules within plugins
-        // instead of calling $tw.Bob.Wikis[wikiName].wiki.defineShadowModules();
-        // defineShadowModules(wikiName);
-        // Encryption handling would go here
-        // from $tw.boot.execStartup
-        // Name the wiki
-        const fields = {
-          title: '$:/WikiName',
-          text: wikiName
-        };
-        $tw.Bob.Wikis[wikiName].wiki.addTiddler(new $tw.Tiddler(fields));
+  
+  
+        // Add plugins, themes and languages
+        loadPlugins(wikiInfo.plugins,$tw.config.pluginsPath,$tw.config.pluginsEnvVar, wikiName);
+        loadPlugins(wikiInfo.themes,$tw.config.themesPath,$tw.config.themesEnvVar, wikiName);
+        loadPlugins(wikiInfo.languages,$tw.config.languagesPath,$tw.config.languagesEnvVar, wikiName);
         // Get the list of tiddlers for this wiki
-        let wikiInfo = $tw.Bob.Wikis[wikiName].wikiInfo;      
         $tw.Bob.Wikis[wikiName].tiddlers = $tw.Bob.Wikis[wikiName].wiki.allTitles();
-        $tw.Bob.Wikis[wikiName].plugins = wikiInfo.plugins ? wikiInfo.plugins.map(function(name) {
+        $tw.Bob.Wikis[wikiName].plugins = wikiInfo.plugins.map(function(name) {
           return '$:/plugins/' + name;
-        }): [];
-        $tw.Bob.Wikis[wikiName].themes = wikiInfo.themes ? wikiInfo.themes.map(function(name) {
+        });
+        $tw.Bob.Wikis[wikiName].themes = wikiInfo.themes.map(function(name) {
           return '$:/themes/' + name;
-        }): [];
-        $tw.Bob.Wikis[wikiName].languages = wikiInfo.languages ? wikiInfo.languages.map(function(name) {
-          return '$:/themes/' + name;
-        }): [];
-        // Setup the FileSystemMonitors
-        // Make sure that the tiddlers folder exists
-        const error = $tw.utils.createDirectory($tw.Bob.Wikis[wikiName].wikiTiddlersPath);
-        if(error){
-          $tw.Bob.logger.error('Error creating wikiTiddlersPath', error, {level:1});
-        }
-        // Recursively build the folder tree structure
-        $tw.Bob.Wikis[wikiName].FolderTree = buildTree('.', $tw.Bob.Wikis[wikiName].wikiTiddlersPath, {});
-        if($tw.settings.disableFileWatchers !== 'yes') {
-          // Watch the root tiddlers folder for chanegs
-          $tw.Bob.WatchAllFolders($tw.Bob.Wikis[wikiName].FolderTree, wikiName);
-        }
-        // If the wiki isn't loaded yet set the wiki as loaded
-        $tw.Bob.Wikis[wikiName].State = 'loaded';
+        });
         $tw.hooks.invokeHook('wiki-loaded', wikiName);
-      } catch(err) {
-        if(typeof cb === 'function') {
-          cb(err);
-        } else {
-          return err;
-        }
+      }
+      const fields = {
+        title: '$:/WikiName',
+        text: wikiName
+      };
+      $tw.Bob.Wikis[wikiName].wiki.addTiddler(new $tw.Tiddler(fields));
+      if(typeof cb === 'function') {
+        setTimeout(cb, 1000)
       }
     }
-    if(typeof cb === 'function') {
-      cb(null, wikiName);
-    } else {
-      return wikiFolder;
-    }
+    return wikiFolder;
   }
   
   /*
@@ -287,17 +263,14 @@ This is server functions that can be shared between different server types
         wikiInfo = JSON.parse(fs.readFileSync(wikiInfoPath,"utf8"));
       } catch (e) {
         $tw.Bob.logger.error('Error reading wiki info', e, {level:1});
-        return null;
       }
     } else {
       return null;
     }
-    // Save the wikiTiddlersPath for the MultiWikiAdaptor
-    let config = wikiInfo.config || {};
-    $tw.Bob.Wikis[options.prefix].wikiTiddlersPath = path.resolve($tw.Bob.Wikis[options.prefix].wikiPath,config["default-tiddler-location"] || $tw.config.wikiTiddlersSubDir);
     // Load any parent wikis
     if(wikiInfo.includeWikis) {
-      $tw.Bob.logger.log('Load Wiki: includeWikis!', {level:1});
+      $tw.Bob.logger.error('Bob error: includeWikis is not supported yet!', {level:1});
+      /*
       parentPaths = parentPaths.slice(0);
       parentPaths.push(wikiPath);
       $tw.utils.each(wikiInfo.includeWikis,function(info) {
@@ -316,6 +289,7 @@ This is server functions that can be shared between different server types
           $tw.utils.error("Cannot recursively include wiki " + resolvedIncludedWikiPath);
         }
       });
+      */
     }
     // Load any plugins, themes and languages listed in the wiki info file
     loadPlugins(wikiInfo.plugins,$tw.config.pluginsPath,$tw.config.pluginsEnvVar, options.prefix);
@@ -323,13 +297,12 @@ This is server functions that can be shared between different server types
     loadPlugins(wikiInfo.languages,$tw.config.languagesPath,$tw.config.languagesEnvVar, options.prefix);
     // Load the wiki files, registering them as writable
     const resolvedWikiPath = path.resolve(wikiPath,$tw.config.wikiTiddlersSubDir);
-    const exlcudePlugins = ['$:/plugins/tiddlywiki/tiddlyweb', '$:/plugins/tiddlywiki/filesystem'];
     function getTheseTiddlers() {
       let out = [];
       try {
         out = $tw.loadTiddlersFromPath(resolvedWikiPath);
       } catch(e) {
-        $tw.Bob.logger.error("loadWikiTiddlers Error: ", e, {level:1});
+        $tw.Bob.logger.error(e, {level:1});
       }
       return out;
     }
@@ -338,46 +311,34 @@ This is server functions that can be shared between different server types
         let use = true;
         if(!options.readOnly && tiddlerFile.filepath) {
           $tw.utils.each(tiddlerFile.tiddlers,function(tiddler) {
-            if(exlcudePlugins.indexOf(tiddler.title) !== -1) {
+            $tw.Bob.Files[options.prefix][tiddler.title] = {
+              filepath: tiddlerFile.filepath,
+              type: tiddlerFile.type,
+              hasMetaFile: tiddlerFile.hasMetaFile
+            };
+            if(['$:/plugins/tiddlywiki/tiddlyweb', '$:/plugins/tiddlywiki/filesystem'].indexOf(tiddler.title) !== -1) {
               use = false;
-            } else {
-              $tw.Bob.Files[options.prefix][tiddler.title] ={
-                filepath: tiddlerFile.filepath,
-                type: tiddlerFile.type,
-                hasMetaFile: tiddlerFile.hasMetaFile,
-                isEditableFile: config["retain-original-tiddler-path"] || tiddlerFile.isEditableFile || tiddlerFile.filepath.indexOf($tw.Bob.Wikis[options.prefix].wikiTiddlersPath) !== 0
-              };
             }
           });
         }
-        if(!use) {
-          //Walk the tiddler stack backwards, and splice out the unwanted plugins
-          for (i = tiddlerFile.tiddlers - 1; i >= 0; --i) {
-            if(exlcudePlugins.indexOf(tiddlerFile.tiddlers[i].title) !== -1) {
-              tiddlerFile.tiddlers.splice(i, 1); //Remove the excluded plugin
-            }
-          }
+        if(use) {
+          $tw.Bob.Wikis[options.prefix].wiki.addTiddlers(tiddlerFile.tiddlers);
         }
-        $tw.Bob.Wikis[options.prefix].wiki.addTiddlers(tiddlerFile.tiddlers);
       }
     );
-    if ($tw.Bob.Wikis[options.prefix].wikiPath == wikiPath) {
-      // Save the original tiddler file locations if requested
-      var output = {}, relativePath, fileInfo;
+    // Save the original tiddler file locations if requested
+    const config = wikiInfo.config || {};
+    if(config["retain-original-tiddler-path"]) {
+      let output = {};
       for(let title in $tw.Bob.Files[options.prefix]) {
-        fileInfo =  $tw.Bob.Files[options.prefix][title];
-        if(fileInfo.isEditableFile) {
-          relativePath = path.relative($tw.Bob.Wikis[options.prefix].wikiTiddlersPath,fileInfo.filepath);
-          output[title] =
-            path.sep === "/" ?
-            relativePath :
-            relativePath.split(path.sep).join("/");
-        }
+        output[title] = path.relative(resolvedWikiPath,$tw.Bob.Files[options.prefix][title].filepath);
       }
-      if(Object.keys(output).length > 0){
-        $tw.Bob.Wikis[options.prefix].iki.addTiddler({title: "$:/config/OriginalTiddlerPaths", type: "application/json", text: JSON.stringify(output)});
-      }
+      $tw.Bob.Wikis[options.prefix].wiki.addTiddlers(new $tw.Tiddler({title: "$:/config/OriginalTiddlerPaths", type: "application/json", text: JSON.stringify(output)}));
     }
+    // Save the path to the tiddlers folder for the filesystemadaptor
+    $tw.Bob.Wikis = $tw.Bob.Wikis || {};
+    $tw.Bob.Wikis[options.prefix] = $tw.Bob.Wikis[options.prefix] || {};
+    $tw.Bob.Wikis[options.prefix].wikiTiddlersPath = path.resolve(wikiPath, config["default-tiddler-location"] || $tw.config.wikiTiddlersSubDir);
     // Load any plugins within the wiki folder
     const wikiPluginsPath = path.resolve(wikiPath,$tw.config.wikiPluginsSubDir);
     if(fs.existsSync(wikiPluginsPath)) {
@@ -390,7 +351,7 @@ This is server functions that can be shared between different server types
           }
         }
       } catch (e) {
-        $tw.Bob.logger.error('Error loading wiki plugin folder: ', e, {level:2});
+        $tw.Bob.logger.error('error loading plugin folder', e, {level:2});
       }
     }
     // Load any themes within the wiki folder
@@ -405,7 +366,7 @@ This is server functions that can be shared between different server types
           }
         }
       } catch (e) {
-        $tw.Bob.logger.error('Error loading wiki theme folder: ', e, {level:2});
+        $tw.Bob.logger.error('error loading theme folder', e, {level:2});
       }
     }
     // Load any languages within the wiki folder
@@ -420,50 +381,10 @@ This is server functions that can be shared between different server types
           }
         }
       } catch (e) {
-        $tw.Bob.logger.error('Error loading wiki language folder: ', e, {level:2});
+        $tw.Bob.logger.error('Error loading language folder', e, {level:2});
       }
     }
     return wikiInfo;
-  };
-  
-  /*
-  wikiName: the wiki to check for unloaded module definitions
-  We only define modules that haven't already been defined, 
-    because the exiting ones were defined by the RootWiki
-    and reloading all of them would spam the server log.
-  */
-  function defineTiddlerModules(wikiName) {
-    $tw.Bob.Wikis[wikiName].wiki.each(function(tiddler,title) {
-      if(tiddler.hasField("module-type") && !$tw.utils.hop($tw.modules.titles,tiddler.fields.title)) {
-        switch (tiddler.fields.type) {
-          case "application/javascript":
-              $tw.modules.define(tiddler.fields.title,tiddler.fields["module-type"],tiddler.fields.text);
-            break;
-          case "application/json":
-            $tw.modules.define(tiddler.fields.title,tiddler.fields["module-type"],JSON.parse(tiddler.fields.text));
-            break;
-          case "application/x-tiddler-dictionary":
-            $tw.modules.define(tiddler.fields.title,tiddler.fields["module-type"],$tw.utils.parseFields(tiddler.fields.text));
-            break;
-        }
-      }
-    });
-  };
-  
-  /*
-  wikiName: the wiki to check for unloaded shadow module definitions
-  We only define modules that haven't already been defined, 
-    because the exiting ones were defined by the RootWiki
-    and reloading all of them would spam the server log.
-  */
-  function defineShadowModules(wikiName) {
-    $tw.Bob.Wikis[wikiName].wiki.eachShadow(function(tiddler,title) {
-      // Don't define the module if it is overidden by an ordinary tiddler
-      if(!$tw.Bob.Wikis[wikiName].wiki.tiddlerExists(title) && tiddler.hasField("module-type") && !$tw.utils.hop($tw.modules.titles,tiddler.fields.title)) {
-        // Define the module
-        $tw.modules.define(tiddler.fields.title,tiddler.fields["module-type"],tiddler.fields.text);
-      }
-    });
   };
   
   ServerSide.prepareWiki = function (fullName, servePlugin, cache='yes') {
@@ -561,10 +482,7 @@ This is server functions that can be shared between different server types
       const pluginFields = $tw.loadPluginFolder(pluginPath);
       if(pluginFields) {
         $tw.Bob.Wikis[wikiName].wiki.addTiddler(pluginFields);
-        return;
       }
-    } else {
-      $tw.Bob.logger.error("Warning for wikiName '" + wikiName + "': Cannot find path to plugin '" + name + "'");
     }
   };
   
@@ -873,7 +791,6 @@ This is server functions that can be shared between different server types
   
   ServerSide.getViewableSettings = function(data) {
     const tempSettings = {};
-  
     // section visible to anyone
     // Nothing that uses websocket stuff here because they only work when logged
     // in
@@ -886,6 +803,7 @@ This is server functions that can be shared between different server types
     // Section visible by logged in people
     if(data.decoded) {
       tempSettings.backups = $tw.settings.backups;
+      tempSettings.defaultVisibility = $tw.settings.defaultVisibility;
       tempSettings.disableBrowserAlerts = $tw.settings.disableBrowserAlerts;
       tempSettings.editionLibrary = $tw.settings.editionLibrary;
       tempSettings.enableFileServer = $tw.settings.enableFileServer;
@@ -897,7 +815,7 @@ This is server functions that can be shared between different server types
       tempSettings.namespacedWikis = $tw.settings.namespacedWikis;
       tempSettings.persistentUsernames = $tw.settings.persistentUsernames;
       tempSettings.perWikiFiles = $tw.settings.perWikiFiles;
-      tempSettings.pluginList = $tw.settings.pluginLibrary;
+      tempSettings.pluginLibrary = $tw.settings.pluginLibrary;
       tempSettings.profileOptions = $tw.settings.profileOptions;
       tempSettings.saveMediaOnServer = $tw.settings.saveMediaOnServer;
       tempSettings.themeLibrary = $tw.settings.themeLibrary;
@@ -962,8 +880,8 @@ This is server functions that can be shared between different server types
     $tw.settings.profiles = $tw.settings.profiles || {};
     const result = {};
     Object.keys($tw.settings.profiles).forEach(function(profileName) {
-      if ($tw.Bob.AccessCheck(data.profileName, {"decoded": data.decoded}, 'view', 'profile')) {
-        result[profileName] = $tw.settings.profiles[data.profileName]
+      if ($tw.Bob.AccessCheck(profileName, data, 'view', 'profile') || $tw.Bob.AccessCheck(profileName, data, 'view/anyProfile', 'server')) {
+        result[profileName] = $tw.settings.profiles[profileName]
       }
     })
     return result;
@@ -1453,7 +1371,7 @@ This is server functions that can be shared between different server types
     This ensures that the wikiName used is unique by appending a number to the
     end of the name and incrementing the number if needed until an unused name
     is created.
-    If no name is given it defualts to NewWiki
+    If on name is given it defualts to NewWiki
   */
   function GetWikiName (wikiName, count, wikiObj, fullName) {
     let updatedName;
@@ -1504,11 +1422,13 @@ This is server functions that can be shared between different server types
   
   ServerSide.createWiki = function(data, cb) {
     const authorised = $tw.Bob.AccessCheck('create/wiki', {"decoded": data.decoded}, 'create/wiki', 'server');
-    if(authorised) {
+    const quotasOk = $tw.Bob.CheckQuotas(data);
+    if(authorised && quotasOk) {
       const fs = require("fs"),
         path = require("path");
-      let name = GetWikiName(data.wikiName || data.newWiki);
-      // Check for security issues here
+      // if we are using namespaced wikis prepend the logged in profiles name to
+      // the wiki name.
+      const name = ($tw.settings.namespacedWikis === 'yes') ? GetWikiName((data.decoded.name || 'imaginaryPerson') + '/' + (data.wikiName || data.newWiki || 'NewWiki')) : GetWikiName(data.wikiName || data.newWiki);
       if(data.nodeWikiPath) {
         // This is just adding an existing node wiki to the listing
         addListing(name, data.nodeWikiPath);
@@ -1522,12 +1442,11 @@ This is server functions that can be shared between different server types
         // Make sure that the wiki to duplicate exists and that the target wiki
         // name isn't in use
         if($tw.ServerSide.existsListed(data.fromWiki)) {
-          const wikiName = name;//GetWikiName(data.newWiki);
           // Get the paths for the source and destination
           $tw.settings.wikisPath = $tw.settings.wikisPath || './Wikis';
           const source = $tw.ServerSide.getWikiPath(data.fromWiki);
           const basePath = $tw.ServerSide.getBasePath();
-          const destination = path.resolve(basePath, $tw.settings.wikisPath, wikiName);
+          const destination = path.resolve(basePath, $tw.settings.wikisPath, name);
           data.copyChildren = data.copyChildren || 'no';
           const copyChildren = data.copyChildren.toLowerCase() === 'yes'?true:false;
           // Make the duplicate
@@ -1536,13 +1455,13 @@ This is server functions that can be shared between different server types
             data.update = 'true';
             data.saveSettings = 'true';
             $tw.ServerSide.updateWikiListing(data);
-            $tw.Bob.logger.log('Duplicated wiki', data.fromWiki, 'as', wikiName, {level: 2})
+            $tw.Bob.logger.log('Duplicated wiki', data.fromWiki, 'as', name, {level: 2})
             cb();
           });
         }
       } else {
         // Paths are relative to the root wiki path
-        $tw.settings.wikisPath = $tw.settings.wikisPath || './Wikis';
+        $tw.settings.wikisPath = $tw.settings.wikisPath || 'Wikis';
         data.wikisFolder = data.wikisFolder || $tw.settings.wikisPath;
         // If no basepath is given than the default is to place the folder in the
         // default wikis folder
@@ -1553,15 +1472,6 @@ This is server functions that can be shared between different server types
         // Wikis than wikis created will be in the basepath/Wikis/relativePath
         // folder I need better names here.
         $tw.utils.createDirectory(path.join(basePath, data.wikisFolder));
-        // This only does something for the secure wiki server
-        if($tw.settings.namespacedWikis === 'yes') {
-          data.decoded = data.decoded || {};
-          data.decoded.name = data.decoded.name || 'imaginaryPerson';
-          name = data.decoded.name + '/' + (data.wikiName || data.newWiki);
-          name = GetWikiName(name);
-          relativePath = name;
-          $tw.utils.createDirectory(path.join(basePath, data.decoded.name));
-        }
         const fullPath = path.join(basePath, data.wikisFolder, name)
         // For now we only support creating wikis with one edition, multi edition
         // things like in the normal init command can come later.
