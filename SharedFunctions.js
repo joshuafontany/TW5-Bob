@@ -472,7 +472,7 @@ This has some functions that are needed by Bob in different places.
       if(messageData.message.tiddler) {
         messageData.message.tiddler = $tw.Bob.Shared.normalizeTiddler(messageData.message.tiddler);
       }
-
+      //debugger;
       // Remove any messages made redundant by this message
       $tw.Bob.MessageQueue = Shared.removeRedundantMessages(messageData, $tw.Bob.MessageQueue);
       if($tw.browser) {

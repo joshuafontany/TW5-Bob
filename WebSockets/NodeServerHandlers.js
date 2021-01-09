@@ -679,6 +679,7 @@ if($tw.node) {
     if(data.plugin) {
       const fs = require('fs')
       const path = require('path')
+      //need to ensure the wiki is loaded here
       const pluginTiddler = $tw.Bob.Wikis[data.wiki].wiki.getTiddler(data.plugin)
       if(pluginTiddler) {
         const pluginName = data.plugin.replace(/^\$:\/plugins\//, '')
@@ -721,16 +722,22 @@ if($tw.node) {
         }
         if(isNewVersion) {
           // Save the plugin tiddlers
+          var prefix = data.wiki;
           Object.keys(JSON.parse(pluginTiddler.fields.text).tiddlers).forEach(function(title) {
-            const content = $tw.Bob.Wikis[data.wiki].wiki.renderTiddler("text/plain", "$:/core/templates/tid-tiddler", {variables: {currentTiddler: title}});
-            const fileExtension = '.tid'
-            const filepath = path.join(pluginFolderPath, $tw.syncadaptor.generateTiddlerBaseFilepath(title, data.wiki) + fileExtension);
+            const tiddler = $tw.Bob.Wikis[prefix].wiki.getTiddler(title);
+            const fileInfo = $tw.syncadaptor.generateCustomFileInfo(title, 
+              {
+                prefix: prefix, 
+                directory: pluginFolderPath,
+                pathFilters: ["[prefix["+data.plugin+"]removeprefix["+data.plugin+"]]"],
+                extFilters: []
+              });
             // If we aren't passed a path
-            fs.writeFile(filepath,content,{encoding: "utf8"},function (err) {
+            $tw.utils.saveTiddlerToFile(tiddler, fileInfo, function (err, fileInfo) {
               if(err) {
                 $tw.Bob.logger.error(err, {level:1});
               } else {
-                $tw.Bob.logger.log('saved file', filepath, {level:2})
+                $tw.Bob.logger.log('saved file', fileInfo.filepath, {level:2})
               }
             });
           })
@@ -1200,7 +1207,12 @@ if($tw.node) {
               mediaURIList.forEach(function(uri) {
                 const tiddlerList = $tw.Bob.Wikis[data.wiki].wiki.filterTiddlers(`[_canonical_uri[${uri}]]`);
                 tiddlerList.forEach(function(tidTitle) {
-                  $tw.syncadaptor.deleteTiddler(tidTitle, {wiki: data.wiki});
+                  $tw.syncadaptor.deleteTiddler(tidTitle, {prefix: data.wiki}, function(err, fileInfo){
+                    if(err){
+                      $tw.Bob.logger.log('mediaScan deleteTiddler Error', fileInfo.filepath, err, {level: 3});
+                    }
+                    $tw.Bob.logger.log('mediaScan deleted file', fileInfo.filepath, {level: 3})
+                  });
                 })
               })
             }

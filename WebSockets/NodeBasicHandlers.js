@@ -18,6 +18,7 @@ exports.platforms = ["node"];
 
 exports.startup = function() {
 if($tw.node) {
+  const util = require("util");
   $tw.nodeMessageHandlers = $tw.nodeMessageHandlers || {};
   $tw.Bob.Shared = require('$:/plugins/OokTech/Bob/SharedFunctions.js');
   /*
@@ -93,53 +94,55 @@ if($tw.node) {
     This handles saveTiddler messages sent from the browser.
 
     If we always want to ignore draft tiddlers,
-    use `[has[draft.of]]` in $:/plugins/OokTech/Bob/ExcludeSync
+    use `[is[draft]]` in $:/plugins/OokTech/Bob/ExcludeSync
   */
   $tw.nodeMessageHandlers.saveTiddler = function(data) {
     // Acknowledge the message.
     $tw.Bob.Shared.sendAck(data);
-    // Make sure there is actually a tiddler sent
-    if(data.tiddler) {
-      // Make sure that the tiddler that is sent has fields
-      if(data.tiddler.fields) {
-        const prefix = data.wiki || '';
-        // Set the saved tiddler as no longer being edited. It isn't always
-        // being edited but checking eacd time is more complex than just
-        // always setting it this way and doesn't benifit us.
-        $tw.nodeMessageHandlers.cancelEditingTiddler({
-          tiddler:{
-            fields:{
-              title:data.tiddler.fields.title
-            }
-          },
-          wiki: prefix
-        });
-        // If we are not expecting a save tiddler event than save the
-        // tiddler normally.
-        if(!$tw.Bob.Files[data.wiki][data.tiddler.fields.title]) {
-          $tw.syncadaptor.saveTiddler(data.tiddler, prefix, data.source_connection);
-        } else {
-          // If changed send tiddler
-          let changed = true;
-          try {
-            let tiddlerObject = {}
-            if(data.tiddler.fields._canonical_uri) {
-              tiddlerObject = $tw.loadTiddlersFromFile($tw.Bob.Files[prefix][data.tiddler.fields.title].filepath+'.meta');
-            } else {
-              tiddlerObject = $tw.loadTiddlersFromFile($tw.Bob.Files[prefix][data.tiddler.fields.title].filepath);
-            }
-            // The file has the normal title so use the normal title here.
-            changed = $tw.Bob.Shared.TiddlerHasChanged(data.tiddler, tiddlerObject);
-          } catch (e) {
-            $tw.Bob.logger.log('Save tiddler error: ', e, {level: 3});
+    // Make sure there is actually a tiddler sent & it has fields
+    if(data.tiddler && data.tiddler.fields) {
+      const prefix = data.wiki || '';
+      // Set the saved tiddler as no longer being edited. It isn't always
+      // being edited but checking each time is more complex than just
+      // always setting it this way and doesn't benifit us.
+      $tw.nodeMessageHandlers.cancelEditingTiddler({
+        tiddler:{
+          fields:{
+            title:data.tiddler.fields.title
           }
-          if(changed) {
-            $tw.syncadaptor.saveTiddler(data.tiddler, prefix, data.source_connection);
-          }
-        }
+        },
+        wiki: prefix
+      });
+      debugger;
+      $tw.Bob.logger.log('Node Message Save Tiddler', data, {level: 4}); 
+      $tw.Bob.logger.log(prefix+' ['+data.source_connection+'] adaptorInfo', JSON.stringify(data.adaptorInfo), {level: 3});  
+      let promiseSaveTiddler = util.promisify($tw.syncadaptor.saveTiddler);
+      promiseSaveTiddler(data.tiddler,
+        {
+          prefix: prefix, 
+          connectionInd: data.source_connection
+        })
+      .then(fileInfo => {
+        $tw.Bob.logger.log("Saved file", fileInfo.filepath, {level: 3}); 
         delete $tw.Bob.EditingTiddlers[data.wiki][data.tiddler.fields.title];
         $tw.ServerSide.UpdateEditingTiddlers(false, data.wiki);
-      }
+        return;
+      })
+      .catch(err => {
+        if(err) {
+          if(fileInfo.writeError == true){
+            $tw.Bob.logger.log(`Sync error while processing Save of '${data.tiddler.fields.title}'. Retrying.`, err, {level: 1});
+            //Retry Save message
+            $tw.nodeMessageHandlers.saveTiddler({
+              tiddler: data.tiddler,
+              wiki: prefix
+            });
+          } else {
+            $tw.Bob.logger.log(`Sync error. Unable to save '${data.tiddler.fields.title}'`, err, {level: 1});
+          }
+        }
+        return;
+      });
     }
   }
 
@@ -149,19 +152,34 @@ if($tw.node) {
   $tw.nodeMessageHandlers.deleteTiddler = function(data) {
     // Acknowledge the message.
     $tw.Bob.Shared.sendAck(data);
-    $tw.Bob.logger.log('Node Delete Tiddler', {level: 4});
+    $tw.Bob.logger.log('Node Message Delete Tiddler', data, {level: 4});
+    $tw.Bob.logger.log(prefix+' ['+data.source_connection+'] adaptorInfo', JSON.stringify(data.adaptorInfo), {level: 3});
     data.tiddler = data.tiddler || {};
     data.tiddler.fields = data.tiddler.fields || {};
     const title = data.tiddler.fields.title;
     if(title) {
       // Delete the tiddler file from the file system
-      $tw.syncadaptor.deleteTiddler(title, {wiki: data.wiki});
-      // Remove the tiddler from the list of tiddlers being edited.
-      if($tw.Bob.EditingTiddlers[data.wiki][title]) {
-        delete $tw.Bob.EditingTiddlers[data.wiki][title];
-        $tw.ServerSide.UpdateEditingTiddlers(false, data.wiki);
-      }
-      $tw.Bob.logger.log('Deleted tiddler', data.tiddler.fields.title)
+      let promiseDeleteTiddler = util.promisify($tw.syncadaptor.deleteTiddler);
+      promiseDeleteTiddler(title,
+        {
+          prefix: data.wiki, 
+          connectionInd: data.source_connection
+        })
+      .then(fileInfo => {
+        $tw.Bob.logger.log("Deleted tiddler '" + data.tiddler.fields.title + "' file at "+fileInfo.filepath, {level: 2}); 
+        // Remove the tiddler from the list of tiddlers being edited.
+        if($tw.Bob.EditingTiddlers[data.wiki][title]) {
+          delete $tw.Bob.EditingTiddlers[data.wiki][title];
+          $tw.ServerSide.UpdateEditingTiddlers(false, data.wiki);
+        }
+        return;
+      })
+      .catch((err, fileInfo) => {
+        if(err) {
+          $tw.Bob.logger.log("Error deleteing tiddler '" + data.tiddler.fields.title + "'file at "+fileInfo.filepath, err, {level: 2});
+        }
+        return;
+      });
     }
   }
 

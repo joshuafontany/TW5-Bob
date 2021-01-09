@@ -16,10 +16,15 @@ const delayRecord = {};
 
 const sendToServer = function (message, callback) {
   const connectionIndex = 0;
+  let messageData = {};
   // If the connection is open, send the message
   if($tw.connections[connectionIndex].socket.readyState === 1 && $tw.readOnly !== 'yes') {
-    const messageData = $tw.Bob.Shared.sendMessage(message, 0);
-    return messageData.id;
+    messageData = $tw.Bob.Shared.sendMessage(message, 0);
+    if (typeof callback === "function") {
+      callback(null, messageData.id)
+    } else {
+      return messageData.id;
+    }
   } else {
     // If the connection is not open than store the message in the queue
     const tiddler = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/Unsent');
@@ -34,7 +39,7 @@ const sendToServer = function (message, callback) {
       }
     }
     // Check to make sure that the current message is eligible to be saved
-    const messageData = $tw.Bob.Shared.createMessageData(message)
+    messageData = $tw.Bob.Shared.createMessageData(message)
     if($tw.Bob.Shared.messageIsEligible(messageData, 0, queue)) {
       // Prune the queue and check if the current message makes any enqueued
       // messages redundant or overrides old messages
@@ -51,6 +56,11 @@ const sendToServer = function (message, callback) {
         start: start
       };
       $tw.wiki.addTiddler(new $tw.Tiddler(tiddler2));
+      if (typeof callback === "function") {
+        callback(null, messageData.id)
+      } else {
+        return messageData.id;
+      }
     }
   }
 }
@@ -196,7 +206,7 @@ function BrowserWSAdaptor(options) {
 
       // Set available languages
       fields.title = '$:/Bob/AvailableLanguageList';
-      fields.text = $tw.utils.stringifyList(Object.keys(data['available_languages']));
+      fields.text = JSON.stringify(Object.keys(data['available_languages']));
       fields.type = 'application/json';
       $tw.wiki.addTiddler(new $tw.Tiddler(fields));
 
@@ -375,7 +385,7 @@ function BrowserWSAdaptor(options) {
           What is a conflict?
 
           If both sides say to delete the same tiddler there is no conflict
-          If one side says save and the othre delete there is a conflict
+          If one side says save and the other delete there is a conflict
           if both sides say save there is a conflict if the two saved versions
           aren't the same.
         */
@@ -539,24 +549,43 @@ BrowserWSAdaptor.prototype.supportsLazyLoading = true
 
 // REQUIRED
 // Tiddler info, can be left like this but must be present
-BrowserWSAdaptor.prototype.getTiddlerInfo = function() {
-  return {}
+BrowserWSAdaptor.prototype.getTiddlerInfo = function(tiddler) {
+  /* Bag stuff here?
+  return {
+		bag: tiddler.fields.bag
+  };
+  */
 }
 
 // REQUIRED
 // This does whatever is necessary to actually store a tiddler
-BrowserWSAdaptor.prototype.saveTiddler = function (tiddler, callback) {
+BrowserWSAdaptor.prototype.saveTiddler = function (tiddler, options, callback) {
+  if(!!callback && typeof callback !== "function"){
+    var optionsArg = callback;
+  }
+  if(typeof options === "function"){
+    callback = options;
+    options = optionsArg || {};
+  }
   const self = this;
+  options = options || {};
+  options.tiddlerInfo = options.tiddlerInfo || {};
+  let adaptorInfo = options.tiddlerInfo.adaptorInfo || {};
+  adaptorInfo.touched = (adaptorInfo.touched)? adaptorInfo.touched+1 : 0;
   function handleAck(ackId) {
     const ind = self.idList.indexOf(ackId);
     if(ind > -1) {
       self.idList.splice(ind, 1)
-      callback(null, null)
+      callback(null, adaptorInfo)
     }
   }
-  if(!this.shouldSync(tiddler.fields.title) || !tiddler) {
-    callback(null, null);
+  if(!tiddler || !tiddler.fields.title){
+    callback("No tiddler or title given.");
   } else {
+    if(!this.shouldSync(tiddler.fields.title)) {
+      callback(null, adaptorInfo);
+    }
+    //Keeping track of "bags" and things would go here?
     let tempTid = {fields:{}};
     Object.keys(tiddler.fields).forEach(function (field) {
         if(field !== 'created' && field !== 'modified') {
@@ -569,22 +598,39 @@ BrowserWSAdaptor.prototype.saveTiddler = function (tiddler, callback) {
     const message = {
       type: 'saveTiddler',
       tiddler: tempTid,
-      wiki: $tw.wikiName
+      wiki: $tw.wikiName,
+      adaptorInfo: adaptorInfo
     };
-    const id = sendToServer(message, callback);
-    if(id) {
-      this.idList.push(id)
-      $tw.rootWidget.addEventListener('handle-ack', function(e) {
-        handleAck(e.detail)
-      })
-    }
+    sendToServer(message, function(err, id){
+      if(err){
+        callback(err);
+      }
+      if(id) {
+        self.idList.push(id)
+        $tw.rootWidget.addEventListener('handle-ack', function(e) {
+          handleAck(e.detail)
+        })
+      }
+    });
   }
 }
 
 // REQUIRED
 // This does whatever is necessary to load a tiddler.
 // Used for lazy loading
-BrowserWSAdaptor.prototype.loadTiddler = function (title, callback) {
+BrowserWSAdaptor.prototype.loadTiddler = function (title, options, callback) {
+  if(!!callback && typeof callback !== "function"){
+    var optionsArg = callback;
+  }
+  if(typeof options === "function"){
+    callback = options;
+    options = optionsArg || {};
+  }
+  const self = this;
+  options.tiddlerInfo = options.tiddlerInfo || {};
+  let adaptorInfo = options.tiddlerInfo.adaptorInfo || {};
+  //Keeping track of "bags" and things would go here?
+  adaptorInfo.touched = (adaptorInfo.touched)? adaptorInfo.touched+1 : 0;
   function handleLoadedTiddler(tiddler) {
     callback(null, tiddler.fields)
   }
@@ -594,7 +640,8 @@ BrowserWSAdaptor.prototype.loadTiddler = function (title, callback) {
     const message = {
       type:'getFullTiddler',
       title: title,
-      wiki: $tw.wikiName
+      wiki: $tw.wikiName,
+      adaptorInfo: adaptorInfo
     }
     const id = sendToServer(message)
     $tw.rootWidget.addEventListener('loaded-tiddler', function(e) {
@@ -605,17 +652,28 @@ BrowserWSAdaptor.prototype.loadTiddler = function (title, callback) {
 
 // REQUIRED
 // This does whatever is necessary to delete a tiddler
-BrowserWSAdaptor.prototype.deleteTiddler = function (title, callback, options) {
+BrowserWSAdaptor.prototype.deleteTiddler = function (title, options, callback) {
+  if(!!callback && typeof callback !== "function"){
+    var optionsArg = callback;
+  }
+  if(typeof options === "function"){
+    callback = options;
+    options = optionsArg || {};
+  }
   const self = this;
+  options.tiddlerInfo = options.tiddlerInfo || {};
+  let adaptorInfo = options.tiddlerInfo.adaptorInfo || {};
+  //Keeping track of "bags" and things would go here?
+  adaptorInfo.touched = (adaptorInfo.touched)? adaptorInfo.touched + 1 : 0;
   function handleAck(ackId) {
     const ind = self.idList.indexOf(ackId)
     if(ind > -1) {
       self.idList.splice(ind, 1)
-      callback(null, null)
+      callback(null, adaptorInfo)
     }
   }
   if(!this.shouldSync(title)) {
-    callback(null);
+    callback(null, adaptorInfo);
   } else {
     // We have an additional check for tiddlers that start with
     // $:/state because popups get deleted before the check is done.
@@ -628,7 +686,8 @@ BrowserWSAdaptor.prototype.deleteTiddler = function (title, callback, options) {
           title:title
         }
       },
-      wiki: $tw.wikiName
+      wiki: $tw.wikiName,
+      adaptorInfo: adaptorInfo
     };
     const id = sendToServer(message);
     this.idList.push(id)
@@ -669,8 +728,10 @@ BrowserWSAdaptor.prototype.getUpdatedTiddlers = function() {
 // being run so its value can change over time.
 BrowserWSAdaptor.prototype.isReady = function() {
   const tid = $tw.wiki.getTiddler('$:/state/EditableWikis');
-  if(tid.fields.list.indexOf($tw.wikiName) > -1) {
-    return true;
+  if(tid){
+    if(tid.fields.list.indexOf($tw.wikiName) > -1) {
+      return true;
+    }
   } else {
     return false;
   }

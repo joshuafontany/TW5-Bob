@@ -79,6 +79,7 @@ it will overwrite this file.
             // different than the existing one.
             const changed = $tw.Bob.Shared.TiddlerHasChanged(data.tiddler, $tw.wiki.getTiddler(data.tiddler.fields.title));
             if(changed) {
+              debugger;
               $tw.wiki.addTiddler(new $tw.Tiddler(data.tiddler.fields));
               // Set the change count in the syncer so that the syncer doesn't save the tiddler again.
               if($tw.syncer.tiddlerInfo[data.tiddler.fields.title]) {

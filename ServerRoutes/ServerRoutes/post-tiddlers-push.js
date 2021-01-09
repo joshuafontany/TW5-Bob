@@ -47,6 +47,7 @@ exports.handler = function(request,response,state) {
                   Object.keys(bodyData.tiddlers).forEach(function(title) {
                     bodyData.tiddlers[title].fields.modified = $tw.utils.stringifyDate(new Date(bodyData.tiddlers[title].fields.modified));
                     bodyData.tiddlers[title].fields.created = $tw.utils.stringifyDate(new Date(bodyData.tiddlers[title].fields.created));
+                    debugger;
                     $tw.syncadaptor.saveTiddler(bodyData.tiddlers[title], request.params[0]);
                   });
                   response.writeHead(200, {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Credentials": "true", "Access-Control-Allow-Headers": "*"}).end('{"status": "ok"}')

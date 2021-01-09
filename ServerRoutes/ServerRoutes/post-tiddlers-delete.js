@@ -37,10 +37,20 @@ exports.handler = function(request,response,state) {
         try {
           const titleArray = JSON.parse(body).tiddlers;
           for(let i = 0; i < titleArray.length - 1; i++) {
-            $tw.syncadaptor.deleteTiddler(titleArray[i], function(){} , {wiki: fromWiki});
+            $tw.syncadaptor.deleteTiddler(titleArray[i], {prefix: fromWiki}, cbTest);
           }
-          $tw.syncadaptor.deleteTiddler(titleArray[titleArray.length-1], cb, {wiki: fromWiki});
-          function cb(e) {
+          $tw.syncadaptor.deleteTiddler(titleArray[titleArray.length-1], {prefix: fromWiki}, cb);
+          function cbTest(err, fileInfo){
+            if(err){
+              $tw.Bob.logger.log('API tiddlers/delete Error', fileInfo.filepath, err, {level: 3});
+            }
+            $tw.Bob.logger.log('API tiddlers/delete deleted file', fileInfo.filepath, {level: 3})
+          }
+          function cb(err, fileInfo) {
+            if(err){
+              $tw.Bob.logger.log('API tiddlers/delete Error', fileInfo.filepath, err, {level: 3});
+            }
+            $tw.Bob.logger.log('API tiddlers/delete deleted file', fileInfo.filepath, {level: 3})
             response.writeHead(200, {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Credentials": "true", "Access-Control-Allow-Headers": "*"});
             response.end("{status:'ok'}");
           }
