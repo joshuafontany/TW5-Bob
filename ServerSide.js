@@ -1430,7 +1430,7 @@ This is server functions that can be shared between different server types
       }
     }
   }
-  
+
   ServerSide.renameWiki = function(data, cb) {
     const path = require('path')
     const fs = require('fs')
