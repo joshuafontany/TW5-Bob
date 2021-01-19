@@ -52,7 +52,6 @@ if($tw.node) {
     The handle message function, split out so we can use it other places
   */
   $tw.Bob.handleMessage = function(event) {
-    $tw.Bob.logger.log('Received websocket message ', event, {level:4});
     let self = this;
     // Determine which connection the message came from
     const thisIndex = $tw.connections.findIndex(function(connection) {return connection.socket === self;});
@@ -60,6 +59,9 @@ if($tw.node) {
       let eventData = JSON.parse(event);
       // Add the source to the eventData object so it can be used later.
       eventData.source_connection = thisIndex;
+      if (eventData.type !== "ping" && eventData.type !== "pong") {
+        $tw.Bob.logger.log('Received websocket message ', event, {level:4});
+      }
       // If the wiki on this connection hasn't been determined yet, take it
       // from the first message that lists the wiki.
       // After that the wiki can't be changed. It isn't a good security
@@ -354,7 +356,6 @@ if($tw.node) {
     this.callback = callback;
     // Commands that are just for the server
     $tw.ServerSide = require('$:/plugins/OokTech/Bob/ServerSide.js');
-
     // Set up server
     $tw.httpServer = new SimpleServer({
       wiki: this.commander.wiki
@@ -576,6 +577,8 @@ if($tw.node) {
       }
     }
 
+    // Load the RootWiki
+    $tw.ServerSide.loadWiki("RootWiki");
     const bobVersion = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob').fields.version;
     $tw.Bob.version = bobVersion;
     //$tw.Bob.logger.log('TiddlyWiki version', $tw.version, 'with Bob version', bobVersion, {level:0})

@@ -79,8 +79,8 @@ it will overwrite this file.
             // different than the existing one.
             const changed = $tw.Bob.Shared.TiddlerHasChanged(data.tiddler, $tw.wiki.getTiddler(data.tiddler.fields.title));
             if(changed) {
-              debugger;
               $tw.wiki.addTiddler(new $tw.Tiddler(data.tiddler.fields));
+              /* Not needed as we are using a syncer for each wiki?
               // Set the change count in the syncer so that the syncer doesn't save the tiddler again.
               if($tw.syncer.tiddlerInfo[data.tiddler.fields.title]) {
                 $tw.syncer.tiddlerInfo[data.tiddler.fields.title].changeCount = $tw.wiki.getChangeCount(data.tiddler.fields.title);
@@ -92,6 +92,7 @@ it will overwrite this file.
 									revision: undefined
 								}
               }
+              */
             }
           } else {
             console.log('Invalid tiddler title');
@@ -112,19 +113,21 @@ it will overwrite this file.
   */
   $tw.browserMessageHandlers.skinnyTiddlers = function (data) {
     $tw.Bob.Shared.sendAck(data);
+    
     const skinnyTiddlers = new CustomEvent('skinny-tiddlers', {bubbles: true, detail: data.tiddlers || []})
     $tw.rootWidget.dispatchEvent(skinnyTiddlers)
   }
 
   /*
-    When the browser receive a loaded tiddler from the server dispatch the
-    'loaded-tiddler' event with the received tiddler.
-    It is handled by the syncadaptor.
+    When the browser receive a loaded tiddler from the server,
+    it is handled by the syncer.
   */
   $tw.browserMessageHandlers.loadTiddler = function(data) {
     $tw.Bob.Shared.sendAck(data);
-    const loadedTiddler = new CustomEvent('loaded-tiddler', {bubbles: true, detail: data.tiddler || {}})
-    $tw.rootWidget.dispatchEvent(loadedTiddler)
+    // Update the info stored about this tiddler
+    if(data.tiddler.fields) {
+      $tw.syncer.storeTiddler(data.tiddler.fields);
+    }
   }
 
   /*

@@ -296,15 +296,6 @@ This has some functions that are needed by Bob in different places.
     }).filter(function(item) {return item > -1;});
     // Remove the messages that are overruled by the new message.
     const outQueue = queue.filter(function(item, index) {
-      if(duplicateIndicies.indexOf(index) !== -1) {
-        if($tw.browser) {
-          const receivedAck = new CustomEvent('handle-ack', {bubbles: true, detail: item.id})
-          $tw.rootWidget.dispatchEvent(receivedAck)
-        }
-        return false
-      } else {
-        return true
-      }
       return duplicateIndicies.indexOf(index) < 0;
     });
     // return the new queue
@@ -465,14 +456,20 @@ This has some functions that are needed by Bob in different places.
     This modifies $tw.Bob.MessageQueue as a side effect
   */
   Shared.sendMessage = function(message, connectionIndex, messageData) {
-    messageData = messageData || Shared.createMessageData(message)
+    messageData = messageData || Shared.createMessageData(message);
+    if (messageData.type !== "ping" && messageData.type !== "pong") {
+      if($tw.Bob.logger){
+        $tw.Bob.logger.log('Sending websocket message ', JSON.stringify(messageData), {level:4});
+      }else{
+        console.log('Sending websocket message ', JSON.stringify(messageData), {level:4});
+      }
+    }
     if(Shared.messageIsEligible(messageData, connectionIndex, $tw.Bob.MessageQueue)) {
       $tw.Bob.Timers = $tw.Bob.Timers || {};
       connectionIndex = connectionIndex || 0;
       if(messageData.message.tiddler) {
         messageData.message.tiddler = $tw.Bob.Shared.normalizeTiddler(messageData.message.tiddler);
       }
-      //debugger;
       // Remove any messages made redundant by this message
       $tw.Bob.MessageQueue = Shared.removeRedundantMessages(messageData, $tw.Bob.MessageQueue);
       if($tw.browser) {
@@ -493,10 +490,6 @@ This has some functions that are needed by Bob in different places.
         $tw.Bob.MessageQueue.push(messageData);
       }
       _sendMessage($tw.connections[connectionIndex], messageData)
-    } else if($tw.browser) {
-      // If we are not sending the message then we have to emit the 'received-ack' event so that the syncer thinks it is finished.
-      const receivedAck = new CustomEvent('handle-ack', {bubbles: true, detail: messageData.id})
-      $tw.rootWidget.dispatchEvent(receivedAck)
     }
     clearTimeout(messageQueueTimer);
     messageQueueTimer = setTimeout(checkMessageQueue, $tw.settings.advanced.localMessageQueueTimeout || 500);
@@ -537,11 +530,6 @@ This has some functions that are needed by Bob in different places.
     removed later.
   */
   Shared.handleAck = function (data) {
-    if($tw.browser) {
-      // Events to let the syncadaptor work in the browser
-      const receivedAck = new CustomEvent('handle-ack', {bubbles: true, detail: data.id})
-      $tw.rootWidget.dispatchEvent(receivedAck)
-    }
     if(data.id) {
       // a quick hack to make this work
       if($tw.browser) {
@@ -744,6 +732,10 @@ This has some functions that are needed by Bob in different places.
         return '{' + out + '}';
     })(data);
   };
+
+  /*
+    This generates a tiddler hash.
+  */
   Shared.getTiddlerHash = function(tiddler) {
     const tiddlerString = stableStringify(Shared.normalizeTiddler(tiddler))
     let hash = 0;
@@ -763,6 +755,11 @@ This has some functions that are needed by Bob in different places.
   */
   Shared.sendAck = function (data) {
     data = data || {};
+    if($tw.Bob.logger){
+      $tw.Bob.logger.log('Sending websocket message ', JSON.stringify(data), {level:4});
+    }else{
+      console.log('Sending websocket message ', JSON.stringify(data), {level:4});
+    }
     if($tw.browser) {
       const token = $tw.Bob.Shared.getMessageToken();
       $tw.connections[0].socket.send(JSON.stringify({

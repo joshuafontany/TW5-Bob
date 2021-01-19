@@ -188,12 +188,12 @@ This is server functions that can be shared between different server types
         if(wikiName == 'RootWiki') {
           // Assign the boot wiki object for this wiki
           $tw.Bob.Wikis[wikiName].wiki = $tw.wiki;
-          // Save the wikiTiddlers path
+          // Save the metadata
+          $tw.Bob.Wikis[wikiName].wikiInfo = $tw.boot.wikiInfo;
           $tw.Bob.Wikis[wikiName].wikiTiddlersPath = $tw.boot.wikiTiddlersPath;
-          // Setup syncers here
-          $tw.Bob.Wikis[wikiName].syncer = $tw.syncer;
           $tw.Bob.Files[wikiName] = $tw.boot.files;
-
+          // Setup syncer
+          $tw.Bob.Wikis[wikiName].syncer = $tw.syncer;
         } else {
           // Create a wiki object for this wiki
           $tw.Bob.Wikis[wikiName].wiki = new $tw.Wiki();

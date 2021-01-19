@@ -134,17 +134,14 @@ if($tw.node) {
         },
         wiki: prefix
       });
-      debugger;
-      $tw.Bob.logger.log('Node Message Save Tiddler', data, {level: 4}); 
-      $tw.Bob.logger.log(`[${prefix}][${connectionIndex}] adaptorInfo`, JSON.stringify(data.adaptorInfo), {level: 3});  
       // Save the tiddler to the wiki
       let promiseLoadWiki = util.promisify($tw.ServerSide.loadWiki);
       promiseLoadWiki(prefix)
       .then(prefix => {
-        $tw.Bob.logger.log(`[${prefix}][${connectionIndex}] addTiddler`, data.tiddler.fields.title, {level: 3}); 
+        $tw.Bob.logger.log(`[${prefix}][${connectionIndex}] Save Tiddler`, data.tiddler.fields.title, {level: 2});
         $tw.Bob.Wikis[prefix].wiki.addTiddler(new $tw.Tiddler(data.tiddler.fields));
-        if($tw.Bob.Wikis[prefix].tiddlers.indexOf(tiddler.fields.title) === -1) {
-          $tw.Bob.Wikis[prefix].tiddlers.push(tiddler.fields.title);
+        if($tw.Bob.Wikis[prefix].tiddlers.indexOf(data.tiddler.fields.title) === -1) {
+          $tw.Bob.Wikis[prefix].tiddlers.push(data.tiddler.fields.title);
         }
         //Mark as modified
         $tw.Bob.Wikis[prefix].modified = true;
@@ -156,13 +153,14 @@ if($tw.node) {
           type: 'saveTiddler',
           wiki: prefix,
           tiddler: {
-            fields: tiddler.fields
+            fields: data.tiddler.fields
           }
         };
         $tw.Bob.SendToBrowsers(message, connectionIndex);
         return;
       })
       .catch(err => {
+        debugger;
         $tw.Bob.logger.error(`[${prefix}][${connectionIndex}] Handler error. Unable to save '${data.tiddler.fields.title}'`, err, {level: 1});
         return;
       });
@@ -181,8 +179,7 @@ if($tw.node) {
     if(title) {
       const prefix = data.wiki || '';
       const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
-      $tw.Bob.logger.log('Node Message Delete Tiddler', data, {level: 4});
-      $tw.Bob.logger.log(`[${prefix}][${connectionIndex}] adaptorInfo`, JSON.stringify(data.adaptorInfo), {level: 3});  
+      $tw.Bob.logger.log(`[${prefix}][${connectionIndex}] Delete Tiddler`, data.tiddler.fields.title, {level: 2});
       // Delete the tiddler file from the wiki
       let promiseLoadWiki = util.promisify($tw.ServerSide.loadWiki);
       promiseLoadWiki(prefix)
@@ -201,7 +198,7 @@ if($tw.node) {
           $tw.ServerSide.UpdateEditingTiddlers(false, data.wiki);
         }
         // Create a message saying to remove the tiddler
-        const message = {type: 'deleteTiddler', tiddler: {fields:{title: title}}, prefix: prefix};
+        const message = {type: 'deleteTiddler', tiddler: {fields:{title: title}}, wiki: prefix};
         // Send the message to each connected browser
         $tw.Bob.SendToBrowsers(message);
         return;

@@ -20,11 +20,6 @@ const sendToServer = function (message, callback) {
   // If the connection is open, send the message
   if($tw.connections[connectionIndex].socket.readyState === 1 && $tw.readOnly !== 'yes') {
     messageData = $tw.Bob.Shared.sendMessage(message, 0);
-    if (typeof callback === "function") {
-      callback(null, messageData.id)
-    } else {
-      return messageData.id;
-    }
   } else {
     // If the connection is not open than store the message in the queue
     const tiddler = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/Unsent');
@@ -56,11 +51,19 @@ const sendToServer = function (message, callback) {
         start: start
       };
       $tw.wiki.addTiddler(new $tw.Tiddler(tiddler2));
-      if (typeof callback === "function") {
-        callback(null, messageData.id)
-      } else {
-        return messageData.id;
-      }
+    }
+  }
+  if(messageData.id) {
+    if (typeof callback === "function") {
+      callback(null, messageData.id)
+    } else {
+      return messageData.id;
+    }
+  } else {
+    if (typeof callback === "function") {
+      callback("BroswerWSAdaptor Error - sendToServer() failed to generate messageData.id.")
+    } else {
+      return null;
     }
   }
 }
@@ -314,6 +317,9 @@ function BrowserWSAdaptor(options) {
   */
   const parseMessage = function(event) {
     const eventData = JSON.parse(event.data);
+    if(eventData.type !== "ping" && eventData.type !== "pong") {
+      console.log('Received websocket message ', event.data, {level:4});
+    }
     if(eventData.type) {
       if(typeof $tw.browserMessageHandlers[eventData.type] === 'function') {
         $tw.browserMessageHandlers[eventData.type](eventData);
@@ -578,17 +584,22 @@ BrowserWSAdaptor.prototype.supportsLazyLoading = true
 
 // REQUIRED
 // Tiddler info, can be left like this but must be present
-BrowserWSAdaptor.prototype.getTiddlerInfo = function(tiddler) {
+BrowserWSAdaptor.prototype.getTiddlerInfo = function(tiddler, options) {
   /* Bag stuff here?
+  options = options || {};
   return {
 		bag: tiddler.fields.bag
   };
   */
+  return {};
 }
 
 // REQUIRED
 // This does whatever is necessary to actually store a tiddler
 BrowserWSAdaptor.prototype.saveTiddler = function (tiddler, options, callback) {
+  // Starting with 5.1.24, all syncadptor method signatures follow the node.js
+	// standard of callback as last argument. This catches the previous signature:
+  options = options || {};
   if(!!callback && typeof callback !== "function"){
     var optionsArg = callback;
   }
@@ -597,17 +608,7 @@ BrowserWSAdaptor.prototype.saveTiddler = function (tiddler, options, callback) {
     options = optionsArg || {};
   }
   const self = this;
-  options = options || {};
-  options.tiddlerInfo = options.tiddlerInfo || {};
-  let adaptorInfo = options.tiddlerInfo.adaptorInfo || {};
-  adaptorInfo.touched = (adaptorInfo.touched)? adaptorInfo.touched+1 : 0;
-  function handleAck(ackId) {
-    const ind = self.idList.indexOf(ackId);
-    if(ind > -1) {
-      self.idList.splice(ind, 1)
-      callback(null, adaptorInfo)
-    }
-  }
+  let adaptorInfo = self.getTiddlerInfo(tiddler) || {};
   if(!tiddler || !tiddler.fields.title){
     callback("No tiddler or title given.");
   } else {
@@ -628,18 +629,15 @@ BrowserWSAdaptor.prototype.saveTiddler = function (tiddler, options, callback) {
       type: 'saveTiddler',
       tiddler: tempTid,
       wiki: $tw.wikiName,
-      adaptorInfo: adaptorInfo
+      changeCount: options.changeCount,
+      tiddlerInfo: options.tiddlerInfo
     };
     sendToServer(message, function(err, id){
       if(err){
         callback(err);
       }
-      if(id) {
-        self.idList.push(id)
-        $tw.rootWidget.addEventListener('handle-ack', function(e) {
-          handleAck(e.detail)
-        })
-      }
+      adaptorInfo.lastMessageId = id;
+      callback(null, adaptorInfo);
     });
   }
 }
@@ -648,6 +646,9 @@ BrowserWSAdaptor.prototype.saveTiddler = function (tiddler, options, callback) {
 // This does whatever is necessary to load a tiddler.
 // Used for lazy loading
 BrowserWSAdaptor.prototype.loadTiddler = function (title, options, callback) {
+  // Starting with 5.1.24, all syncadptor method signatures follow the node.js
+	// standard of callback as last argument. This catches the previous signature:
+  options = options || {};
   if(!!callback && typeof callback !== "function"){
     var optionsArg = callback;
   }
@@ -656,32 +657,34 @@ BrowserWSAdaptor.prototype.loadTiddler = function (title, options, callback) {
     options = optionsArg || {};
   }
   const self = this;
-  options.tiddlerInfo = options.tiddlerInfo || {};
-  let adaptorInfo = options.tiddlerInfo.adaptorInfo || {};
+  let adaptorInfo = self.getTiddlerInfo({fields: {title: title}}) || {};
   //Keeping track of "bags" and things would go here?
-  adaptorInfo.touched = (adaptorInfo.touched)? adaptorInfo.touched+1 : 0;
-  function handleLoadedTiddler(tiddler) {
-    callback(null, tiddler.fields)
-  }
   if(title.slice(0,3) === '$:/') {
-    callback(null, null)
+    callback(null, null, adaptorInfo);
   } else {
     const message = {
       type:'getFullTiddler',
       title: title,
       wiki: $tw.wikiName,
-      adaptorInfo: adaptorInfo
+      changeCount: options.changeCount,
+      tiddlerInfo: options.tiddlerInfo
     }
-    const id = sendToServer(message)
-    $tw.rootWidget.addEventListener('loaded-tiddler', function(e) {
-      handleLoadedTiddler(e.detail)
-    })
+    sendToServer(message, function(err, id){
+      if(err){
+        callback(err);
+      }
+      adaptorInfo.lastMessageId = id;
+      callback(null, null, adaptorInfo);
+    });
   }
 }
 
 // REQUIRED
 // This does whatever is necessary to delete a tiddler
 BrowserWSAdaptor.prototype.deleteTiddler = function (title, options, callback) {
+  // Starting with 5.1.24, all syncadptor method signatures follow the node.js
+	// standard of callback as last argument. This catches the previous signature:
+  options = options || {};
   if(!!callback && typeof callback !== "function"){
     var optionsArg = callback;
   }
@@ -690,17 +693,8 @@ BrowserWSAdaptor.prototype.deleteTiddler = function (title, options, callback) {
     options = optionsArg || {};
   }
   const self = this;
-  options.tiddlerInfo = options.tiddlerInfo || {};
-  let adaptorInfo = options.tiddlerInfo.adaptorInfo || {};
+  let adaptorInfo = self.getTiddlerInfo({fields: {title: title}}) || {};
   //Keeping track of "bags" and things would go here?
-  adaptorInfo.touched = (adaptorInfo.touched)? adaptorInfo.touched + 1 : 0;
-  function handleAck(ackId) {
-    const ind = self.idList.indexOf(ackId)
-    if(ind > -1) {
-      self.idList.splice(ind, 1)
-      callback(null, adaptorInfo)
-    }
-  }
   if(!this.shouldSync(title)) {
     callback(null, adaptorInfo);
   } else {
@@ -716,13 +710,16 @@ BrowserWSAdaptor.prototype.deleteTiddler = function (title, options, callback) {
         }
       },
       wiki: $tw.wikiName,
-      adaptorInfo: adaptorInfo
+      changeCount: options.changeCount,
+      tiddlerInfo: options.tiddlerInfo
     };
-    const id = sendToServer(message);
-    this.idList.push(id)
-    $tw.rootWidget.addEventListener('handle-ack', function(e) {
-      handleAck(e.detail)
-    })
+    sendToServer(message, function(err, id){
+      if(err){
+        callback(err);
+      }
+      adaptorInfo.lastMessageId = id;
+      callback(null, adaptorInfo);
+    });
   }
 }
 
