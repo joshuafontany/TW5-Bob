@@ -169,30 +169,6 @@ if($tw.node) {
     // When the server receives a ping it sends back a pong.
     const response = JSON.stringify(message);
     $tw.connections[data.source_connection].socket.send(response);
-<<<<<<< HEAD
-
-    // Add configuration stuff
-    $tw.nodeMessageHandlers.setConfigurationInterface(data);
-  }
-
-  /*
-    This uses the token to determine which configuration options should be
-    visible on the wiki and sends the appropriate tiddlers
-  */
-  $tw.nodeMessageHandlers.setConfigurationInterface = function (data) {
-    if(data.type !== "setLoggedIn") {
-      $tw.Bob.Shared.sendAck(data);
-    }
-    // I need to figure out what to put here
-    const fields = {
-      title: '$:/Bob/VisibleConfigurationTabs',
-      list: "hi"
-    }
-    const tiddler = {fields: fields}
-    const message = {type: 'saveTiddler', tiddler: tiddler, wiki: data.wiki}
-    $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message)
-=======
->>>>>>> upstream/master
     $tw.CreateSettingsTiddlers(data);
   }
 
