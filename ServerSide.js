@@ -464,7 +464,7 @@ This is server functions that can be shared between different server types
   /*
   wikiName: the wiki to check for unloaded shadow module definitions
   We only define modules that haven't already been defined, 
-    because the exiting ones were defined by the RootWiki
+    because the existing ones were defined by the RootWiki
     and reloading all of them would spam the server log.
   */
   function defineShadowModules(wikiName) {
@@ -1707,7 +1707,7 @@ This is server functions that can be shared between different server types
     This is a wrapper function that takes a message that is meant to be sent to
     all connected browsers and handles the details.
   
-    It iterates though all connections, checkis if each one is active, tries to
+    It iterates though all connections, checks if each one is active, tries to
     send the message, if the sending fails than it sets the connection as
     inactive.
   

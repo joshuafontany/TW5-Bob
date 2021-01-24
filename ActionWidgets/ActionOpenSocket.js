@@ -60,7 +60,7 @@ ActionOpenSocket.prototype.invokeAction = function(triggeringWidget,event) {
   if(this.remoteURL) {
     $tw.RemoteConnection.socket = new WebSocket(this.remoteURL);
     $tw.RemoteConnection.socket.onopen = openSocket;
-    $tw.RemoteConnection.socket.onmessage = parseMessage;
+    $tw.RemoteConnection.socket.onmessage = handleMessage;
     $tw.RemoteConnection.socket.binaryType = "arraybuffer";
   }
   return true; // Action was invoked
@@ -71,7 +71,7 @@ function openSocket(event) {
   event.target.send('HI!')
 }
 
-function parseMessage() {
+function handleMessage() {
 
 }
 

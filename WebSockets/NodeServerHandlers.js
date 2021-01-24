@@ -177,7 +177,9 @@ if($tw.node) {
     visible on the wiki and sends the appropriate tiddlers
   */
   $tw.nodeMessageHandlers.setConfigurationInterface = function (data) {
-    $tw.Bob.Shared.sendAck(data);
+    if(data.type !== "setLoggedIn") {
+      $tw.Bob.Shared.sendAck(data);
+    }
     // I need to figure out what to put here
     const fields = {
       title: '$:/Bob/VisibleConfigurationTabs',

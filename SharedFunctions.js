@@ -461,7 +461,7 @@ This has some functions that are needed by Bob in different places.
       if($tw.Bob.logger){
         $tw.Bob.logger.log('Sending websocket message ', JSON.stringify(messageData), {level:4});
       }else{
-        console.log('Sending websocket message ', JSON.stringify(messageData), {level:4});
+        console.log('Sending websocket message ', JSON.stringify(messageData));
       }
     }
     if(Shared.messageIsEligible(messageData, connectionIndex, $tw.Bob.MessageQueue)) {
@@ -756,9 +756,9 @@ This has some functions that are needed by Bob in different places.
   Shared.sendAck = function (data) {
     data = data || {};
     if($tw.Bob.logger){
-      $tw.Bob.logger.log('Sending websocket message ', JSON.stringify(data), {level:4});
+      $tw.Bob.logger.log('Sending websocket ack ', JSON.stringify(data), {level:4});
     }else{
-      console.log('Sending websocket message ', JSON.stringify(data), {level:4});
+      console.log('Sending websocket ack ', JSON.stringify(data));
     }
     if($tw.browser) {
       const token = $tw.Bob.Shared.getMessageToken();
@@ -773,7 +773,8 @@ This has some functions that are needed by Bob in different places.
         if(data.source_connection !== undefined && data.source_connection !== -1) {
           $tw.connections[data.source_connection].socket.send(JSON.stringify({
             type: 'ack',
-            id: data.id
+            id: data.id,
+            wiki: data.wiki
           }));
         }
       }

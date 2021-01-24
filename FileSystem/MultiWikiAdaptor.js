@@ -46,7 +46,7 @@ if($tw.node) {
   MultiWikiAdaptor.prototype.getTiddlerInfo = function(tiddler, options) {
     //Returns the existing fileInfo for the tiddler. To regenerate, call getTiddlerFileInfo().
     options = options || {};
-    const prefix = options.wiki.getTiddlerText('$:/WikiName') || options.prefix || 'RootWiki';
+    const prefix = options.wiki ? options.wiki.getTiddlerText('$:/WikiName') : options.prefix || 'RootWiki';
     $tw.Bob.Files[prefix] = $tw.Bob.Files[prefix] || {};
     var title = tiddler.fields.title;
     return $tw.Bob.Files[prefix][title] || {};
@@ -78,10 +78,10 @@ if($tw.node) {
       if(typeof options === 'string') {
         options = {prefix: options}
       } else {
-        return callback("getTiddlerFileInfo Error. No wiki given.");
+        return callback(new Error("getTiddlerFileInfo Error. No wiki given."));
       }
     }
-    var prefix = options.wiki.getTiddlerText('$:/WikiName') || options.prefix || 'RootWiki';
+    var prefix = options.wiki ? options.wiki.getTiddlerText('$:/WikiName') : options.prefix || 'RootWiki';
     // Always generate a fileInfo object when this fuction is called
     var title = tiddler.fields.title, newInfo, pathFilters, extFilters;
     if($tw.Bob.Wikis[prefix].wiki.tiddlerExists("$:/config/FileSystemPaths")){
@@ -115,10 +115,10 @@ if($tw.node) {
       if(typeof options === 'string') {
         options = {prefix: options}
       } else {
-        return callback("generateCustomFileInfo Error. No wiki given.");
+        return callback(new Error("generateCustomFileInfo Error. No wiki given."));
       }
     }
-    const prefix = options.wiki.getTiddlerText('$:/WikiName') || options.prefix || 'RootWiki';
+    const prefix = options.wiki ? options.wiki.getTiddlerText('$:/WikiName') : options.prefix || 'RootWiki';
     // Always generate a fileInfo object when this fuction is called
     var tiddler = $tw.Bob.Wikis[prefix].wiki.getTiddler(title) || $tw.newTiddler({title: title}), newInfo, pathFilters, extFilters;
     if($tw.Bob.Wikis[prefix].wiki.tiddlerExists("$:/config/FileSystemPaths")){
@@ -156,10 +156,10 @@ if($tw.node) {
       if(typeof options === 'string') {
         options = {prefix: options}
       } else {
-        return callback("Save Tiddler Error. No wiki given.");
+        return callback(new Error("saveTiddler Error. No wiki given."));
       }
     }
-    const prefix = options.wiki.getTiddlerText('$:/WikiName') || options.prefix || 'RootWiki';
+    const prefix = options.wiki ? options.wiki.getTiddlerText('$:/WikiName') : options.prefix || 'RootWiki';
     let syncerInfo = options.tiddlerInfo || {};
     if(tiddler.fields && $tw.Bob.Wikis[prefix].wiki.filterTiddlers($tw.Bob.ExcludeFilter).indexOf(tiddler.fields.title) === -1) {
       let promiseGetTiddlerFileInfo = util.promisify(this.getTiddlerFileInfo);
@@ -224,13 +224,13 @@ if($tw.node) {
       if(typeof options === 'string') {
         options = {prefix: options}
       } else {
-        return callback("loadTiddler Error. No wiki given.");
+        return callback(new Error("loadTiddler Error. No wiki given."));
       }
     }
     }*/
     // call internalSave, for FileSystemWatchers on new files?
     // store and return fileInfo?
-    //const prefix = options.wiki.getTiddlerText('$:/WikiName') || options.prefix || 'RootWiki';
+    //const prefix = options.wiki ? options.wiki.getTiddlerText('$:/WikiName') : options.prefix || 'RootWiki';
     callback(null,null);
   };
 
@@ -252,10 +252,10 @@ if($tw.node) {
       if(typeof options === 'string') {
         options = {prefix: options}
       } else {
-        return callback("deleteTiddler Error. No wiki given.");
+        return callback(new Error("deleteTiddler Error. No wiki given."));
       }
     }
-    const prefix = options.wiki.getTiddlerText('$:/WikiName') || options.prefix || 'RootWiki';
+    const prefix = options.wiki ? options.wiki.getTiddlerText('$:/WikiName') : options.prefix || 'RootWiki';
     const fileInfo = this.getTiddlerInfo({fields: {title: title}}, {prefix: prefix});
     // Only delete the tiddler if we have writable information for the file
     if(fileInfo) {

@@ -59,9 +59,6 @@ if($tw.node) {
       let eventData = JSON.parse(event);
       // Add the source to the eventData object so it can be used later.
       eventData.source_connection = thisIndex;
-      if (eventData.type !== "ping" && eventData.type !== "pong") {
-        $tw.Bob.logger.log('Received websocket message ', event, {level:4});
-      }
       // If the wiki on this connection hasn't been determined yet, take it
       // from the first message that lists the wiki.
       // After that the wiki can't be changed. It isn't a good security
@@ -88,6 +85,9 @@ if($tw.node) {
           // Check authorisation
           const authorised = authenticateMessage(eventData);
           if(authorised) {
+            if (eventData.type !== "ping" && eventData.type !== "pong") {
+              $tw.Bob.logger.log('Received websocket message ', event, {level:4});
+            }
             eventData.decoded = authorised;
             $tw.nodeMessageHandlers[eventData.type](eventData);
           }

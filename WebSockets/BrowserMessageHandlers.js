@@ -325,7 +325,7 @@ it will overwrite this file.
     the server anymore.
   */
   function handleDisconnected() {
-    console.log('Disconnected from server', {level:0});
+    console.log('Disconnected from server');
     const text = "<div style='position:fixed;top:0px;width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>''WARNING: You are no longer connected to the server.''<$button style='color:black;'>Reconnect<$action-reconnectwebsocket/><$action-navigate $to='$:/plugins/Bob/ConflictList'/></$button></div>";
     const tiddler = {
       title: '$:/plugins/OokTech/Bob/Server Warning',
