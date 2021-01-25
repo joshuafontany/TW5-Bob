@@ -33,10 +33,6 @@ if($tw.node) {
   $tw.wss = new WebSocketServer({noServer: true});
   // Set the onconnection function
   $tw.wss.on('connection', handleConnection);
-  // This doesn't do anything useful yet
-  $tw.wss.on('close', function(connection) {
-    $tw.Bob.logger.log('closed connection ', connection, {level:2});
-  });
   // Avoid a memory leak
   $tw.PruneTimeout = setInterval(function(){
         $tw.Bob.PruneConnections();
@@ -120,9 +116,13 @@ if($tw.node) {
     }
   */
   function handleConnection(client, request) {
-    $tw.Bob.logger.log("new connection", {level:2});
+    $tw.Bob.logger.log("new connection", request.connection.remoteAddress, {level:2});
     $tw.connections.push({'socket':client, 'wiki': undefined});
     client.on('message', $tw.Bob.handleMessage);
+    // This doesn't do anything useful yet
+    $tw.wss.on('close', function(connection) {
+      $tw.Bob.logger.log('closed connection ', connection, {level:2});
+    });
     // Respond to the initial connection with a request for the tiddlers the
     // browser currently has to initialise everything.
     $tw.connections[Object.keys($tw.connections).length-1].index = Object.keys($tw.connections).length-1;

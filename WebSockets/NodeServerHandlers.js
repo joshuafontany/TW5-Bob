@@ -16,7 +16,6 @@ This handles messages sent to the node process.
 
 exports.platforms = ["node"];
 exports.startup = function() {
-if($tw.node) {
   $tw.nodeMessageHandlers = $tw.nodeMessageHandlers || {};
   if(false) { // disable federation stuff now
   $tw.Bob.Federation = $tw.Bob.Federation || {};
@@ -1202,6 +1201,6 @@ if($tw.node) {
     }
     $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message);
   }
-}
+
 }
 })();

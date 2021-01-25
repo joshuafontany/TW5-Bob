@@ -599,10 +599,10 @@ BrowserWSAdaptor.prototype.saveTiddler = function (tiddler, options, callback) {
     callback = options;
     options = optionsArg || {};
   }
-  let adaptorInfo = options.tiddlerInfo.adaptorInfo || this.getTiddlerInfo({fields: {title: title}}) || {};
   if(!tiddler || !tiddler.fields.title){
     callback(new Error("No tiddler or title given."));
   } else {
+    let adaptorInfo = options.tiddlerInfo.adaptorInfo || this.getTiddlerInfo({fields: {title: title}}) || {};
     if(!this.shouldSync(tiddler.fields.title)) {
       callback(null, adaptorInfo);
     }
@@ -743,6 +743,7 @@ BrowserWSAdaptor.prototype.getUpdatedTiddlers = function() {
 // This can be updated at any time, it gets checked when a syncing task is
 // being run so its value can change over time.
 BrowserWSAdaptor.prototype.isReady = function() {
+  debugger;
   const tid = $tw.wiki.getTiddler('$:/state/EditableWikis');
   if(tid){
     if(tid.fields.list.indexOf($tw.wikiName) > -1) {
@@ -759,20 +760,20 @@ BrowserWSAdaptor.prototype.isReady = function() {
 // isReady state. The tiddlyweb adaptor does this.
 BrowserWSAdaptor.prototype.getStatus = function(callback) {
 
-}
+}*/
 
 // OPTIONAL
 // A login thing, need specifics
 BrowserWSAdaptor.prototype.login = function (username, password, callback) {
-
+debugger;
 }
 
 // OPTIONAL
 // A logout thing, need specifics
 BrowserWSAdaptor.prototype.logout = function (callback) {
-
+debugger;
 }
-*/
+
 
 // OPTIONAL
 /*

@@ -463,6 +463,8 @@ This has some functions that are needed by Bob in different places.
       }else{
         console.log('Sending websocket message ', JSON.stringify(messageData));
       }
+    } else {
+      console.log(messageData.type, JSON.stringify(messageData))
     }
     if(Shared.messageIsEligible(messageData, connectionIndex, $tw.Bob.MessageQueue)) {
       $tw.Bob.Timers = $tw.Bob.Timers || {};
