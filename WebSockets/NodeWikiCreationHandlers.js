@@ -36,7 +36,6 @@ if($tw.node) {
       that will be run in that wiki and any returned tiddlers will be included in the output html file.
   */
   $tw.nodeMessageHandlers.buildHTMLWiki = function (data) {
-    $tw.Bob.Shared.sendAck(data);
     const path = require('path');
     const fs = require('fs');
     let wikiPath, fullName, excludeList = [];
@@ -125,9 +124,6 @@ if($tw.node) {
     similarly to how new tiddler titles are made unique.
   */
   $tw.nodeMessageHandlers.newWikiFromTiddlers = function (data) {
-    // send ack first because otherwise it often takes too long to run this
-    // command and the message is sent again.
-    $tw.Bob.Shared.sendAck(data);
     // Do nothing unless there is an input file path given
     if(data.tiddlers || data.externalTiddlers) {
       const path = require('path');
@@ -358,7 +354,6 @@ if($tw.node) {
   */
   // This is just a copy of the init command modified to work in this context
   $tw.nodeMessageHandlers.createNewWiki = function (data, cb) {
-    $tw.Bob.Shared.sendAck(data);
     $tw.ServerSide.createWiki(data, callback);
 
     function callback(err) {
@@ -385,7 +380,6 @@ if($tw.node) {
     downloads that wiki instead.
   */
   $tw.nodeMessageHandlers.downloadHTMLFile = function (data) {
-    $tw.Bob.Shared.sendAck(data);
     if(data.wiki) {
       const downloadWiki = data.forWiki || data.wiki;
       const allowed = $tw.Bob.AccessCheck(downloadWiki, {"decoded":data.decoded}, 'view', 'wiki');
@@ -422,7 +416,6 @@ if($tw.node) {
         - force - all imported tiddlers are saved regardelss of conflicts
   */
   $tw.nodeMessageHandlers.internalFetch = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     // Make sure that the person has access to the wiki
     const authorised = $tw.Bob.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'view', 'wiki');
     if(authorised) {
@@ -517,7 +510,6 @@ if($tw.node) {
     is used.
   */
   $tw.nodeMessageHandlers.duplicateWiki = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     if(typeof data.fromWiki === 'undefined') {
       return;
     }

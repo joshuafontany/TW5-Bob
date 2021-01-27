@@ -31,14 +31,12 @@ if($tw.node) {
     // can be used elsewhere.
     const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
     $tw.BrowserTiddlerList[connectionIndex] = data.titles;
-    $tw.Bob.Shared.sendAck(data);
   }
 
   /*
     For a lazily loaded wiki this gets the skinny tiddler list.
   */
   $tw.nodeMessageHandlers.getSkinnyTiddlers = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     // We need at least the name of the wiki
     if(data.wiki) {
       const prefix = data.wiki || 'RootWiki';
@@ -70,7 +68,6 @@ if($tw.node) {
     For lazy loading this gets a full tiddler
   */
   $tw.nodeMessageHandlers.getFullTiddler = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     const prefix = data.wiki || 'RootWiki';
     const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
     let promiseLoadWiki = util.promisify($tw.ServerSide.loadWiki);
@@ -101,9 +98,7 @@ if($tw.node) {
       message[key] = data[key];
     })
     message.type = 'pong';
-    if(data.heartbeat) {
-      message.heartbeat = true;
-    }
+    message.id = "heartbeat";
     // When the server receives a ping it sends back a pong.
     const response = JSON.stringify(message);
     const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
@@ -117,8 +112,6 @@ if($tw.node) {
     use `[is[draft]]` in $:/plugins/OokTech/Bob/ExcludeSync
   */
   $tw.nodeMessageHandlers.saveTiddler = function(data) {
-    // Acknowledge the message.
-    $tw.Bob.Shared.sendAck(data);
     // Make sure there is actually a tiddler sent & it has fields
     if(data.tiddler && data.tiddler.fields) {
       const prefix = data.wiki || 'RootWiki';
@@ -126,14 +119,14 @@ if($tw.node) {
       // Set the saved tiddler as no longer being edited. It isn't always
       // being edited but checking each time is more complex than just
       // always setting it this way and doesn't benifit us.
-      $tw.nodeMessageHandlers.cancelEditingTiddler({
+      /*$tw.nodeMessageHandlers.cancelEditingTiddler({
         tiddler:{
           fields:{
             title:data.tiddler.fields.title
           }
         },
         wiki: prefix
-      });
+      });*/
       // Save the tiddler to the wiki
       let promiseLoadWiki = util.promisify($tw.ServerSide.loadWiki);
       promiseLoadWiki(prefix)
@@ -171,8 +164,6 @@ if($tw.node) {
     This is the handler for when the browser sends the deleteTiddler message.
   */
   $tw.nodeMessageHandlers.deleteTiddler = function(data) {
-    // Acknowledge the message.
-    $tw.Bob.Shared.sendAck(data);
     data.tiddler = data.tiddler || {};
     data.tiddler.fields = data.tiddler.fields || {};
     const title = data.tiddler.fields.title;
@@ -214,8 +205,6 @@ if($tw.node) {
     This is the handler for when a browser sends the editingTiddler message.
   */
   $tw.nodeMessageHandlers.editingTiddler = function(data) {
-    // Acknowledge the message.
-    $tw.Bob.Shared.sendAck(data);
     data.tiddler = data.tiddler || {};
     data.tiddler.fields = data.tiddler.fields || {};
     const title = data.tiddler.fields.title;
@@ -230,8 +219,6 @@ if($tw.node) {
     This is the handler for when a browser stops editing a tiddler.
   */
   $tw.nodeMessageHandlers.cancelEditingTiddler = function(data) {
-    // Acknowledge the message.
-    $tw.Bob.Shared.sendAck(data);
     data.tiddler = data.tiddler || {};
     data.tiddler.fields = data.tiddler.fields || {};
     let title = data.tiddler.fields.title;
@@ -252,7 +239,6 @@ if($tw.node) {
     This updates what wikis are being served and where they are being served
   */
   $tw.nodeMessageHandlers.updateRoutes = function (data) {
-    $tw.Bob.Shared.sendAck(data);
     // Then clear all the routes to the non-root wiki
     $tw.httpServer.clearRoutes();
     // The re-add all the routes from the settings
@@ -265,7 +251,6 @@ if($tw.node) {
   */
   $tw.nodeMessageHandlers.getViewableWikiList = function (data) {
     data = data || {};
-    $tw.Bob.Shared.sendAck(data);
     const viewableWikis = $tw.ServerSide.getViewableWikiList(data);
     const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
     // Send viewableWikis back to the browser
@@ -286,7 +271,6 @@ if($tw.node) {
   */
   /*
   $tw.nodeMessageHandlers.findAvailableWikis = function (data) {
-    $tw.Bob.Shared.sendAck(data);
     $tw.ServerSide.updateWikiListing(data);
   }
   */

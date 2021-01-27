@@ -22,7 +22,6 @@ exports.startup = function () {
       Receive a chat message from a browser, they are automatically sent to other connected browsers when the tiddlers are synced.
     */
     $tw.nodeMessageHandlers.chatMessage = function(data) {
-      $tw.Bob.Shared.sendAck(data);
       const conversationTiddler = data.conversation || 'DefaultChat'
       if(conversationTiddler && data.message) {
         // Get the history tiddler

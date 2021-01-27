@@ -23,7 +23,6 @@ exports.startup = function() {
 
   $tw.nodeMessageHandlers.openRemoteConnection = function(data) {
     $tw.Bob.logger.log('openRemoteConnection', data, {level: 3})
-    $tw.Bob.Shared.sendAck(data);
     if(data.url) {
       function authenticateMessage() {
         return true
@@ -89,7 +88,6 @@ exports.startup = function() {
     }
   */
   $tw.nodeMessageHandlers.sendRemoteMessage = function (data) {
-    $tw.Bob.Shared.sendAck(data);
     if(data.$server && data.$message) {
       const newData = {
         type: data.$message
@@ -119,7 +117,6 @@ exports.startup = function() {
     sent with the message and it is parsed here.
   */
   $tw.nodeMessageHandlers.updateFederatedConnectionInfo = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     if(data.tid_param) {
       $tw.Bob.Federation.connections[data.tid_param.server_name].available_wikis[data.tid_param.name] = $tw.Bob.Federation.connections[data.tid_param.server_name].available_wikis[data.tid_param.name] || {};
       // $tw.Bob.Federation.connections[data.tid_param.server_name].availableWikis[data.tid_param.name] = $tw.Bob.Federation.connections[data.tid_param.server_name].availableWikis[data.tid_param.name] || {};
@@ -142,8 +139,6 @@ exports.startup = function() {
   $tw.nodeMessageHandlers.shutdownServer = function(data) {
     $tw.Bob.logger.log('Shutting down server.', {level:0});
     // TODO figure out if there are any cleanup tasks we should do here.
-    // Sennd message to parent saying server is shutting down
-    $tw.Bob.Shared.sendAck(data);
     process.exit();
   }
 
@@ -157,18 +152,18 @@ exports.startup = function() {
     - add any configuration interface things
   */
   $tw.nodeMessageHandlers.setLoggedIn = function (data) {
-    $tw.Bob.Shared.sendAck(data);
-    // Heartbeat. This can be done if the heartbeat is started or not because
-    // if an extra heartbeat pong is heard it just shifts the timing.
-    let message = {};
-    message.type = 'pong';
+    // Heartbeat.
     if(data.heartbeat) {
+      let message = {};
+      message.type = 'pong';
+      message.id = "heartbeat";
       message.heartbeat = true;
+      message.wiki = data.wiki;
+      // When the server receives a ping it sends back a pong.
+      const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
+      $tw.connections[connectionIndex].socket.send(JSON.stringify(message));
     }
-    // When the server receives a ping it sends back a pong.
-    const response = JSON.stringify(message);
-    $tw.connections[data.source_connection].socket.send(response);
-    $tw.CreateSettingsTiddlers(data);
+    //$tw.CreateSettingsTiddlers(data);
   }
 
   /*
@@ -178,7 +173,6 @@ exports.startup = function() {
     editors - the list of people who can edit the wiki
   */
   $tw.nodeMessageHandlers.setWikiPermissions = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     // If the person doing this is owner of the wiki they can continue
     if($tw.ExternalServer) {
       $tw.ExternalServer.updatePermissions(data);
@@ -215,8 +209,6 @@ exports.startup = function() {
     that aren't listed need to be sent.
   */
   $tw.nodeMessageHandlers.syncChanges = function(data) {
-    // Acknowledge the message.
-    $tw.Bob.Shared.sendAck(data);
     // Make sure that the wiki that the syncing is for is actually loaded
     // TODO make sure that this works for wikis that are under multiple levels
     $tw.ServerSide.loadWiki(data.wiki);
@@ -377,7 +369,6 @@ exports.startup = function() {
   }
 
   $tw.nodeMessageHandlers.updateSetting = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     const path = require('path');
     const fs = require('fs');
     if(data.remove && typeof data.remove === 'string') {
@@ -467,7 +458,6 @@ exports.startup = function() {
     in the browser.
   */
   $tw.nodeMessageHandlers.saveSettings = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     if($tw.ExternalServer) {
       // save the settings to the database
       $tw.saveSetting($tw.settings);
@@ -549,7 +539,6 @@ exports.startup = function() {
     them. But I don't know how to do that without deleting the tiddlers.
   */
   $tw.nodeMessageHandlers.unloadWiki = function (data) {
-    $tw.Bob.Shared.sendAck(data);
     $tw.Bob.unloadWiki(data.wikiName);
   }
 
@@ -557,7 +546,6 @@ exports.startup = function() {
     This sends a list of all available plugins to the wiki
   */
   $tw.nodeMessageHandlers.getPluginList = function (data) {
-    $tw.Bob.Shared.sendAck(data);
     const pluginNames = $tw.ServerSide.getViewablePluginsList(data);
     const fields = {
       title: '$:/Bob/AvailablePluginList',
@@ -578,7 +566,6 @@ exports.startup = function() {
     This sends a list of all available plugins to the wiki
   */
   $tw.nodeMessageHandlers.getThemeList = function (data) {
-    $tw.Bob.Shared.sendAck(data);
     const themeNames = ServerSide.getViewableThemesList(data);
     const fields = {
       title: '$:/Bob/AvailableThemeList',
@@ -600,7 +587,6 @@ exports.startup = function() {
     description, list of plugins, themes and languages
   */
   $tw.nodeMessageHandlers.updateTiddlyWikiInfo = function (data) {
-    $tw.Bob.Shared.sendAck(data);
     if(data.wiki) {
       const path = require('path')
       const fs = require('fs')
@@ -639,7 +625,6 @@ exports.startup = function() {
     the existing one
   */
   $tw.nodeMessageHandlers.savePluginFolder = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     if(data.plugin) {
       const fs = require('fs')
       const path = require('path')
@@ -731,7 +716,6 @@ exports.startup = function() {
     plugin this gets the plugin and adds it to the plugins on the server.
   */
   $tw.nodeMessageHandlers.getGitPlugin = function(data) {
-    $tw.Bob.Shared.sendAck(data)
     if(data.url) {
       // Special handling for github, we will see about other things later.
       if(!data.url.toLowerCase().endsWith('.zip')) {
@@ -848,7 +832,6 @@ exports.startup = function() {
 
   */
   $tw.nodeMessageHandlers.makeImagesExternal = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     const authorised = $tw.Bob.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'makeImagesExternal', 'server');
     if(authorised) {
       $tw.settings.fileURLPrefix = $tw.settings.fileURLPrefix || 'files'
@@ -928,7 +911,6 @@ exports.startup = function() {
     If the new name is an existing wiki than this won't do anything.
   */
   $tw.nodeMessageHandlers.renameWiki = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     $tw.ServerSide.renameWiki(data, function(e) {
       if(!e) {
         const message = {
@@ -959,7 +941,6 @@ exports.startup = function() {
     tiddlers folder is removed.
   */
   $tw.nodeMessageHandlers.deleteWiki = function(data) {
-    $tw.Bob.Shared.sendAck(data)
     $tw.ServerSide.deleteWiki(data, thisCallback);
 
     function thisCallback(err) {
@@ -998,8 +979,6 @@ exports.startup = function() {
     TODO figure out the authorisation level for this one
   */
   $tw.nodeMessageHandlers.listFiles = function(data) {
-    $tw.Bob.Shared.sendAck(data);
-
     function thisCallback(prefix, filteredItems, urlPath) {
       data.tiddler = data.tiddler || path.join('$:/state/fileList/', data.wiki, $tw.settings.fileURLPrefix, urlPath);
       data.field = data.field || 'list';
@@ -1020,8 +999,7 @@ exports.startup = function() {
       $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message);
     }
 
-    $tw.ServerSide.listFiles(data, thisCallback)
-
+    $tw.ServerSide.listFiles(data, thisCallback);
   }
 
   /*
@@ -1055,7 +1033,6 @@ exports.startup = function() {
     TODO - add a flag to add folders to the static file server component
   */
   $tw.nodeMessageHandlers.mediaScan = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     data.prefix = data.prefix || 'prefix';
     const path = require('path');
     const fs = require('fs');
@@ -1191,7 +1168,6 @@ exports.startup = function() {
     List visible profiles
   */
   $tw.nodeMessageHandlers.listProfiles = function(data) {
-    $tw.Bob.Shared.sendAck(data);
     // Access is controlled by the listProfile function, it checks each profile
     // to see if the logged in person can view it.
     const profiles = $tw.ServerSide.listProfiles(data);

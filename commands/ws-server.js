@@ -82,10 +82,16 @@ if($tw.node) {
           const authorised = authenticateMessage(eventData);
           if(authorised) {
             if (eventData.type !== "ping" && eventData.type !== "pong") {
-              $tw.Bob.logger.log('Received websocket message ', event, {level:4});
+              $tw.Bob.logger.log(`Received websocket message ${eventData.id}:`, event, {level:4});
             }
             eventData.decoded = authorised;
+            // Acknowledge the message, then call handler(s)
+            $tw.Bob.Shared.sendAck(eventData);
             $tw.nodeMessageHandlers[eventData.type](eventData);
+            //debugger;
+            this.handledMessages = this.handledMessages || {};
+            if(!this.handledMessages[eventData.id]) this.handledMessages[eventData.id] = 0;
+            this.handledMessages[eventData.id] = this.handledMessages[eventData.id]++;
           }
         } else {
           $tw.Bob.logger.error('No handler for message of type ', eventData.type, {level:3});
@@ -117,7 +123,8 @@ if($tw.node) {
   */
   function handleConnection(client, request) {
     $tw.Bob.logger.log("new connection", request.connection.remoteAddress, {level:2});
-    $tw.connections.push({'socket':client, 'wiki': undefined});
+    $tw.connections.push({'socket':client, url: request.connection.remoteAddress, 'wiki': undefined});
+    $tw.connections[Object.keys($tw.connections).length-1].index = Object.keys($tw.connections).length-1;
     client.on('message', $tw.Bob.handleMessage);
     // This doesn't do anything useful yet
     $tw.wss.on('close', function(connection) {
@@ -125,9 +132,8 @@ if($tw.node) {
     });
     // Respond to the initial connection with a request for the tiddlers the
     // browser currently has to initialise everything.
-    $tw.connections[Object.keys($tw.connections).length-1].index = Object.keys($tw.connections).length-1;
     const message = {type: 'listTiddlers'}
-    $tw.Bob.SendToBrowser($tw.connections[Object.keys($tw.connections).length-1], message);
+    //$tw.Bob.SendToBrowser($tw.connections[Object.keys($tw.connections).length-1], message);
     if(false && $tw.node && $tw.settings.enableFederation === 'yes') {
       $tw.Bob.Federation.updateConnections();
     }

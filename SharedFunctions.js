@@ -16,8 +16,8 @@ $tw.Bob = $tw.Bob || {};
 if(!$tw.Bob.Shared) {
   let Shared = {};
   let idNumber = 0;
-  let messageQueueTimer = false;
-  
+
+  $tw.Bob.messageQueueTimer = false;
   $tw.Bob.MessageQueue = $tw.Bob.MessageQueue || [];
   $tw.connections = $tw.connections || [];
   $tw.settings.advanced = $tw.settings.advanced || {};
@@ -154,9 +154,10 @@ if(!$tw.Bob.Shared) {
       $tw.Bob.MessageQueue = pruneMessageQueue($tw.Bob.MessageQueue);
       // Check if there are any messages that are more than 500ms old and have
       // not received the acks expected.
-      // These are assumed to have been lost and need to be resent
+      // These are assumed to have been lost and need to be resent ???
       const oldMessages = $tw.Bob.MessageQueue.filter(function(messageData) {
-        if(Date.now() - messageData.time > $tw.settings.advanced.localMessageQueueTimeout || 500) {
+        if((Date.now() - messageData.time > $tw.settings.advanced.localMessageQueueTimeout || 500)
+        && (Object.values(messageData.ack).indexOf(false) >= 0)) {
           return true;
         } else {
           return false;
@@ -169,16 +170,17 @@ if(!$tw.Bob.Shared) {
           return item.wiki === messageData.wiki
         }):[]):[$tw.connections[0]];
         targetConnections.forEach(function(connection) {
+          debugger;
           _sendMessage(connection, messageData)
         });
       });
-      if(messageQueueTimer) {
-        clearTimeout(messageQueueTimer);
+      if($tw.Bob.messageQueueTimer) {
+        clearTimeout($tw.Bob.messageQueueTimer);
       }
-      messageQueueTimer = setTimeout(checkMessageQueue, $tw.settings.advanced.localMessageQueueTimeout || 500);
+      $tw.Bob.messageQueueTimer = setTimeout(checkMessageQueue, $tw.settings.advanced.localMessageQueueTimeout || 500);
     } else {
-      clearTimeout(messageQueueTimer);
-      messageQueueTimer = false;
+      clearTimeout($tw.Bob.messageQueueTimer);
+      $tw.Bob.messageQueueTimer = false;
     }
   }
 
@@ -202,9 +204,11 @@ if(!$tw.Bob.Shared) {
           clearTimeout($tw.Bob.Timers[messageData.title]);
           // then reset the timer
           $tw.Bob.Timers[messageData.title] = setTimeout(function() {
+            console.log(`Sending msg ${messageData.message.id}`);
             connection.socket.send(JSON.stringify(messageData.message));
           }, $tw.settings.advanced.saveTiddlerDelay || 200);
         } else {
+          console.log(`Sending msg ${messageData.message.id}`);
           connection.socket.send(JSON.stringify(messageData.message));
         }
       }
@@ -454,12 +458,10 @@ if(!$tw.Bob.Shared) {
     messageData = messageData || Shared.createMessageData(message);
     if (messageData.type !== "ping" && messageData.type !== "pong") {
       if($tw.Bob.logger){
-        $tw.Bob.logger.log('Sending websocket message ', JSON.stringify(messageData), {level:4});
+        $tw.Bob.logger.log(`Sending websocket message ${message.id}:`, JSON.stringify(message), {level:4});
       }else{
-        console.log('Sending websocket message ', JSON.stringify(messageData));
+        console.log(`Sending websocket message ${message.id}:`, JSON.stringify(message));
       }
-    } else {
-      console.log(messageData.type, JSON.stringify(messageData))
     }
     if(Shared.messageIsEligible(messageData, connectionIndex, $tw.Bob.MessageQueue)) {
       $tw.Bob.Timers = $tw.Bob.Timers || {};
@@ -488,8 +490,8 @@ if(!$tw.Bob.Shared) {
       }
       _sendMessage($tw.connections[connectionIndex], messageData)
     }
-    clearTimeout(messageQueueTimer);
-    messageQueueTimer = setTimeout(checkMessageQueue, $tw.settings.advanced.localMessageQueueTimeout || 500);
+    clearTimeout($tw.Bob.messageQueueTimer);
+    $tw.Bob.messageQueueTimer = setTimeout(checkMessageQueue, $tw.settings.advanced.localMessageQueueTimeout || 500);
     return messageData;
   }
 
@@ -751,28 +753,32 @@ if(!$tw.Bob.Shared) {
     This acknowledges that a message has been received.
   */
   Shared.sendAck = function (data) {
-    data = data || {};
-    if($tw.Bob.logger){
-      $tw.Bob.logger.log('Sending websocket ack ', JSON.stringify(data), {level:4});
-    }else{
-      console.log('Sending websocket ack ', JSON.stringify(data));
+    data = data || {type:'ack'};
+    // The following messages to not need to be acknowledged
+    let noAck = ['ack', 'ping', 'pong'];
+    if(noAck.indexOf(data.type) !== -1) {
+      return;
     }
     if($tw.browser) {
       const token = $tw.Bob.Shared.getMessageToken();
-      $tw.connections[0].socket.send(JSON.stringify({
+      let message = {
         type: 'ack',
         id: data.id,
         token: token,
         wiki: $tw.wikiName
-      }));
+      }
+      console.log(`Sending ack ${message.id}`);
+      $tw.connections[0].socket.send(JSON.stringify(message));
     } else {
       if(data.id) {
         if(data.source_connection !== undefined && data.source_connection !== -1) {
-          $tw.connections[data.source_connection].socket.send(JSON.stringify({
+          let message = {
             type: 'ack',
             id: data.id,
             wiki: data.wiki
-          }));
+          }
+          $tw.Bob.logger.log(`Sending ack ${message.id}`);
+          $tw.connections[data.source_connection].socket.send(JSON.stringify(message));
         }
       }
     }

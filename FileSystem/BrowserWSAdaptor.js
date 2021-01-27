@@ -15,460 +15,562 @@ A sync adaptor for syncing changes using websockets with Bob
 // Import shared commands
 $tw.Bob.Shared = require('$:/plugins/OokTech/Bob/SharedFunctions.js');
 
+$tw.Bob.init = function() {
+  $tw.Bob.setup = function(reconnect, connectionIndex) {
+    // Add a message that the wiki isn't connected yet
+    const text = "<div style='position:fixed;bottom:0px;width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>''WARNING: The connection to server hasn't been established yet.''</div>";
+    const warningTiddler = {
+      title: '$:/plugins/OokTech/Bob/Server Warning',
+      text: text,
+      tags: '$:/tags/PageTemplate'
+    };
+    $tw.wiki.addTiddler(new $tw.Tiddler(warningTiddler));
+    if(reconnect) {
+      $tw.connections = null;
+    }
+    // Get the name for this wiki for websocket messages
+    const tiddler = $tw.wiki.getTiddler("$:/WikiName");
+    if(tiddler) {
+      $tw.wikiName = tiddler.fields.text;
+    } else {
+      $tw.wikiName = '';
+    }
+
+    const IPAddress = window.location.hostname;
+    const WSSPort = window.location.port;
+    const WSScheme = window.location.protocol=="https:"?"wss://":"ws://";
+    const rWikiName = new RegExp("\\/"+ $tw.wikiName + "\\/?$");
+    const WSUrl = WSScheme + IPAddress +":" + WSSPort + decodeURI(window.location.pathname).replace(rWikiName,'');
+
+    $tw.connections = $tw.connections || [];
+    $tw.connections[connectionIndex] = $tw.connections[connectionIndex] || {};
+    $tw.connections[connectionIndex].index = connectionIndex;
+    $tw.connections[connectionIndex].url = WSUrl;
+    $tw.connections[connectionIndex].wiki = $tw.wikiName;
+    try{
+      $tw.connections[connectionIndex].socket = new WebSocket(WSUrl);
+    } catch (e) {
+      console.log(e)
+      $tw.connections[connectionIndex].socket = {};
+    }
+
+    $tw.connections[connectionIndex].socket.onopen = this.openSocket;
+    $tw.connections[connectionIndex].socket.onmessage = this.handleMessage;
+    $tw.connections[connectionIndex].socket.binaryType = "arraybuffer";
+  }
+
+  /*
+    When the socket is opened the heartbeat process starts. This lets us know
+    if the connection to the server gets interrupted.
+  */
+  $tw.Bob.openSocket = function() {
+    console.log('Opened client socket');
+    // Login with whatever credentials you have
+    const data = {
+      type: 'setLoggedIn',
+      wiki: $tw.wikiName,
+      heartbeat: true
+    };
+    $tw.Bob.sendToServer(data);
+    $tw.Bob.getSettings();
+  }
+
+  /*
+    This is a wrapper function, each message from the websocket server has a
+    message type and if that message type matches a handler that is defined
+    than the data is passed to the handler function.
+  */
+  $tw.Bob.handleMessage = function(event) {
+    const eventData = JSON.parse(event.data);
+    if(eventData.type) {
+      if(eventData.type !== "ping" && eventData.type !== "pong") {
+        console.log(`Received websocket message ${eventData.id}:`, event.data);
+      }
+      if(typeof $tw.browserMessageHandlers[eventData.type] === 'function') {
+        // Acknowledge the message, then call handler(s)
+        $tw.Bob.Shared.sendAck(eventData);
+        $tw.browserMessageHandlers[eventData.type](eventData);
+        //debugger;
+        this.handledMessages = this.handledMessages || {};
+        if(!this.handledMessages[eventData.id]) this.handledMessages[eventData.id] = 0;
+        this.handledMessages[eventData.id] = this.handledMessages[eventData.id]++;
+      }
+    }
+  }
+
+  $tw.Bob.sendToServer = function (message, callback) {
+    const connectionIndex = 0;
+    let messageData = {};
+    // If the connection is open, send the message
+    if($tw.connections[connectionIndex].socket.readyState === 1 && $tw.readOnly !== 'yes') {
+      messageData = $tw.Bob.Shared.sendMessage(message, 0);
+    } else {
+      // If the connection is not open than store the message in the queue
+      const tiddler = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/Unsent');
+      let queue = [];
+      let start = Date.now();
+      if(tiddler) {
+        if(typeof tiddler.fields.text === 'string') {
+          queue = JSON.parse(tiddler.fields.text);
+        }
+        if(tiddler.fields.start) {
+          start = tiddler.fields.start;
+        }
+      }
+      // Check to make sure that the current message is eligible to be saved
+      messageData = $tw.Bob.Shared.createMessageData(message)
+      if($tw.Bob.Shared.messageIsEligible(messageData, 0, queue)) {
+        // Prune the queue and check if the current message makes any enqueued
+        // messages redundant or overrides old messages
+        queue = $tw.Bob.Shared.removeRedundantMessages(messageData, queue);
+        // Don't save any messages that are about the unsent list or you get
+        // infinite loops of badness.
+        if(messageData.title !== '$:/plugins/OokTech/Bob/Unsent') {
+          queue.push(messageData);
+        }
+        const tiddler2 = {
+          title: '$:/plugins/OokTech/Bob/Unsent',
+          text: JSON.stringify(queue, '', 2),
+          type: 'application/json',
+          start: start
+        };
+        $tw.wiki.addTiddler(new $tw.Tiddler(tiddler2));
+      }
+    }
+    if(messageData.id) {
+      if(typeof callback === "function") {
+        callback(null, messageData.id)
+      } else {
+        return messageData.id;
+      }
+    } else {
+      if(typeof callback === "function") {
+        callback(new Error("BroswerWSAdaptor Error - sendToServer failed to generate messageData.id."))
+      } else {
+        return null;
+      }
+    }
+  }
+
+  $tw.Bob.Reconnect = function (sync) {
+    if($tw.connections[0].socket.readyState !== 1) {
+      $tw.Bob.setup();
+      if(sync) {
+        $tw.Bob.syncToServer();
+      }
+    }
+  }
+
+  $tw.Bob.syncToServer = function () {
+    // Use a timeout to ensure that the websocket is ready
+    if($tw.connections[0].socket.readyState !== 1) {
+      setTimeout($tw.Bob.syncToServer, 100)
+      console.log('waiting')
+    } else {
+      /*
+      // The process here should be:
+
+        Send the full list of changes from the browser to the server in a
+        special message
+        The server determines if any conflicts exist and marks the tiddlers as appropriate
+        If there are no conflicts than it just applies the changes from the browser/server
+        If there are than it marks the tiddler as needing resolution and both versions are made available
+        All connected browsers now see the tiddlers marked as in conflict and resolution is up to the people
+
+        This message is sent to the server, once the server receives it it respons with a special ack for it, when the browser receives that it deletes the unsent tiddler
+
+        What is a conflict?
+
+        If both sides say to delete the same tiddler there is no conflict
+        If one side says save and the other delete there is a conflict
+        if both sides say save there is a conflict if the two saved versions
+        aren't the same.
+      */
+      // Get the tiddler with the info about local changes
+      const tiddler = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/Unsent');
+      let tiddlerHashes = {};
+      const allTitles = $tw.wiki.allTitles()
+      const list = $tw.wiki.filterTiddlers($tw.Bob.ExcludeFilter);
+      allTitles.forEach(function(tidTitle) {
+        if(list.indexOf(tidTitle) === -1) {
+          const tid = $tw.wiki.getTiddler(tidTitle);
+          tiddlerHashes[tidTitle] = $tw.Bob.Shared.getTiddlerHash(tid);
+        }
+      })
+      // Ask the server for a listing of changes since the browser was
+      // disconnected
+      const message = {
+        type: 'syncChanges',
+        since: tiddler.fields.start,
+        changes: tiddler.fields.text,
+        hashes: tiddlerHashes,
+        wiki: $tw.wikiName
+      };
+      $tw.Bob.sendToServer(message);
+      $tw.wiki.deleteTiddler('$:/plugins/OokTech/Bob/Unsent')
+    }
+  }
+
+  /*
+    This adds actions for the different event hooks. Each hook sends a
+    message to the node process.
+
+    Some unused hooks have commented out skeletons for adding those hooks in
+    the future if they are needed.
+  */
+  $tw.Bob.addHooks = function() {
+    if(!$tw.wikiName) {
+      $tw.wikiName = '';
+    }
+    $tw.hooks.addHook("th-editing-tiddler", function(event) {
+      // Special handling for unedited shadow tiddlers
+      if($tw.wiki.isShadowTiddler(event.tiddlerTitle) && !$tw.wiki.tiddlerExists(event.tiddlerTitle)) {
+        // Wait for the document to have focus again and then check for the existence of a draft tiddler for the shadow, if one doesn't exist cancel the edit lock
+        setTimeout(function(tid) {
+          if(document.hasFocus()) {
+            if(!$tw.wiki.findDraft(tid)) {
+              // Cancel the edit lock
+              const message = {
+                type: 'cancelEditingTiddler',
+                tiddler:{
+                  fields:{
+                    title: tid
+                  }
+                },
+                wiki: $tw.wikiName
+              };
+              $tw.Bob.sendToServer(message);
+            }
+          }
+        }, 200, event.tiddlerTitle)
+      }
+      const message = {
+        type: 'editingTiddler',
+        tiddler: {
+          fields: {
+            title: event.tiddlerTitle
+          }
+        },
+        wiki: $tw.wikiName
+      };
+      $tw.Bob.sendToServer(message);
+      // do the normal editing actions for the event
+      return true;
+    });
+    $tw.hooks.addHook("th-cancelling-tiddler", function(event) {
+      const draftTitle = event.param || event.tiddlerTitle;
+      const draftTiddler = $tw.wiki.getTiddler(draftTitle);
+      const originalTitle = draftTiddler && draftTiddler.fields["draft.of"];
+      const message = {
+        type: 'cancelEditingTiddler',
+        tiddler:{
+          fields:{
+            title: originalTitle
+          }
+        },
+        wiki: $tw.wikiName
+      };
+      $tw.Bob.sendToServer(message);
+      // Do the normal handling
+      return event;
+    });
+    /*
+      Below here are skeletons for adding new actions to existing hooks.
+      None are needed right now but the skeletons may help later.
+
+      Other available hooks are:
+      th-importing-tiddler
+      th-relinking-tiddler
+      th-renaming-tiddler
+    */
+    /*
+      This handles the hook for importing tiddlers.
+    */
+    $tw.hooks.addHook("th-importing-tiddler", function (tiddler) {
+      if($tw.wiki.getTextReference('$:/WikiSettings/split##saveMediaOnServer') !== 'no' && $tw.wiki.getTextReference('$:/WikiSettings/split##enableFileServer') === 'yes') {
+        function updateProgress(e) {
+          try {
+            // TODO make this work in different browsers
+            if(e.lengthComputable) {
+              var percentComplete = e.loaded/e.total*100;
+            } else {
+              var percentComplete = -1;
+            }
+            console.log(percentComplete);
+          } catch (e) {
+            console.log("No progress updates!")
+          }
+        }
+        function transferComplete(e) {
+          console.log('Complete!!');
+        }
+        function transferFailed(e) {
+          console.log('Failed!');
+        }
+        function transferCanceled(e) {
+          console.log('Cancelled!')
+        }
+        // Figure out if the thing being imported is something that should be
+        // saved on the server.
+        //const mimeMap = $tw.settings.mimeMap || {
+        const mimeMap = $tw.settings.mimeMap || {
+          '.aac': 'audio/aac',
+          '.avi': 'video/x-msvideo',
+          '.csv': 'text/csv',
+          '.doc': 'application/msword',
+          '.epub': 'application/epub+zip',
+          '.gif': 'image/gif',
+          '.html': 'text/html',
+          '.htm': 'text/html',
+          '.ico': 'image/x-icon',
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.mp3': 'audio/mpeg',
+          '.mpeg': 'video/mpeg',
+          '.oga': 'audio/ogg',
+          '.ogv': 'video/ogg',
+          '.ogx': 'application/ogg',
+          '.pdf': 'application/pdf',
+          '.png': 'image/png',
+          '.svg': 'image/svg+xml',
+          '.weba': 'audio/weba',
+          '.webm': 'video/webm',
+          '.wav': 'audio/wav'
+        };
+        if(Object.values(mimeMap).indexOf(tiddler.fields.type) !== -1 && !tiddler.fields._canonical_uri) {
+          // Check if this is set up to use HTTP post or websockets to save the
+          // image on the server.
+          const request = new XMLHttpRequest();
+          request.upload.addEventListener('progress', updateProgress);
+          request.upload.addEventListener('load', transferComplete);
+          request.upload.addEventListener('error', transferFailed);
+          request.upload.addEventListener('abort', transferCanceled);
+
+          let wikiPrefix = $tw.wiki.getTiddlerText('$:/WikiName') || '';
+          const uploadURL = '/api/upload';
+          request.open('POST', uploadURL, true);
+          // cookies are sent with the request so the authentication cookie
+          // should be there if there is one.
+          const thing = {
+            tiddler: tiddler,
+            wiki: $tw.wiki.getTiddlerText('$:/WikiName')
+          }
+          request.setRequestHeader('x-wiki-name',wikiPrefix);
+          request.onreadystatechange = function() {
+            if(request.readyState === XMLHttpRequest.DONE) {
+              if(request.status === 200) {
+                // Things should be ok
+                // The server should send a browser message saying that the
+                // upload was successful.
+              } else {
+                // There is a problem
+                // Make a tiddler that has the tag $:/tags/Alert that has the text of
+                // the alert.
+                const fields = {
+                  component: 'Server Message',
+                  title: "Upload Error",
+                  text: "File failed to upload to server with status code " + request.status + ". Try quitting and restarting Bob."+"<br/><$button>Clear Alerts<$action-deletetiddler $filter='[tag[$:/tags/Alert]component[Server Message]]'/></$button>",
+                  tags: '$:/tags/Alert'
+                }
+                $tw.wiki.addTiddler(new $tw.Tiddler(fields, $tw.wiki.getCreationFields()));
+              }
+            }
+          }
+          request.send(JSON.stringify(thing));
+          // Change the tiddler fields and stuff
+          const fields = {};
+          wikiPrefix = $tw.wiki.getTiddlerText('$:/WikiName') || '';
+          wikiPrefix = wikiPrefix === '' ? '' : '/' + wikiPrefix;
+          $tw.settings.fileURLPrefix = $tw.settings.fileURLPrefix || 'files';
+          const uri = wikiPrefix + '/' + $tw.settings.fileURLPrefix + '/' + tiddler.fields.title;
+          fields.title = tiddler.fields.title;
+          fields.type = tiddler.fields.type;
+          fields._canonical_uri = uri;
+          return new $tw.Tiddler(fields);
+        } else {
+          return tiddler;
+        }
+      } else {
+        return tiddler;
+      }
+    });
+  }
+
+  $tw.Bob.getSettings = function() {
+    // Ask the server for its status
+    fetch('/api/status', {credentials: 'include', headers: {'x-wiki-name': $tw.wikiName}})
+    .then(response => response.json())
+    .then(function(data) {
+      function doThisLevel (inputObject, currentName) {
+        let currentLevel = {};
+        Object.keys(inputObject).forEach( function (property) {
+          if(typeof inputObject[property] === 'object') {
+            // Call recursive function to walk through properties, but only if
+            // there are properties
+            if(Object.keys(inputObject[property])) {
+              doThisLevel(inputObject[property], currentName + '/' + property, data);
+              currentLevel[property] = currentName + '/' + property;
+            }
+          } else {
+            // Add it to this one.
+            currentLevel[property] = inputObject[property];
+          }
+        });
+        const tiddlerFields = {
+          title: currentName,
+          text: JSON.stringify(currentLevel, "", 2),
+          type: 'application/json'
+        };
+        $tw.wiki.addTiddler(new $tw.Tiddler(tiddlerFields));
+      }
+
+      const fields = {};
+
+      const viewableWikiList = Object.keys(data['available_wikis']).filter(function(wikiName) {
+        return data['available_wikis'][wikiName].indexOf('view') > -1
+      })
+      const editableWikiList = Object.keys(data['available_wikis']).filter(function(wikiName) {
+        return data['available_wikis'][wikiName].indexOf('edit') > -1
+      })
+      // Set available wikis
+      fields.title = '$:/state/ViewableWikis';
+      fields.list = $tw.utils.stringifyList(viewableWikiList);
+      fields.type = 'application/json';
+      $tw.wiki.addTiddler(new $tw.Tiddler(fields));
+
+      // Set available wikis
+      fields.title = '$:/state/EditableWikis';
+      fields.list = $tw.utils.stringifyList(editableWikiList);
+      fields.type = 'application/json';
+      $tw.wiki.addTiddler(new $tw.Tiddler(fields));
+
+      const editions_out = {}
+      Object.keys(data['available_editions']).map(function(curr, ind) {
+        editions_out[curr] = data['available_editions'][curr]['description'];
+      })
+      fields.list = '';
+      // Set available editions
+      fields.title = '$:/Bob/AvailableEditionList';
+      fields.text = JSON.stringify(editions_out, "", 2);
+      fields.type = 'application/json';
+      $tw.wiki.addTiddler(new $tw.Tiddler(fields));
+
+      // Set available languages
+      fields.title = '$:/Bob/AvailableLanguageList';
+      fields.text = JSON.stringify(Object.keys(data['available_languages']));
+      fields.type = 'application/json';
+      $tw.wiki.addTiddler(new $tw.Tiddler(fields));
+
+      const plugins_out = {}
+      Object.keys(data['available_plugins']).map(function(curr, ind) {
+        plugins_out[curr] = data['available_plugins'][curr]['description'];
+      })
+      // Set available plugins
+      fields.title = '$:/Bob/AvailablePluginList';
+      fields.text = JSON.stringify(plugins_out, "", 2);
+      fields.type = 'application/json';
+      $tw.wiki.addTiddler(new $tw.Tiddler(fields));
+
+      const themes_out = {}
+      Object.keys(data['available_themes']).map(function(curr, ind) {
+        themes_out[curr] = data['available_themes'][curr]['description'];
+      })
+      // Set available themes
+      fields.title = '$:/Bob/AvailableThemeList';
+      fields.text = JSON.stringify(themes_out, "", 2);
+      fields.type = 'application/json';
+      $tw.wiki.addTiddler(new $tw.Tiddler(fields));
+
+      // Save settings for the wiki
+      fields.title = '$:/WikiSettings';
+      fields.text = JSON.stringify(data['settings'], "", 2);
+      fields.type = 'application/json';
+      $tw.wiki.addTiddler(new $tw.Tiddler(fields));
+      $tw.settings = data['settings']
+
+      doThisLevel(data['settings'], '$:/WikiSettings/split');
+
+      $tw.wiki.addTiddler(new $tw.Tiddler({title:'$:/ServerIP', text: (data.settings.serverInfo ? data.settings.serverInfo.ipAddress : window.location.protocol + '//' + window.location.hostname), port: window.location.port, host: data.settings['ws-server'].host, proxyprefix: data.settings.proxyprefix}))
+
+      $tw.wiki.addTiddler(new $tw.Tiddler({title:'$:/status/IsLoggedIn', text:data.logged_in}));
+
+      $tw.wiki.addTiddler(new $tw.Tiddler({title:'$:/status/IsReadOnly', text:data.read_only}));
+      $tw.readOnly = data.read_only;
+
+      // Delete any info about owned wikis, this is here to clear the list if
+      // you log out
+      $tw.wiki.filterTiddlers('[prefix[$:/Bob/OwnedWikis]]').forEach(function(tidName) {
+        $tw.wiki.deleteTiddler(tidName);
+      })
+      if(data.owned_wikis) {
+        // save any info about owned wikis for the currently logged in person
+        Object.keys(data.owned_wikis).forEach(function(wikiName) {
+          const tidFields = {
+            title: "$:/Bob/OwnedWikis/" + wikiName,
+            visibility: data.owned_wikis[wikiName].visibility,
+            editors: $tw.utils.stringifyList(data.owned_wikis[wikiName].editors),
+            viewers: $tw.utils.stringifyList(data.owned_wikis[wikiName].viewers),
+            fetchers: $tw.utils.stringifyList(data.owned_wikis[wikiName].fetchers),
+            pushers: $tw.utils.stringifyList(data.owned_wikis[wikiName].pushers),
+            guest_access: $tw.utils.stringifyList(data.owned_wikis[wikiName].access ? data.owned_wikis[wikiName].access.Guest : ''),
+            normal_access: $tw.utils.stringifyList(data.owned_wikis[wikiName].access ? data.owned_wikis[wikiName].access.Normal : ''),
+            admin_access: $tw.utils.stringifyList(data.owned_wikis[wikiName].access ? data.owned_wikis[wikiName].access.Admin : ''),
+            wiki_name: wikiName,
+            text: "{{||$:/plugins/OokTech/Bob/Templates/WikiAccessManager}}",
+            tags: "$:/Bob/OwnedWikis"
+          }
+          $tw.wiki.addTiddler(new $tw.Tiddler(tidFields));
+        });
+      }
+      // Delete any listing for visible profiles, this makes sure they aren't
+      // left when you log out.
+      $tw.wiki.filterTiddlers('[prefix[$:/status/VisibleProfile/]]').forEach(function(tidName) {
+        $tw.wiki.deleteTiddler(tidName);
+      })
+      if(data.visible_profiles) {
+        Object.keys(data.visible_profiles).forEach(function(profileName) {
+          const tidFields = {
+            title: '$:/status/VisibleProfile/' + profileName,
+            visibility: data.visible_profiles[profileName].visibility,
+            text: $tw.wiki.renderText('text/html', "text/vnd.tiddlywiki", data.visible_profiles[profileName].about),
+            level: data.visible_profiles[profileName].level
+          };
+          $tw.wiki.addTiddler(new $tw.Tiddler(tidFields));
+        })
+      }
+      if(data.username) {
+        data.visible_profiles = data.visible_profiles || {};
+        data.visible_profiles[data.username] = data.visible_profiles[data.username] || {};
+        // This is only here with the secure server, add username and profile
+        // info
+        $tw.wiki.addTiddler(new $tw.Tiddler({title: '$:/status/UserName', text: data.username, visibility: data.visible_profiles[data.username].visibility, level: data.visible_profiles[data.username].level}));
+        $tw.wiki.addTiddler(new $tw.Tiddler({title: '$:/status/UserName/About', text: data.visible_profiles[data.username].about}));
+      } else if(data['settings'].persistentUsernames === "yes") {
+        // In non-secure version load the username from
+        const savedName = $tw.Bob.getCookie(document.cookie, "userName");
+        if(savedName) {
+          $tw.wiki.addTiddler(new $tw.Tiddler({title: "$:/status/UserName", text: savedName}));
+          $tw.wiki.deleteTiddler('$:/status/UserName/About');
+        }
+      } else {
+        $tw.wiki.deleteTiddler('$:/status/UserName/About');
+      }
+    });
+  }
+}
+
 function BrowserWSAdaptor(options) {
   this.wiki = options.wiki;
   this.idList = [];
+  // In the browser there is only one connection, so set the connection index
+  this.connectionIndex = 0;
   // Ensure that the needed objects exist
   $tw.Bob = $tw.Bob || {};
   $tw.browserMessageHandlers = $tw.browserMessageHandlers || {};
   $tw.Bob.ExcludeFilter = this.wiki.getTiddlerText('$:/plugins/OokTech/Bob/ExcludeSync');
-  // In the browser there is only one connection, so set the connection index
-  const connectionIndex = 0;
   // Do all actions on startup.
-  $tw.Bob.setup(false, connectionIndex);
+  $tw.Bob.setup(false, this.connectionIndex);
   $tw.Bob.addHooks();
-}
-
-$tw.Bob.setup = function(reconnect, connectionIndex) {
-  // Add a message that the wiki isn't connected yet
-  const text = "<div style='position:fixed;bottom:0px;width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>''WARNING: The connection to server hasn't been established yet.''</div>";
-  const warningTiddler = {
-    title: '$:/plugins/OokTech/Bob/Server Warning',
-    text: text,
-    tags: '$:/tags/PageTemplate'
-  };
-  $tw.wiki.addTiddler(new $tw.Tiddler(warningTiddler));
-  if(reconnect) {
-    $tw.connections = null;
-  }
-  // Get the name for this wiki for websocket messages
-  const tiddler = $tw.wiki.getTiddler("$:/WikiName");
-  if(tiddler) {
-    $tw.wikiName = tiddler.fields.text;
-  } else {
-    $tw.wikiName = '';
-  }
-
-  const IPAddress = window.location.hostname;
-  const WSSPort = window.location.port;
-  const WSScheme = window.location.protocol=="https:"?"wss://":"ws://";
-
-  $tw.connections = $tw.connections || [];
-  $tw.connections[connectionIndex] = $tw.connections[connectionIndex] || {};
-  $tw.connections[connectionIndex].index = connectionIndex;
-  try{
-    const r = new RegExp("\\/"+ $tw.wikiName + "\\/?$");
-    $tw.connections[connectionIndex].socket = new WebSocket(WSScheme + IPAddress +":" + WSSPort + decodeURI(window.location.pathname).replace(r,''));
-  } catch (e) {
-    console.log(e)
-    $tw.connections[connectionIndex].socket = {};
-  }
-  $tw.connections[connectionIndex].socket.onopen = this.openSocket;
-  $tw.connections[connectionIndex].socket.onmessage = this.handleMessage;
-  $tw.connections[connectionIndex].socket.binaryType = "arraybuffer";
-}
-$tw.Bob.Reconnect = function (sync) {
-  if($tw.connections[0].socket.readyState !== 1) {
-    $tw.Bob.setup();
-    if(sync) {
-      $tw.Bob.syncToServer();
-    }
-  }
-}
-$tw.Bob.syncToServer = function () {
-  // Use a timeout to ensure that the websocket is ready
-  if($tw.connections[0].socket.readyState !== 1) {
-    setTimeout($tw.Bob.syncToServer, 100)
-    console.log('waiting')
-  } else {
-    /*
-    // The process here should be:
-
-      Send the full list of changes from the browser to the server in a
-      special message
-      The server determines if any conflicts exist and marks the tiddlers as appropriate
-      If there are no conflicts than it just applies the changes from the browser/server
-      If there are than it marks the tiddler as needing resolution and both versions are made available
-      All connected browsers now see the tiddlers marked as in conflict and resolution is up to the people
-
-      This message is sent to the server, once the server receives it it respons with a special ack for it, when the browser receives that it deletes the unsent tiddler
-
-      What is a conflict?
-
-      If both sides say to delete the same tiddler there is no conflict
-      If one side says save and the other delete there is a conflict
-      if both sides say save there is a conflict if the two saved versions
-      aren't the same.
-    */
-    // Get the tiddler with the info about local changes
-    const tiddler = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/Unsent');
-    let tiddlerHashes = {};
-    const allTitles = $tw.wiki.allTitles()
-    const list = $tw.wiki.filterTiddlers($tw.Bob.ExcludeFilter);
-    allTitles.forEach(function(tidTitle) {
-      if(list.indexOf(tidTitle) === -1) {
-        const tid = $tw.wiki.getTiddler(tidTitle);
-        tiddlerHashes[tidTitle] = $tw.Bob.Shared.getTiddlerHash(tid);
-      }
-    })
-    // Ask the server for a listing of changes since the browser was
-    // disconnected
-    const message = {
-      type: 'syncChanges',
-      since: tiddler.fields.start,
-      changes: tiddler.fields.text,
-      hashes: tiddlerHashes,
-      wiki: $tw.wikiName
-    };
-    this.sendToServer(message);
-    $tw.wiki.deleteTiddler('$:/plugins/OokTech/Bob/Unsent')
-  }
-}
-/*
-  This adds actions for the different event hooks. Each hook sends a
-  message to the node process.
-
-  Some unused hooks have commented out skeletons for adding those hooks in
-  the future if they are needed.
-*/
-$tw.Bob.addHooks = function() {
-  if(!$tw.wikiName) {
-    $tw.wikiName = '';
-  }
-  $tw.hooks.addHook("th-editing-tiddler", function(event) {
-    // Special handling for unedited shadow tiddlers
-    if($tw.wiki.isShadowTiddler(event.tiddlerTitle) && !$tw.wiki.tiddlerExists(event.tiddlerTitle)) {
-      // Wait for the document to have focus again and then check for the existence of a draft tiddler for the shadow, if one doesn't exist cancel the edit lock
-      setTimeout(function(tid) {
-        if(document.hasFocus()) {
-          if(!$tw.wiki.findDraft(tid)) {
-            // Cancel the edit lock
-            const message = {
-              type: 'cancelEditingTiddler',
-              tiddler:{
-                fields:{
-                  title: tid
-                }
-              },
-              wiki: $tw.wikiName
-            };
-            this.sendToServer(message);
-          }
-        }
-      }, 200, event.tiddlerTitle)
-    }
-    const message = {
-      type: 'editingTiddler',
-      tiddler: {
-        fields: {
-          title: event.tiddlerTitle
-        }
-      },
-      wiki: $tw.wikiName
-    };
-    this.sendToServer(message);
-    // do the normal editing actions for the event
-    return true;
-  });
-  $tw.hooks.addHook("th-cancelling-tiddler", function(event) {
-    const draftTitle = event.param || event.tiddlerTitle;
-    const draftTiddler = $tw.wiki.getTiddler(draftTitle);
-    const originalTitle = draftTiddler && draftTiddler.fields["draft.of"];
-    const message = {
-      type: 'cancelEditingTiddler',
-      tiddler:{
-        fields:{
-          title: originalTitle
-        }
-      },
-      wiki: $tw.wikiName
-    };
-    this.sendToServer(message);
-    // Do the normal handling
-    return event;
-  });
-  /*
-    Below here are skeletons for adding new actions to existing hooks.
-    None are needed right now but the skeletons may help later.
-
-    Other available hooks are:
-    th-importing-tiddler
-    th-relinking-tiddler
-    th-renaming-tiddler
-  */
-  /*
-    This handles the hook for importing tiddlers.
-  */
-  $tw.hooks.addHook("th-importing-tiddler", function (tiddler) {
-    if($tw.wiki.getTextReference('$:/WikiSettings/split##saveMediaOnServer') !== 'no' && $tw.wiki.getTextReference('$:/WikiSettings/split##enableFileServer') === 'yes') {
-      function updateProgress(e) {
-        try {
-          // TODO make this work in different browsers
-          if(e.lengthComputable) {
-            var percentComplete = e.loaded/e.total*100;
-          } else {
-            var percentComplete = -1;
-          }
-          console.log(percentComplete);
-        } catch (e) {
-          console.log("No progress updates!")
-        }
-      }
-      function transferComplete(e) {
-        console.log('Complete!!');
-      }
-      function transferFailed(e) {
-        console.log('Failed!');
-      }
-      function transferCanceled(e) {
-        console.log('Cancelled!')
-      }
-      // Figure out if the thing being imported is something that should be
-      // saved on the server.
-      //const mimeMap = $tw.settings.mimeMap || {
-      const mimeMap = $tw.settings.mimeMap || {
-        '.aac': 'audio/aac',
-        '.avi': 'video/x-msvideo',
-        '.csv': 'text/csv',
-        '.doc': 'application/msword',
-        '.epub': 'application/epub+zip',
-        '.gif': 'image/gif',
-        '.html': 'text/html',
-        '.htm': 'text/html',
-        '.ico': 'image/x-icon',
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.mp3': 'audio/mpeg',
-        '.mpeg': 'video/mpeg',
-        '.oga': 'audio/ogg',
-        '.ogv': 'video/ogg',
-        '.ogx': 'application/ogg',
-        '.pdf': 'application/pdf',
-        '.png': 'image/png',
-        '.svg': 'image/svg+xml',
-        '.weba': 'audio/weba',
-        '.webm': 'video/webm',
-        '.wav': 'audio/wav'
-      };
-      if(Object.values(mimeMap).indexOf(tiddler.fields.type) !== -1 && !tiddler.fields._canonical_uri) {
-        // Check if this is set up to use HTTP post or websockets to save the
-        // image on the server.
-        const request = new XMLHttpRequest();
-        request.upload.addEventListener('progress', updateProgress);
-        request.upload.addEventListener('load', transferComplete);
-        request.upload.addEventListener('error', transferFailed);
-        request.upload.addEventListener('abort', transferCanceled);
-
-        let wikiPrefix = $tw.wiki.getTiddlerText('$:/WikiName') || '';
-        const uploadURL = '/api/upload';
-        request.open('POST', uploadURL, true);
-        // cookies are sent with the request so the authentication cookie
-        // should be there if there is one.
-        const thing = {
-          tiddler: tiddler,
-          wiki: $tw.wiki.getTiddlerText('$:/WikiName')
-        }
-        request.setRequestHeader('x-wiki-name',wikiPrefix);
-        request.onreadystatechange = function() {
-          if(request.readyState === XMLHttpRequest.DONE) {
-            if(request.status === 200) {
-              // Things should be ok
-              // The server should send a browser message saying that the
-              // upload was successful.
-            } else {
-              // There is a problem
-              // Make a tiddler that has the tag $:/tags/Alert that has the text of
-              // the alert.
-              const fields = {
-                component: 'Server Message',
-                title: "Upload Error",
-                text: "File failed to upload to server with status code " + request.status + ". Try quitting and restarting Bob."+"<br/><$button>Clear Alerts<$action-deletetiddler $filter='[tag[$:/tags/Alert]component[Server Message]]'/></$button>",
-                tags: '$:/tags/Alert'
-              }
-              $tw.wiki.addTiddler(new $tw.Tiddler(fields, $tw.wiki.getCreationFields()));
-            }
-          }
-        }
-        request.send(JSON.stringify(thing));
-        // Change the tiddler fields and stuff
-        const fields = {};
-        wikiPrefix = $tw.wiki.getTiddlerText('$:/WikiName') || '';
-        wikiPrefix = wikiPrefix === '' ? '' : '/' + wikiPrefix;
-        $tw.settings.fileURLPrefix = $tw.settings.fileURLPrefix || 'files';
-        const uri = wikiPrefix + '/' + $tw.settings.fileURLPrefix + '/' + tiddler.fields.title;
-        fields.title = tiddler.fields.title;
-        fields.type = tiddler.fields.type;
-        fields._canonical_uri = uri;
-        return new $tw.Tiddler(fields);
-      } else {
-        return tiddler;
-      }
-    } else {
-      return tiddler;
-    }
-  });
-}
-
-$tw.Bob.getSettings = function() {
-  // Ask the server for its status
-  fetch('/api/status', {credentials: 'include', headers: {'x-wiki-name': $tw.wikiName}})
-  .then(response => response.json())
-  .then(function(data) {
-    function doThisLevel (inputObject, currentName) {
-      let currentLevel = {};
-      Object.keys(inputObject).forEach( function (property) {
-        if(typeof inputObject[property] === 'object') {
-          // Call recursive function to walk through properties, but only if
-          // there are properties
-          if(Object.keys(inputObject[property])) {
-            doThisLevel(inputObject[property], currentName + '/' + property, data);
-            currentLevel[property] = currentName + '/' + property;
-          }
-        } else {
-          // Add it to this one.
-          currentLevel[property] = inputObject[property];
-        }
-      });
-      const tiddlerFields = {
-        title: currentName,
-        text: JSON.stringify(currentLevel, "", 2),
-        type: 'application/json'
-      };
-      $tw.wiki.addTiddler(new $tw.Tiddler(tiddlerFields));
-    }
-
-    const fields = {};
-
-    const viewableWikiList = Object.keys(data['available_wikis']).filter(function(wikiName) {
-      return data['available_wikis'][wikiName].indexOf('view') > -1
-    })
-    const editableWikiList = Object.keys(data['available_wikis']).filter(function(wikiName) {
-      return data['available_wikis'][wikiName].indexOf('edit') > -1
-    })
-    // Set available wikis
-    fields.title = '$:/state/ViewableWikis';
-    fields.list = $tw.utils.stringifyList(viewableWikiList);
-    fields.type = 'application/json';
-    $tw.wiki.addTiddler(new $tw.Tiddler(fields));
-
-    // Set available wikis
-    fields.title = '$:/state/EditableWikis';
-    fields.list = $tw.utils.stringifyList(editableWikiList);
-    fields.type = 'application/json';
-    $tw.wiki.addTiddler(new $tw.Tiddler(fields));
-
-    const editions_out = {}
-    Object.keys(data['available_editions']).map(function(curr, ind) {
-      editions_out[curr] = data['available_editions'][curr]['description'];
-    })
-    fields.list = '';
-    // Set available editions
-    fields.title = '$:/Bob/AvailableEditionList';
-    fields.text = JSON.stringify(editions_out, "", 2);
-    fields.type = 'application/json';
-    $tw.wiki.addTiddler(new $tw.Tiddler(fields));
-
-    // Set available languages
-    fields.title = '$:/Bob/AvailableLanguageList';
-    fields.text = JSON.stringify(Object.keys(data['available_languages']));
-    fields.type = 'application/json';
-    $tw.wiki.addTiddler(new $tw.Tiddler(fields));
-
-    const plugins_out = {}
-    Object.keys(data['available_plugins']).map(function(curr, ind) {
-      plugins_out[curr] = data['available_plugins'][curr]['description'];
-    })
-    // Set available plugins
-    fields.title = '$:/Bob/AvailablePluginList';
-    fields.text = JSON.stringify(plugins_out, "", 2);
-    fields.type = 'application/json';
-    $tw.wiki.addTiddler(new $tw.Tiddler(fields));
-
-    const themes_out = {}
-    Object.keys(data['available_themes']).map(function(curr, ind) {
-      themes_out[curr] = data['available_themes'][curr]['description'];
-    })
-    // Set available themes
-    fields.title = '$:/Bob/AvailableThemeList';
-    fields.text = JSON.stringify(themes_out, "", 2);
-    fields.type = 'application/json';
-    $tw.wiki.addTiddler(new $tw.Tiddler(fields));
-
-    // Save settings for the wiki
-    fields.title = '$:/WikiSettings';
-    fields.text = JSON.stringify(data['settings'], "", 2);
-    fields.type = 'application/json';
-    $tw.wiki.addTiddler(new $tw.Tiddler(fields));
-    $tw.settings = data['settings']
-
-    doThisLevel(data['settings'], '$:/WikiSettings/split');
-
-    $tw.wiki.addTiddler(new $tw.Tiddler({title:'$:/ServerIP', text: (data.settings.serverInfo ? data.settings.serverInfo.ipAddress : window.location.protocol + '//' + window.location.hostname), port: window.location.port, host: data.settings['ws-server'].host, proxyprefix: data.settings.proxyprefix}))
-
-    $tw.wiki.addTiddler(new $tw.Tiddler({title:'$:/status/IsLoggedIn', text:data.logged_in}));
-
-    $tw.wiki.addTiddler(new $tw.Tiddler({title:'$:/status/IsReadOnly', text:data.read_only}));
-    $tw.readOnly = data.read_only;
-
-    // Delete any info about owned wikis, this is here to clear the list if
-    // you log out
-    $tw.wiki.filterTiddlers('[prefix[$:/Bob/OwnedWikis]]').forEach(function(tidName) {
-      $tw.wiki.deleteTiddler(tidName);
-    })
-    if(data.owned_wikis) {
-      // save any info about owned wikis for the currently logged in person
-      Object.keys(data.owned_wikis).forEach(function(wikiName) {
-        const tidFields = {
-          title: "$:/Bob/OwnedWikis/" + wikiName,
-          visibility: data.owned_wikis[wikiName].visibility,
-          editors: $tw.utils.stringifyList(data.owned_wikis[wikiName].editors),
-          viewers: $tw.utils.stringifyList(data.owned_wikis[wikiName].viewers),
-          fetchers: $tw.utils.stringifyList(data.owned_wikis[wikiName].fetchers),
-          pushers: $tw.utils.stringifyList(data.owned_wikis[wikiName].pushers),
-          guest_access: $tw.utils.stringifyList(data.owned_wikis[wikiName].access ? data.owned_wikis[wikiName].access.Guest : ''),
-          normal_access: $tw.utils.stringifyList(data.owned_wikis[wikiName].access ? data.owned_wikis[wikiName].access.Normal : ''),
-          admin_access: $tw.utils.stringifyList(data.owned_wikis[wikiName].access ? data.owned_wikis[wikiName].access.Admin : ''),
-          wiki_name: wikiName,
-          text: "{{||$:/plugins/OokTech/Bob/Templates/WikiAccessManager}}",
-          tags: "$:/Bob/OwnedWikis"
-        }
-        $tw.wiki.addTiddler(new $tw.Tiddler(tidFields));
-      });
-    }
-    // Delete any listing for visible profiles, this makes sure they aren't
-    // left when you log out.
-    $tw.wiki.filterTiddlers('[prefix[$:/status/VisibleProfile/]]').forEach(function(tidName) {
-      $tw.wiki.deleteTiddler(tidName);
-    })
-    if(data.visible_profiles) {
-      Object.keys(data.visible_profiles).forEach(function(profileName) {
-        const tidFields = {
-          title: '$:/status/VisibleProfile/' + profileName,
-          visibility: data.visible_profiles[profileName].visibility,
-          text: $tw.wiki.renderText('text/html', "text/vnd.tiddlywiki", data.visible_profiles[profileName].about),
-          level: data.visible_profiles[profileName].level
-        };
-        $tw.wiki.addTiddler(new $tw.Tiddler(tidFields));
-      })
-    }
-    if(data.username) {
-      data.visible_profiles = data.visible_profiles || {};
-      data.visible_profiles[data.username] = data.visible_profiles[data.username] || {};
-      // This is only here with the secure server, add username and profile
-      // info
-      $tw.wiki.addTiddler(new $tw.Tiddler({title: '$:/status/UserName', text: data.username, visibility: data.visible_profiles[data.username].visibility, level: data.visible_profiles[data.username].level}));
-      $tw.wiki.addTiddler(new $tw.Tiddler({title: '$:/status/UserName/About', text: data.visible_profiles[data.username].about}));
-    } else if(data['settings'].persistentUsernames === "yes") {
-      // In non-secure version load the username from
-      const savedName = $tw.Bob.getCookie(document.cookie, "userName");
-      if(savedName) {
-        $tw.wiki.addTiddler(new $tw.Tiddler({title: "$:/status/UserName", text: savedName}));
-        $tw.wiki.deleteTiddler('$:/status/UserName/About');
-      }
-    } else {
-      $tw.wiki.deleteTiddler('$:/status/UserName/About');
-    }
-  });
 }
 
 // REQUIRED
@@ -476,93 +578,6 @@ $tw.Bob.getSettings = function() {
 BrowserWSAdaptor.prototype.name = "browserwsadaptor";
 
 BrowserWSAdaptor.prototype.supportsLazyLoading = true;
-
-/*
-  When the socket is opened the heartbeat process starts. This lets us know
-  if the connection to the server gets interrupted.
-*/
-BrowserWSAdaptor.prototype.openSocket = function() {
-  console.log('Opened client socket');
-  // Login with whatever credentials you have
-  const data = {
-    type: 'setLoggedIn',
-    wiki: $tw.wikiName,
-    heartbeat: true
-  };
-  this.sendToServer(data);
-  $tw.Bob.getSettings();
-}
-
-/*
-  This is a wrapper function, each message from the websocket server has a
-  message type and if that message type matches a handler that is defined
-  than the data is passed to the handler function.
-*/
-BrowserWSAdaptor.prototype.handleMessage = function(event) {
-  const eventData = JSON.parse(event.data);
-  if(eventData.type) {
-    if(eventData.type !== "ping" && eventData.type !== "pong") {
-      console.log('Received websocket message ', event.data);
-    }
-    if(typeof $tw.browserMessageHandlers[eventData.type] === 'function') {
-      $tw.browserMessageHandlers[eventData.type](eventData);
-    }
-  }
-}
-
-BrowserWSAdaptor.prototype.sendToServer = function (message, callback) {
-  const connectionIndex = 0;
-  let messageData = {};
-  // If the connection is open, send the message
-  if($tw.connections[connectionIndex].socket.readyState === 1 && $tw.readOnly !== 'yes') {
-    messageData = $tw.Bob.Shared.sendMessage(message, 0);
-  } else {
-    // If the connection is not open than store the message in the queue
-    const tiddler = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/Unsent');
-    let queue = [];
-    let start = Date.now();
-    if(tiddler) {
-      if(typeof tiddler.fields.text === 'string') {
-        queue = JSON.parse(tiddler.fields.text);
-      }
-      if(tiddler.fields.start) {
-        start = tiddler.fields.start;
-      }
-    }
-    // Check to make sure that the current message is eligible to be saved
-    messageData = $tw.Bob.Shared.createMessageData(message)
-    if($tw.Bob.Shared.messageIsEligible(messageData, 0, queue)) {
-      // Prune the queue and check if the current message makes any enqueued
-      // messages redundant or overrides old messages
-      queue = $tw.Bob.Shared.removeRedundantMessages(messageData, queue);
-      // Don't save any messages that are about the unsent list or you get
-      // infinite loops of badness.
-      if(messageData.title !== '$:/plugins/OokTech/Bob/Unsent') {
-        queue.push(messageData);
-      }
-      const tiddler2 = {
-        title: '$:/plugins/OokTech/Bob/Unsent',
-        text: JSON.stringify(queue, '', 2),
-        type: 'application/json',
-        start: start
-      };
-      $tw.wiki.addTiddler(new $tw.Tiddler(tiddler2));
-    }
-  }
-  if(messageData.id) {
-    if(typeof callback === "function") {
-      callback(null, messageData.id)
-    } else {
-      return messageData.id;
-    }
-  } else {
-    if(typeof callback === "function") {
-      callback(new Error("BroswerWSAdaptor Error - sendToServer failed to generate messageData.id."))
-    } else {
-      return null;
-    }
-  }
-}
 
 /*
   Get the current status of the Bob WS conection (called by the syncer)
@@ -623,7 +638,7 @@ BrowserWSAdaptor.prototype.saveTiddler = function (tiddler, options, callback) {
       changeCount: options.changeCount,
       tiddlerInfo: options.tiddlerInfo
     };
-    this.sendToServer(message, function(err, id){
+    $tw.Bob.sendToServer(message, function(err, id){
       if(err){
         callback(err);
       }
@@ -660,7 +675,7 @@ BrowserWSAdaptor.prototype.loadTiddler = function (title, options, callback) {
       changeCount: options.changeCount,
       tiddlerInfo: options.tiddlerInfo
     }
-    this.sendToServer(message, function(err, id){
+    $tw.Bob.sendToServer(message, function(err, id){
       if(err){
         callback(err);
       }
@@ -703,7 +718,7 @@ BrowserWSAdaptor.prototype.deleteTiddler = function (title, options, callback) {
       changeCount: options.changeCount,
       tiddlerInfo: options.tiddlerInfo
     };
-    this.sendToServer(message, function(err, id){
+    $tw.Bob.sendToServer(message, function(err, id){
       if(err){
         callback(err);
       }
@@ -743,7 +758,10 @@ BrowserWSAdaptor.prototype.getUpdatedTiddlers = function() {
 // This can be updated at any time, it gets checked when a syncing task is
 // being run so its value can change over time.
 BrowserWSAdaptor.prototype.isReady = function() {
-  debugger;
+  let readyState = (!!$tw.browserMessageHandlers
+    && this.connectionIndex == $tw.connections[this.connectionIndex].index
+    && $tw.connections[this.connectionIndex].socket.readyState == WebSocket.OPEN);
+  return readyState;
   const tid = $tw.wiki.getTiddler('$:/state/EditableWikis');
   if(tid){
     if(tid.fields.list.indexOf($tw.wikiName) > -1) {
@@ -797,7 +815,7 @@ function setupSkinnyTiddlerLoading() {
             setTimeout(function() {
               if($tw.connections) {
                 if($tw.connections[0].socket.readyState === 1) {
-                  id = this.sendToServer(message)
+                  id = $tw.Bob.sendToServer(message)
                   $tw.rootWidget.addEventListener('skinny-tiddlers', function(e) {
                     handleSkinnyTiddlers(e.detail)
                   })
@@ -811,7 +829,7 @@ function setupSkinnyTiddlerLoading() {
           }
           if($tw.connections) {
             if($tw.connections[0].socket.readyState === 1) {
-              id = this.sendToServer(message)
+              id = $tw.Bob.sendToServer(message)
               $tw.rootWidget.addEventListener('skinny-tiddlers', function(e) {
                 handleSkinnyTiddlers(e.detail)
               })
@@ -837,6 +855,7 @@ function setupSkinnyTiddlerLoading() {
 // Only set up the websockets if we aren't in an iframe or opened as a file.
 if($tw.browser && window.location === window.parent.location && window.location.hostname) {
   //setupSkinnyTiddlerLoading()
+  $tw.Bob.init();
   exports.adaptorClass = BrowserWSAdaptor
 }
 
