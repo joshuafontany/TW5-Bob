@@ -20,5 +20,5 @@ sent to the browser.
 The default filter is:
 
 ```
-[prefix[$:/state/]][prefix[$:/temp/]][prefix[$:/WikiSettings]][[$:/StoryList]][[$:/HistoryList]][[$:/status/UserName]][[$:/Import]][[$:/plugins/OokTech/Bob/Server Warning]]
+[prefix[$:/state/]][prefix[$:/temp/]][prefix[$:/WikiSettings]][[$:/StoryList]][[$:/HistoryList]][[$:/status/UserName]][[$:/Import]][prefix[$:/plugins/OokTech/Bob/Socket]]
 ```

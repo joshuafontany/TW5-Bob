@@ -35,7 +35,7 @@ if($tw.node) {
       Each key is a the name of a wiki served by Bob, the value is a filter
       that will be run in that wiki and any returned tiddlers will be included in the output html file.
   */
-  $tw.nodeMessageHandlers.buildHTMLWiki = function (data) {
+  $tw.nodeMessageHandlers.buildHTMLWiki = function(data) {
     const path = require('path');
     const fs = require('fs');
     let wikiPath, fullName, excludeList = [];
@@ -123,7 +123,7 @@ if($tw.node) {
     than a number will be appended to the end of the name to make it unique,
     similarly to how new tiddler titles are made unique.
   */
-  $tw.nodeMessageHandlers.newWikiFromTiddlers = function (data) {
+  $tw.nodeMessageHandlers.newWikiFromTiddlers = function(data) {
     // Do nothing unless there is an input file path given
     if(data.tiddlers || data.externalTiddlers) {
       const path = require('path');
@@ -353,7 +353,7 @@ if($tw.node) {
     Anything that adds a wiki to the listing uses this.
   */
   // This is just a copy of the init command modified to work in this context
-  $tw.nodeMessageHandlers.createNewWiki = function (data, cb) {
+  $tw.nodeMessageHandlers.createNewWiki = function(data, cb) {
     $tw.ServerSide.createWiki(data, callback);
 
     function callback(err) {
@@ -379,7 +379,7 @@ if($tw.node) {
     It defaults to the current wiki but if you give a forWiki input it
     downloads that wiki instead.
   */
-  $tw.nodeMessageHandlers.downloadHTMLFile = function (data) {
+  $tw.nodeMessageHandlers.downloadHTMLFile = function(data) {
     if(data.wiki) {
       const downloadWiki = data.forWiki || data.wiki;
       const allowed = $tw.Bob.AccessCheck(downloadWiki, {"decoded":data.decoded}, 'view', 'wiki');

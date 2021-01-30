@@ -6,7 +6,7 @@ module-type: startup
 This has some functions that are needed by Bob in different places.
 
 \*/
-(function () {
+(function() {
 
   /*jslint node: true, browser: true */
   /*global $tw: false */
@@ -342,7 +342,7 @@ This has some functions that are needed by Bob in different places.
       /*
         This acknowledges that a message has been received.
       */
-      $tw.Bob.Federation.sendAck = function (data) {
+      $tw.Bob.Federation.sendAck = function(data) {
         data = data || {};
         if($tw.browser) {
           const token = localStorage.getItem('ws-token')

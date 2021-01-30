@@ -47,7 +47,7 @@ exports.startup = function() {
     /*
       Global unhandled exception catch
     */
-    process.on('unhandledRejection', function (err) {
+    process.on('unhandledRejection', function(err) {
       $tw.Bob.logger.error('unhandledRejection ', err, {level:1});
       let abort = $tw.settings.logger.abortUnhandledRejections || false;
       if(abort) {
@@ -120,7 +120,7 @@ exports.startup = function() {
     }
 
     // A convenience function that handles all of the logging types so you don't have to unless you have multiple enabled but only want to log something in one place.
-    $tw.Bob.logger.log = function (/* args */) {
+    $tw.Bob.logger.log = function(/* args */) {
       let params = {}
       $tw.settings.logger = $tw.settings.logger || {};
       const argumentList = [].slice.apply(arguments);
@@ -152,7 +152,7 @@ exports.startup = function() {
       }
     }
 
-    $tw.Bob.logger.error = function (/* args */) {
+    $tw.Bob.logger.error = function(/* args */) {
       let params = {}
       $tw.settings.logger = $tw.settings.logger || {};
       const argumentList = [].slice.apply(arguments);

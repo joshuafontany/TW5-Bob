@@ -28,7 +28,7 @@ Various websocket utility functions added to $tw.utils
     /*
 
     
-    exports.wildcardToRegExp = function (s) {
+    exports.wildcardToRegExp = function(s) {
         return new RegExp(s.split(/\*+/).map($tw.utils.regExpEscape).join('.*'));
     }*/
     

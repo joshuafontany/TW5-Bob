@@ -6,7 +6,7 @@ module-type: library
 This has some functions that are needed by Bob in different places.
 
 \*/
-(function () {
+(function() {
 
   /*jslint node: true, browser: true */
   /*global $tw: false */
@@ -45,7 +45,7 @@ if(!$tw.Bob.Shared) {
     This function takes two tiddler objects and returns a boolean value
     indicating if they are the same or not.
   */
-  Shared.TiddlerHasChanged = function (tiddler, otherTiddler) {
+  Shared.TiddlerHasChanged = function(tiddler, otherTiddler) {
     if(!otherTiddler) {
       return true;
     }
@@ -105,7 +105,7 @@ if(!$tw.Bob.Shared) {
     for the ackObject the index is the connection index and ackReceived is a
     boolean indicating if the ack has been received yet or not.
   */
-  Shared.createMessageData = function (message) {
+  Shared.createMessageData = function(message) {
     //const id = message.id || makeId();
     const id = makeId()
     message.id = id;
@@ -163,7 +163,7 @@ if(!$tw.Bob.Shared) {
           return false;
         }
       });
-      oldMessages.forEach(function (messageData) {
+      oldMessages.forEach(function(messageData) {
         // If we are in the browser there is only one connection, but
         // everything here is the same.
         const targetConnections = $tw.node?(messageData.wiki?$tw.connections.filter(function(item) {
@@ -218,7 +218,7 @@ if(!$tw.Bob.Shared) {
   /*
     This returns a new id for a message.
     Messages from the browser have ids that start with b, messages from the
-    server have an idea that starts with s.
+    server have an id that starts with s.
   */
   function makeId() {
     idNumber = idNumber + 1;
@@ -250,7 +250,7 @@ if(!$tw.Bob.Shared) {
     Alternately, any number of 'saveTiddler' messages can be ignored if the
     tiddler in question is deleted by a later enqueued message.
   */
-  Shared.removeRedundantMessages = function (messageData, queue) {
+  Shared.removeRedundantMessages = function(messageData, queue) {
     // Get a list of any duplicate messages or any that are now redundant
     // because of the new message.
     const duplicateIndicies = queue.map(function(item, index) {
@@ -322,7 +322,7 @@ if(!$tw.Bob.Shared) {
       message for the same tiddler and the tiddler hasn't changed ignore the
       message
   */
-  Shared.messageIsEligible = function (messageData, connectionIndex, queue) {
+  Shared.messageIsEligible = function(messageData, connectionIndex, queue) {
     let send = false;
     if($tw.node && messageData.message.wiki) {
       $tw.ServerSide.loadWiki(messageData.message.wiki, nextBit());
@@ -455,17 +455,15 @@ if(!$tw.Bob.Shared) {
     This modifies $tw.Bob.MessageQueue as a side effect
   */
   Shared.sendMessage = function(message, connectionIndex, messageData) {
+    connectionIndex = connectionIndex || 0;
     messageData = messageData || Shared.createMessageData(message);
-    if (messageData.type !== "ping" && messageData.type !== "pong") {
-      if($tw.Bob.logger){
-        $tw.Bob.logger.log(`Sending websocket message ${message.id}:`, JSON.stringify(message), {level:4});
-      }else{
-        console.log(`Sending websocket message ${message.id}:`, JSON.stringify(message));
-      }
+    if($tw.Bob.logger){
+      $tw.Bob.logger.log(`Sending websocket ${connectionIndex} message ${message.id}:`, JSON.stringify(message), {level:4});
+    }else{
+      console.log(`Sending websocket ${connectionIndex} message ${message.id}:`, JSON.stringify(message));
     }
     if(Shared.messageIsEligible(messageData, connectionIndex, $tw.Bob.MessageQueue)) {
       $tw.Bob.Timers = $tw.Bob.Timers || {};
-      connectionIndex = connectionIndex || 0;
       if(messageData.message.tiddler) {
         messageData.message.tiddler = $tw.Bob.Shared.normalizeTiddler(messageData.message.tiddler);
       }
@@ -528,7 +526,7 @@ if(!$tw.Bob.Shared) {
     for that messageData is set to the current time so it can be properly
     removed later.
   */
-  Shared.handleAck = function (data) {
+  Shared.handleAck = function(data) {
     if(data.id) {
       // a quick hack to make this work
       if($tw.browser) {
@@ -679,9 +677,9 @@ if(!$tw.Bob.Shared) {
     if(typeof opts === 'function') opts = { cmp: opts };
     let cycles = (typeof opts.cycles === 'boolean') ? opts.cycles : false;
 
-    let cmp = opts.cmp && (function (f) {
-        return function (node) {
-            return function (a, b) {
+    let cmp = opts.cmp && (function(f) {
+        return function(node) {
+            return function(a, b) {
                 const aobj = { key: a, value: node[a] };
                 const bobj = { key: b, value: node[b] };
                 return f(aobj, bobj);
@@ -752,33 +750,27 @@ if(!$tw.Bob.Shared) {
   /*
     This acknowledges that a message has been received.
   */
-  Shared.sendAck = function (data) {
+  Shared.sendAck = function(data) {
     data = data || {type:'ack'};
-    // The following messages to not need to be acknowledged
+    // The following messages do not need to be acknowledged
     let noAck = ['ack', 'ping', 'pong'];
-    if(noAck.indexOf(data.type) !== -1) {
-      return;
-    }
-    if($tw.browser) {
-      const token = $tw.Bob.Shared.getMessageToken();
+    if(noAck.indexOf(data.type) == -1) {
       let message = {
         type: 'ack',
-        id: data.id,
-        token: token,
-        wiki: $tw.wikiName
+        id: 'ack' + data.id,
+        wiki: data.wiki
       }
-      console.log(`Sending ack ${message.id}`);
-      $tw.connections[0].socket.send(JSON.stringify(message));
-    } else {
-      if(data.id) {
-        if(data.source_connection !== undefined && data.source_connection !== -1) {
-          let message = {
-            type: 'ack',
-            id: data.id,
-            wiki: data.wiki
+      if($tw.browser) {
+        const token = $tw.Bob.Shared.getMessageToken();
+        message.token = token;
+        console.log(`Sending ack ${message.id}`);
+        $tw.connections[0].socket.send(JSON.stringify(message));
+      } else {
+        if(data.id) {
+          if(data.source_connection !== undefined && data.source_connection !== -1) {
+            $tw.Bob.logger.log(`Sending ack ${message.id}`);
+            $tw.connections[data.source_connection].socket.send(JSON.stringify(message));
           }
-          $tw.Bob.logger.log(`Sending ack ${message.id}`);
-          $tw.connections[data.source_connection].socket.send(JSON.stringify(message));
         }
       }
     }

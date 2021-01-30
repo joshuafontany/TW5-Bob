@@ -20,7 +20,7 @@ exports.synchronous = true;
 exports.startup = function() {
   if(false && $tw.node && $tw.settings.enableFederation === 'yes') {
     const dgram = require('dgram');
-    const setup = function () {
+    const setup = function() {
       $tw.Bob = $tw.Bob || {};
       $tw.settings.federation = $tw.settings.federation || {};
       $tw.Bob.Federation = $tw.Bob.Federation || {};
@@ -40,7 +40,7 @@ exports.startup = function() {
           fs.mkdirSync(userSettingsFolder);
         }
         const connections = JSON.stringify($tw.Bob.Federation.connections, "", 2);
-        fs.writeFile(connectionsFilePath, connections, {encoding: "utf8"}, function (err) {
+        fs.writeFile(connectionsFilePath, connections, {encoding: "utf8"}, function(err) {
           if(err) {
             const message = {
               alert: 'Error saving connections:' + err,
@@ -55,7 +55,7 @@ exports.startup = function() {
         });
       }
 
-      $tw.Bob.Federation.authenticateMessage = function (message) {
+      $tw.Bob.Federation.authenticateMessage = function(message) {
         return true;
       }
       /*
@@ -66,7 +66,7 @@ exports.startup = function() {
         because this is designed to work when the ip or url of a connection
         changes
       */
-      $tw.Bob.Federation.updateConnections = function () {
+      $tw.Bob.Federation.updateConnections = function() {
         $tw.Bob.logger.log('Update federated connections', {level:3});
         $tw.Bob.logger.log('Connections list:', Object.keys($tw.Bob.Federation.connections), {level:4});
         const message = {
@@ -121,7 +121,7 @@ exports.startup = function() {
 
       const nonNonce = ['multicastSearch', 'requestServerInfo', 'requestHashes', 'requestTiddlers', 'requestRemoteSync', 'ping', 'chunk', 'chatMessage', 'chatHistory', 'requestResend'];
 
-      $tw.Bob.Federation.handleMessage = function (message, rinfo) {
+      $tw.Bob.Federation.handleMessage = function(message, rinfo) {
         if(!rinfo || !message) {
           return;
         }

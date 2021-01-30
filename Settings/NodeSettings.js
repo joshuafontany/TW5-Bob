@@ -24,7 +24,7 @@ $tw.settings.wikis = $tw.settings.wikis || {};
 if($tw.node) {
   const fs = require("fs");
   const path = require("path");
-  $tw.CreateSettingsTiddlers = function (data) {
+  $tw.CreateSettingsTiddlers = function(data) {
     data = data || {}
     data.wiki = data.wiki || 'RootWiki'
 
@@ -74,7 +74,7 @@ if($tw.node && !$tw.ExternalServer) {
   /*
     Only load the settings if you are running node
   */
-  const startup = function () {
+  const startup = function() {
     // The user settings path
     const userSettingsPath = path.join($tw.boot.wikiPath, 'settings', 'settings.json');
     $tw.settings = JSON.parse($tw.wiki.getTiddler('$:/plugins/OokTech/Bob/DefaultSettings').fields.text);
@@ -155,7 +155,7 @@ if($tw.node && !$tw.ExternalServer) {
     in the local settings.
     Changes to the settings are later saved to the local settings.
   */
-  $tw.updateSettings = function (globalSettings, localSettings) {
+  $tw.updateSettings = function(globalSettings, localSettings) {
     //Walk though the properties in the localSettings, for each property set the global settings equal to it, but only for singleton properties. Don't set something like GlobalSettings.Accelerometer = localSettings.Accelerometer, set globalSettings.Accelerometer.Controller = localSettings.Accelerometer.Contorller
     Object.keys(localSettings).forEach(function(key,index){
       if(typeof localSettings[key] === 'object') {

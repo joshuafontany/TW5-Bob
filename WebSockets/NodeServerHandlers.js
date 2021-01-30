@@ -17,6 +17,37 @@ This handles messages sent to the node process.
 exports.platforms = ["node"];
 exports.startup = function() {
   $tw.nodeMessageHandlers = $tw.nodeMessageHandlers || {};
+
+  /* REQUIRED
+    This responds to a ping from the browser. This is used to check and make sure
+    that the browser and server are connected.
+    It also echos back any data that was sent. This is used by the heartbeat to
+    make sure that the server and browser are still connected.
+  */
+  $tw.nodeMessageHandlers.ping = function(data) {
+    let message = {};
+    Object.keys(data).forEach(function(key) {
+      message[key] = data[key];
+    })
+    message.type = 'pong';
+    message.id = "heartbeat";
+    // When the server receives a ping it sends back a pong.
+    const response = JSON.stringify(message);
+    const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
+    if (connectionIndex) {
+      $tw.connections[connectionIndex].socket.send(response);
+    }
+  }
+
+  /*
+    This handles the pong response of a ping. In the browser it is used as the heartbeat
+    to ensure that the connection to the server is still live. How do we use this in the
+    server? Server to server communication?
+  */
+  $tw.nodeMessageHandlers.pong = function(data) {
+    // Who did we ping?
+  }
+
   if(false) { // disable federation stuff now
   $tw.Bob.Federation = $tw.Bob.Federation || {};
   $tw.Bob.Federation.remoteConnections = $tw.Bob.Federation.remoteConnections || {};
@@ -87,7 +118,7 @@ exports.startup = function() {
       otherThings: data to pass on to the other server as parameters of the message being sent.
     }
   */
-  $tw.nodeMessageHandlers.sendRemoteMessage = function (data) {
+  $tw.nodeMessageHandlers.sendRemoteMessage = function(data) {
     if(data.$server && data.$message) {
       const newData = {
         type: data.$message
@@ -151,18 +182,7 @@ exports.startup = function() {
     - populate the list of viewable wikis
     - add any configuration interface things
   */
-  $tw.nodeMessageHandlers.setLoggedIn = function (data) {
-    // Heartbeat.
-    if(data.heartbeat) {
-      let message = {};
-      message.type = 'pong';
-      message.id = "heartbeat";
-      message.heartbeat = true;
-      message.wiki = data.wiki;
-      // When the server receives a ping it sends back a pong.
-      const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
-      $tw.connections[connectionIndex].socket.send(JSON.stringify(message));
-    }
+  $tw.nodeMessageHandlers.setLoggedIn = function(data) {
     //$tw.CreateSettingsTiddlers(data);
   }
 
@@ -481,7 +501,7 @@ exports.startup = function() {
         fs.mkdirSync(userSettingsFolder);
       }
       // This should prevent an empty string from ever being given
-      fs.writeFile(userSettingsPath, JSON.stringify($tw.settings, "", 2), {encoding: "utf8"}, function (err) {
+      fs.writeFile(userSettingsPath, JSON.stringify($tw.settings, "", 2), {encoding: "utf8"}, function(err) {
         if(err) {
           const message = {
             alert: 'Error saving settings:' + err,
@@ -538,14 +558,14 @@ exports.startup = function() {
     wiki. And it also need to find all of the tiddlers for the wiki and remove
     them. But I don't know how to do that without deleting the tiddlers.
   */
-  $tw.nodeMessageHandlers.unloadWiki = function (data) {
+  $tw.nodeMessageHandlers.unloadWiki = function(data) {
     $tw.Bob.unloadWiki(data.wikiName);
   }
 
   /*
     This sends a list of all available plugins to the wiki
   */
-  $tw.nodeMessageHandlers.getPluginList = function (data) {
+  $tw.nodeMessageHandlers.getPluginList = function(data) {
     const pluginNames = $tw.ServerSide.getViewablePluginsList(data);
     const fields = {
       title: '$:/Bob/AvailablePluginList',
@@ -565,7 +585,7 @@ exports.startup = function() {
   /*
     This sends a list of all available plugins to the wiki
   */
-  $tw.nodeMessageHandlers.getThemeList = function (data) {
+  $tw.nodeMessageHandlers.getThemeList = function(data) {
     const themeNames = ServerSide.getViewableThemesList(data);
     const fields = {
       title: '$:/Bob/AvailableThemeList',
@@ -586,7 +606,7 @@ exports.startup = function() {
     This loads the tiddlywiki.info and if new versions are given it updates the
     description, list of plugins, themes and languages
   */
-  $tw.nodeMessageHandlers.updateTiddlyWikiInfo = function (data) {
+  $tw.nodeMessageHandlers.updateTiddlyWikiInfo = function(data) {
     if(data.wiki) {
       const path = require('path')
       const fs = require('fs')
@@ -682,7 +702,7 @@ exports.startup = function() {
                 extFilters: []
               });
             // If we aren't passed a path
-            $tw.utils.saveTiddlerToFile(tiddler, fileInfo, function (err, fileInfo) {
+            $tw.utils.saveTiddlerToFile(tiddler, fileInfo, function(err, fileInfo) {
               if(err) {
                 $tw.Bob.logger.error(err, {level:1});
               } else {
@@ -697,7 +717,7 @@ exports.startup = function() {
               pluginInfo[field] = pluginTiddler.fields[field]
             }
           })
-          fs.writeFile(pluginInfoPath,JSON.stringify(pluginInfo, null, 2),{encoding: "utf8"},function (err) {
+          fs.writeFile(pluginInfoPath,JSON.stringify(pluginInfo, null, 2),{encoding: "utf8"},function(err) {
             if(err) {
               $tw.Bob.logger.error(err, {level:1});
             } else {
@@ -731,23 +751,23 @@ exports.startup = function() {
       const protocol = data.url.startsWith('https')?'https':'http';
       const JSZip = require("$:/plugins/OokTech/Bob/External/jszip/jszip.js");
       const http = require("$:/plugins/OokTech/Bob/External/followRedirects/followRedirects.js")[protocol];
-      const req = http.get(data.url, function (res) {
+      const req = http.get(data.url, function(res) {
         if(res.statusCode !== 200) {
           $tw.Bob.logger.error('failed to fetch git plugin with code', res.statusCode, {level:1});
           // handle error
           return;
         }
         let data = [], dataLen = 0;
-        res.on("data", function (chunk) {
+        res.on("data", function(chunk) {
           data.push(chunk);
           dataLen += chunk.length;
         });
-        res.on("end", function () {
+        res.on("end", function() {
           const buf = Buffer.concat(data);
           // here we go !
           let zipObj;
           let rootFolder;
-          JSZip.loadAsync(buf).then(function (zip) {
+          JSZip.loadAsync(buf).then(function(zip) {
             zipObj = zip;
             const pluginInfo = zip.filter(function(relativePath,file) {
               const goodFolder = relativePath.split('/').length === 2;

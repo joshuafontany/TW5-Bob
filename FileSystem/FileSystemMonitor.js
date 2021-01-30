@@ -45,12 +45,12 @@ exports.startup = function() {
       File - Exists -> Update of some sort
       File - Doesn't Exist -> Remove the tiddler
     */
-    $tw.Bob.WatchFolder = function (folder, prefix) {
+    $tw.Bob.WatchFolder = function(folder, prefix) {
       // If there is no prefix set it to an empty string
       prefix = prefix || '';
       $tw.Bob.Wikis[prefix].watchers = $tw.Bob.Wikis[prefix].watchers || {};
       try {
-        $tw.Bob.Wikis[prefix].watchers[folder] = fs.watch(folder, function (eventType, filename) {
+        $tw.Bob.Wikis[prefix].watchers[folder] = fs.watch(folder, function(eventType, filename) {
           filename = filename || "";
           // The full path to the current item
           const itemPath = path.join(folder, filename);
@@ -78,7 +78,7 @@ exports.startup = function() {
               if(fileStats.isDirectory()) {
                 $tw.Bob.WatchFolder(itemPath, prefix)
               } else if(fileStats.isFile()) {
-                const tiddlerName = Object.keys($tw.Bob.Files[prefix]).filter(function (item) {
+                const tiddlerName = Object.keys($tw.Bob.Files[prefix]).filter(function(item) {
                   // This is to handle some edge cases I ran into while making
                   // it.
                   if(typeof item === 'string') {
@@ -169,7 +169,7 @@ exports.startup = function() {
     }
 
     // TODO make this handle deleting .meta files
-    $tw.Bob.DeleteTiddler = function (folder, filename, prefix) {
+    $tw.Bob.DeleteTiddler = function(folder, filename, prefix) {
       const itemPath = path.join(folder, filename);
       // Get the file name because it isn't always the same as the tiddler
       // title.
@@ -218,7 +218,7 @@ exports.startup = function() {
       specific folders
       This is sort of implemented but I want more control.
     */
-    $tw.Bob.WatchAllFolders = function (folderTree, prefix) {
+    $tw.Bob.WatchAllFolders = function(folderTree, prefix) {
       // Watch the current folder after making sure that the path exists
       if(typeof folderTree.path === 'string') {
         if(fs.existsSync(folderTree.path)) {

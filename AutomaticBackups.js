@@ -17,7 +17,7 @@ exports.after = ["load-modules"];
 exports.platforms = ["node"];
 exports.synchronous = true;
 
-exports.startup = function () {
+exports.startup = function() {
   if($tw.node) {
     $tw.ServerSide = require('$:/plugins/OokTech/Bob/ServerSide.js');
     // Make sure that $tw.settings is available.

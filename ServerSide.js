@@ -131,7 +131,7 @@ ServerSide.getWikiPath = function(wikiName) {
 /*
   This checks to make sure there is a tiddlwiki.info file in a wiki folder
 */
-ServerSide.wikiExists = function (wikiFolder) {
+ServerSide.wikiExists = function(wikiFolder) {
   let exists = false;
   // Make sure that the wiki actually exists
   if(wikiFolder) {
@@ -155,7 +155,7 @@ ServerSide.wikiExists = function (wikiFolder) {
 /*
   This checks to make sure that a wiki exists
 */
-ServerSide.existsListed = function (wikiName) {
+ServerSide.existsListed = function(wikiName) {
   if(typeof wikiName !== 'string') {
     return false;
   }
@@ -174,7 +174,7 @@ ServerSide.existsListed = function (wikiName) {
 /*
   This function loads a wiki and returns a timeout with any callback.
 */
-ServerSide.loadWiki = function (wikiName, cb) {
+ServerSide.loadWiki = function(wikiName, cb) {
   $tw.settings['ws-server'] = $tw.settings['ws-server'] || {}
   $tw.Bob = $tw.Bob || {};
   $tw.Bob.Wikis = $tw.Bob.Wikis || {};
@@ -479,7 +479,7 @@ function defineShadowModules(wikiName) {
   });
 };
 
-ServerSide.prepareWiki = function (fullName, servePlugin, cache='yes') {
+ServerSide.prepareWiki = function(fullName, servePlugin, cache='yes') {
   // Only rebuild the wiki if there have been changes since the last time it
   // was built, otherwise use the cached version.
   if(typeof $tw.Bob.Wikis[fullName].modified === 'undefined' || $tw.Bob.Wikis[fullName].modified === true || typeof $tw.Bob.Wikis[fullName].cached !== 'string') {
@@ -521,7 +521,6 @@ ServerSide.prepareWiki = function (fullName, servePlugin, cache='yes') {
     }
     // This makes the wikiTiddlers variable a filter that lists all the
     // tiddlers for this wiki.
-    const wikiName = fullName;
     const options = {
       variables: {
         wikiTiddlers:
@@ -532,7 +531,7 @@ ServerSide.prepareWiki = function (fullName, servePlugin, cache='yes') {
               return '[[' + tidInfo + ']]';
             }
           }).join(' '),
-        wikiName: wikiName
+        wikiName: fullName
       }
     };
     $tw.Bob.Wikis[fullName].wiki.addTiddler(new $tw.Tiddler({title: '$:/WikiName', text: fullName}))
@@ -610,7 +609,7 @@ ServerSide.specialCopy = function(source, destination, copyChildren, cb) {
   try {
     fs.mkdirSync(destination, {recursive: true});
     const currentDir = fs.readdirSync(source)
-    currentDir.forEach(function (item) {
+    currentDir.forEach(function(item) {
       if(fs.statSync(path.join(source, item)).isFile()) {
         const fd = fs.readFileSync(path.join(source, item), {encoding: 'utf8'});
         fs.writeFileSync(path.join(destination, item), fd, {encoding: 'utf8'});
@@ -639,7 +638,7 @@ const getDirectories = function(source) {
   try {
     return fs.readdirSync(source).map(function(name) {
       return path.join(source,name)
-    }).filter(function (source) {
+    }).filter(function(source) {
       return fs.lstatSync(source).isDirectory();
     });
   } catch (e) {
@@ -763,7 +762,7 @@ ServerSide.sendBrowserAlert = function(input) {
   }
 }
 
-ServerSide.getViewableWikiList = function (data) {
+ServerSide.getViewableWikiList = function(data) {
   data = data || {};
   function getList(obj, prefix) {
     let output = [];
@@ -809,7 +808,7 @@ ServerSide.getViewableWikiList = function (data) {
   return tempObj;
 }
 
-ServerSide.getViewablePluginsList = function (data) {
+ServerSide.getViewablePluginsList = function(data) {
   data = data || {};
   const viewablePlugins = [];
   const pluginList = $tw.utils.getPluginInfo();
@@ -824,7 +823,7 @@ ServerSide.getViewablePluginsList = function (data) {
   return viewablePlugins;
 }
 
-ServerSide.getViewableThemesList = function (data) {
+ServerSide.getViewableThemesList = function(data) {
   data = data || {};
   const viewableThemes = [];
   const themeList = $tw.utils.getThemeInfo();
@@ -839,7 +838,7 @@ ServerSide.getViewableThemesList = function (data) {
   return viewableThemes;
 }
 
-ServerSide.getViewableEditionsList = function (data) {
+ServerSide.getViewableEditionsList = function(data) {
   // This may not be needed anymore
   if(typeof $tw.settings.editionsPath === 'string') {
     const basePath = $tw.ServerSide.getBasePath();
@@ -867,7 +866,7 @@ ServerSide.getViewableEditionsList = function (data) {
   return viewableEditions;
 }
 
-ServerSide.getViewableLanguagesList = function (data) {
+ServerSide.getViewableLanguagesList = function(data) {
   data = data || {};
   const viewableLanguages = {};
   const languageList =  $tw.utils.getLanguageInfo();
@@ -1170,24 +1169,24 @@ ServerSide.listFiles = function(data, cb) {
 function deleteDirectory(dir) {
   const fs = require('fs');
   const path = require('path');
-  return new Promise(function (resolve, reject) {
+  return new Promise(function(resolve, reject) {
     // Check to make sure that dir is in the place we expect
     if(dir.startsWith($tw.ServerSide.getBasePath())) {
-      fs.access(dir, function (err) {
+      fs.access(dir, function(err) {
         if(err) {
           if(err.code === 'ENOENT') {
             return resolve();
           }
           return reject(err);
         }
-        fs.readdir(dir, function (err, files) {
+        fs.readdir(dir, function(err, files) {
           if(err) {
             return reject(err);
           }
-          Promise.all(files.map(function (file) {
+          Promise.all(files.map(function(file) {
             return deleteFile(dir, file);
-          })).then(function () {
-            fs.rmdir(dir, function (err) {
+          })).then(function() {
+            fs.rmdir(dir, function(err) {
               if(err) {
                 return reject(err);
               }
@@ -1205,18 +1204,18 @@ function deleteDirectory(dir) {
 function deleteFile(dir, file) {
   const fs = require('fs');
   const path = require('path');
-  return new Promise(function (resolve, reject) {
+  return new Promise(function(resolve, reject) {
     //Check to make sure that dir is in the place we expect
     if(dir.startsWith($tw.ServerSide.getBasePath())) {
       const filePath = path.join(dir, file);
-      fs.lstat(filePath, function (err, stats) {
+      fs.lstat(filePath, function(err, stats) {
         if(err) {
           return reject(err);
         }
         if(stats.isDirectory()) {
           resolve(deleteDirectory(filePath));
         } else {
-          fs.unlink(filePath, function (err) {
+          fs.unlink(filePath, function(err) {
             if(err) {
               return reject(err);
             }
@@ -1306,7 +1305,7 @@ ServerSide.updateWikiListing = function(data) {
     let realFolders = [];
     try {
       const folderContents = fs.readdirSync(startPath);
-      folderContents.forEach(function (item) {
+      folderContents.forEach(function(item) {
         const fullName = path.join(startPath, item);
         if(fs.statSync(fullName).isDirectory()) {
           if($tw.ServerSide.wikiExists(fullName)) {
@@ -1381,7 +1380,7 @@ ServerSide.updateWikiListing = function(data) {
     data.update = (data.update === true)?'true':''
   }
   if(data.update.toLowerCase() === 'true') {
-    wikisToAdd.forEach(function (wikiName) {
+    wikisToAdd.forEach(function(wikiName) {
       if($tw.ExternalServer) {
         if(typeof $tw.ExternalServer.initialiseWikiSettings === 'function') {
           // This adds unlisted wikis as private and without giving them an
@@ -1639,7 +1638,7 @@ ServerSide.createWiki = function(data, cb) {
   For privacy and security only the tiddlers that are in the wiki a
   conneciton is using are sent to that connection.
 */
-ServerSide.UpdateEditingTiddlers = function (tiddler, wikiName) {
+ServerSide.UpdateEditingTiddlers = function(tiddler, wikiName) {
   // Make sure that the wiki is loaded
   const exists = $tw.ServerSide.loadWiki(wikiName);
   // This should never be false, but then this shouldn't every have been a
@@ -1716,11 +1715,11 @@ $tw.Bob.UpdateHistory = function(message) {
   checking because if it needs to be changed and sent to multiple browsers
   changing it once here instead of once per browser should be better.
 */
-$tw.Bob.SendToBrowsers = function (message, excludeConnection) {
+$tw.Bob.SendToBrowsers = function(message, excludeConnection) {
   $tw.Bob.UpdateHistory(message);
   const messageData = $tw.Bob.Shared.createMessageData(message);
 
-  $tw.connections.forEach(function (connection, ind) {
+  $tw.connections.forEach(function(connection, ind) {
     if((ind !== excludeConnection) && connection.socket) {
       if(connection.socket.readyState === 1 && (connection.wiki === message.wiki || !message.wiki)) {
         $tw.Bob.Shared.sendMessage(message, connection.index, messageData);
@@ -1738,7 +1737,7 @@ $tw.Bob.SendToBrowsers = function (message, excludeConnection) {
   There is one history of messages sent that has the message ids, each
   connection has a list of message ids that are still waiting for acks.
 */
-$tw.Bob.SendToBrowser = function (connection, message) {
+$tw.Bob.SendToBrowser = function(connection, message) {
   if(connection) {
     $tw.Bob.UpdateHistory(message);
     const messageData = $tw.Bob.Shared.createMessageData(message);
@@ -1755,7 +1754,7 @@ $tw.Bob.SendToBrowser = function (connection, message) {
   when unloading a wiki to make sure that people aren't trying to interact
   with a disconnected wiki.
 */
-$tw.Bob.DisconnectWiki = function (wiki) {
+$tw.Bob.DisconnectWiki = function(wiki) {
   $tw.connections.forEach(function(connectionIndex) {
     if(connectionIndex.wiki === wiki) {
       if(connectionIndex.socket !== undefined) {
@@ -1788,7 +1787,7 @@ $tw.Bob.unloadWiki = function(wikiName) {
   This checks to see if a wiki has no connected sockets and if not it unloads
   the wiki.
 */
-$tw.Bob.PruneConnections = function () {
+$tw.Bob.PruneConnections = function() {
   if($tw.settings.autoUnloadWikis === "true") {
     $tw.connections.forEach(function(connection) {
       if(connection.socket !== undefined) {

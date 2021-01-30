@@ -23,7 +23,7 @@ exports.handler = function(request,response,state) {
   if($tw.settings.API.pluginLibrary === 'yes') {
     const path = require('path');
     const fs = require('fs');
-    const getPlugin = function (request) {
+    const getPlugin = function(request) {
       const urlParts = request.url.split('/')
       const pluginPaths = $tw.getLibraryItemSearchPaths($tw.config.pluginsPath,$tw.config.pluginsEnvVar);
       const pluginPath = $tw.findLibraryItem(urlParts[urlParts.length-2]+'/'+urlParts[urlParts.length-1],pluginPaths)

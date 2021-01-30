@@ -48,11 +48,11 @@ if($tw.node) {
     if(!scriptActive[queue] && scriptQueue[queue].length > 0) {
       childproc = require('child_process').spawn(scriptQueue[queue][0].command, scriptQueue[queue][0].args, scriptQueue[queue][0].options);
       scriptActive[queue] = true;
-      childproc.on('error', function (err) {
+      childproc.on('error', function(err) {
         clearQueue(queue);
         $tw.Bob.logger.log('Script error: ', err, {level:1});
       })
-      childproc.on('exit', function () {
+      childproc.on('exit', function() {
         // Remove the finished task from the queue
         if(scriptQueue[queue].length > 0) {
           scriptQueue[queue].shift();
@@ -70,7 +70,7 @@ if($tw.node) {
       childproc.kill('SIGINT');
     }
   }
-  $tw.nodeMessageHandlers.runScript = function (data) {
+  $tw.nodeMessageHandlers.runScript = function(data) {
     const path = require('path');
     if(data.name) {
       if($tw.settings.scripts) {
@@ -103,7 +103,7 @@ if($tw.node) {
               processScriptQueue(data.queue);
             } else {
               childproc = require('child_process').spawn(command, args, options);
-              childproc.on('error', function (err) {
+              childproc.on('error', function(err) {
                 const message = {
                   alert: 'Script error: ' + err,
                   connections: [data.source_connection]
@@ -118,7 +118,7 @@ if($tw.node) {
     }
   }
   // Stop any currently running script queues
-  $tw.nodeMessageHandlers.stopScripts = function (data) {
+  $tw.nodeMessageHandlers.stopScripts = function(data) {
     data.queue = data.queue || 0;
     clearQueue(data.queue);
     const message = {

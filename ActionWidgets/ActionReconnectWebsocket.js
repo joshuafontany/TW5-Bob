@@ -3,7 +3,7 @@ title: $:/plugins/OokTech/Bob/action-reconnectwebsocket.js
 type: application/javascript
 module-type: widget
 
-Action widget that reconnects to a wiki server
+Action widget that reconnects a $tw.connections[index].socket to a wiki server
 
 <$action-reconnectwebsocket/>
 
@@ -37,7 +37,7 @@ ActionReconnect.prototype.render = function(parent,nextSibling) {
 Compute the internal state of the widget
 */
 ActionReconnect.prototype.execute = function() {
-  this.sync = this.getAttribute('sync', 'false');
+  this.index = this.getAttribute('socket', '0');
 };
 
 /*
@@ -56,7 +56,8 @@ ActionReconnect.prototype.refresh = function(changedTiddlers) {
 Invoke the action associated with this widget
 */
 ActionReconnect.prototype.invokeAction = function(triggeringWidget,event) {
-  $tw.Bob.Reconnect(this.sync);
+  let index = Number.isInteger(+this.index) && +this.index > -1 ? this.index : 0;
+  $tw.Bob.Reconnect(index);
   return true; // Action was invoked
 };
 

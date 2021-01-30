@@ -28,7 +28,7 @@ if($tw.node) {
     A per-wiki exclude list would be best but that is going to have annoying
     logic so it will come later.
   */
-  $tw.Bob.ExcludeFilter = $tw.Bob.ExcludeFilter || "[prefix[$:/state/]][prefix[$:/temp/]][prefix[$:/HistoryList]][prefix[$:/WikiSettings]][[$:/status/UserName]][[$:/Import]][[$:/plugins/OokTech/Bob/Server Warning]]";
+  $tw.Bob.ExcludeFilter = $tw.Bob.ExcludeFilter || "[prefix[$:/state/]][prefix[$:/temp/]][prefix[$:/HistoryList]][prefix[$:/WikiSettings]][[$:/status/UserName]][[$:/Import]][prefix[$:/plugins/OokTech/Bob/Socket]]";
 
   function MultiWikiAdaptor(options) {
     this.rootwiki = options.wiki;

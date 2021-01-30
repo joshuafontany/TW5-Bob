@@ -17,7 +17,7 @@ return a function that takes the fullname as the input and returns the route inf
 /*global $tw: false */
 "use strict";
 
-module.exports = function (fullName) {
+module.exports = function(fullName) {
   const thePath = (!fullName || fullName === 'RootWiki' || fullName === '')?new RegExp('^\/$'):new RegExp('^\/' + fullName + '\/?$');
   return {
     method: "GET",

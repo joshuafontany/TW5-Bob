@@ -81,7 +81,7 @@ exports.startup = function() {
         fs.mkdirSync(userSettingsFolder);
       }
       const connections = JSON.stringify($tw.Bob.Federation.connections, "", 2);
-      fs.writeFile(connectionsFilePath, connections, {encoding: "utf8"}, function (err) {
+      fs.writeFile(connectionsFilePath, connections, {encoding: "utf8"}, function(err) {
         if(err) {
           const message = {
             alert: 'Error saving connections:' + err,
@@ -624,7 +624,7 @@ exports.startup = function() {
           socket.on('open', function() {
             startRemoteSync($tw.Bob.Federation.connections[data.remoteUrl]);
           })
-          $tw.Bob.Federation.connections[data.remoteUrl].socket.on('message', function (message) {
+          $tw.Bob.Federation.connections[data.remoteUrl].socket.on('message', function(message) {
             const messageData = JSON.parse(message);
             handleRemoteReply($tw.Bob.Federation.connections[data.remoteUrl], messageData);
           })

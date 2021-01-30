@@ -48,13 +48,13 @@ if($tw.node) {
     The handle message function, split out so we can use it other places
   */
   $tw.Bob.handleMessage = function(event) {
-    let self = this;
     // Determine which connection the message came from
-    const thisIndex = $tw.connections.findIndex(function(connection) {return connection.socket === self;});
+    let self = this;
+    const connectionIndex = $tw.connections.findIndex(function(connection) {return connection.socket === self;});
     try {
       let eventData = JSON.parse(event);
       // Add the source to the eventData object so it can be used later.
-      eventData.source_connection = thisIndex;
+      eventData.source_connection = connectionIndex;
       // If the wiki on this connection hasn't been determined yet, take it
       // from the first message that lists the wiki.
       // After that the wiki can't be changed. It isn't a good security
@@ -65,8 +65,8 @@ if($tw.node) {
       // This is really only a concern for the secure server, in that case
       // you authenticate the token and it only works if the wiki matches
       // and the token has access to that wiki.
-      if(eventData.wiki && eventData.wiki !== $tw.connections[thisIndex].wiki && !$tw.connections[thisIndex].wiki) {
-        $tw.connections[thisIndex].wiki = eventData.wiki;
+      if(eventData.wiki && eventData.wiki !== $tw.connections[connectionIndex].wiki && !$tw.connections[connectionIndex].wiki) {
+        $tw.connections[connectionIndex].wiki = eventData.wiki;
         // Make sure that the new connection has the correct list of tiddlers
         // being edited.
         $tw.ServerSide.UpdateEditingTiddlers(false, eventData.wiki);
@@ -75,7 +75,7 @@ if($tw.node) {
       // This may not be a necessary security measure.
       // I don't think that not having this would open up any exploits but I am not sure.
       // TODO figure out if this is needed.
-      if(eventData.wiki === $tw.connections[thisIndex].wiki) {
+      if(eventData.wiki === $tw.connections[connectionIndex].wiki) {
         // Make sure we have a handler for the message type
         if(typeof $tw.nodeMessageHandlers[eventData.type] === 'function') {
           // Check authorisation
@@ -100,7 +100,7 @@ if($tw.node) {
         $tw.Bob.logger.log('Target wiki and connected wiki don\'t match', {level:3});
       }
     } catch (e) {
-      $tw.Bob.logger.error("WebSocket error: ", e, {level:1});
+      $tw.Bob.logger.error("WS handleMessage error: ", e, {level:1});
     }
   }
 
@@ -122,13 +122,17 @@ if($tw.node) {
     }
   */
   function handleConnection(client, request) {
-    $tw.Bob.logger.log("new connection", request.connection.remoteAddress, {level:2});
-    $tw.connections.push({'socket':client, url: request.connection.remoteAddress, 'wiki': undefined});
-    $tw.connections[Object.keys($tw.connections).length-1].index = Object.keys($tw.connections).length-1;
+    let ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
+      request.connection.remoteAddress,
+      index = Object.keys($tw.connections).length;
+    $tw.Bob.logger.log(`New client connection ${index} from ip ${ip}`, {level:2});
+    $tw.connections.push({'index': index, 'socket': client, url: ip, 'wiki': undefined, disconnected: null, reconnect: null});
     client.on('message', $tw.Bob.handleMessage);
-    // This doesn't do anything useful yet
-    $tw.wss.on('close', function(connection) {
-      $tw.Bob.logger.log('closed connection ', connection, {level:2});
+    client.on('close', function(event) {
+      // Determine which connection generated the event
+      let self = this;
+      let connectionIndex = $tw.connections.findIndex(function(connection) {return connection.socket === self;});
+      $tw.Bob.logger.log(`Closed client connection ${connectionIndex} from ${$tw.connections[connectionIndex].url}`, JSON.stringify(event), {level:2});
     });
     // Respond to the initial connection with a request for the tiddlers the
     // browser currently has to initialise everything.
@@ -164,7 +168,7 @@ if($tw.node) {
   };
 
   // Add route but make sure it isn't a duplicate.
-  SimpleServer.prototype.updateRoute = function (route) {
+  SimpleServer.prototype.updateRoute = function(route) {
     // Remove any routes that have the same path as the input
     this.routes = this.routes.filter(function(thisRoute) {
       return String(thisRoute.path) !== String(route.path);
@@ -174,7 +178,7 @@ if($tw.node) {
   }
 
   // This removes all but the root wiki from the routes
-  SimpleServer.prototype.clearRoutes = function () {
+  SimpleServer.prototype.clearRoutes = function() {
     // Remove any routes that don't match the root path
     this.routes = this.routes.filter(function(thisRoute) {
       return String(thisRoute.path) === String(/^\/$/) || String(thisRoute.path) === String(/^\/favicon.ico$/);
@@ -289,7 +293,7 @@ if($tw.node) {
   SimpleServer.prototype.listen = function(port,host) {
     let self = this;
     const httpServer = http.createServer(this.requestHandler.bind(this));
-    httpServer.on('error', function (e) {
+    httpServer.on('error', function(e) {
       if($tw.settings['ws-server'].autoIncrementPort || typeof $tw.settings['ws-server'].autoIncrementPort === 'undefined') {
         if(e.code === 'EADDRINUSE') {
           self.listen(Number(port)+1, host);
@@ -299,7 +303,7 @@ if($tw.node) {
         console.log(e);
       }
     });
-    httpServer.listen(port,host, function (e) {
+    httpServer.listen(port,host, function(e) {
       if(!e) {
         $tw.httpServerPort = port;
         $tw.Bob.logger.log("Serving on " + host + ":" + $tw.httpServerPort, {level:0});
@@ -374,7 +378,7 @@ if($tw.node) {
   /*
     Walk through the $tw.settings.wikis object and add a route for each listed wiki. The routes should make the wiki boot if it hasn't already.
   */
-  SimpleServer.prototype.addOtherRoutes = function () {
+  SimpleServer.prototype.addOtherRoutes = function() {
     // Add route handlers
     $tw.modules.forEachModuleOfType("serverroute", function(title, routeDefinition) {
       if(typeof routeDefinition === 'function') {
@@ -403,7 +407,7 @@ if($tw.node) {
 
   function addRoutesThing(inputObject, prefix) {
     if(typeof inputObject === 'object') {
-      Object.keys(inputObject).forEach(function (wikiName) {
+      Object.keys(inputObject).forEach(function(wikiName) {
         if(typeof inputObject[wikiName] === 'string') {
           let fullName = wikiName;
           if(prefix !== '') {
@@ -472,7 +476,7 @@ if($tw.node) {
               response.writeHead(403, {'Content-Type': 'text/plain'}).end();
             }
             // Make sure that the path exists, if so save the wiki file
-            fs.writeFile(path.resolve(filepath),body,{encoding: "utf8"},function (err) {
+            fs.writeFile(path.resolve(filepath),body,{encoding: "utf8"},function(err) {
               if(err) {
                 //$tw.Bob.logger.error(err, {level:1});
                 console.log(err)
@@ -493,7 +497,7 @@ if($tw.node) {
       }
     }
     const saverServer = http.createServer(saverHandler);
-    saverServer.on('error', function (e) {
+    saverServer.on('error', function(e) {
       if($tw.settings['ws-server'].autoIncrementPort || typeof $tw.settings['ws-server'].autoIncrementPort === 'undefined') {
         if(e.code === 'EADDRINUSE') {
           //$tw.Bob.logger.error('Port conflict with the saver server, do you have Bob running already?', e,{level:0})

@@ -73,7 +73,7 @@ function buildSettings (tiddler) {
   if(tiddler) {
     if(tiddler.fields) {
       let object = (typeof tiddler.fields.text === 'string')?JSON.parse(tiddler.fields.text):tiddler.fields.text;
-      Object.keys(object).forEach(function (field) {
+      Object.keys(object).forEach(function(field) {
         if(typeof object[field] === 'string' || typeof object[field] === 'number') {
           if(String(object[field]).startsWith('$:/WikiSettings/split')) {
             // Recurse!

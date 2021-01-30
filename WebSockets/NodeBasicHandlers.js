@@ -87,25 +87,6 @@ if($tw.node) {
   }
 
   /*
-    This responds to a ping from the browser. This is used to check and make sure
-    that the browser and server are connected.
-    It also echos back any data that was sent. This is used by the heartbeat to
-    make sure that the server and browser are still connected.
-  */
-  $tw.nodeMessageHandlers.ping = function(data) {
-    let message = {};
-    Object.keys(data).forEach(function (key) {
-      message[key] = data[key];
-    })
-    message.type = 'pong';
-    message.id = "heartbeat";
-    // When the server receives a ping it sends back a pong.
-    const response = JSON.stringify(message);
-    const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
-    $tw.connections[connectionIndex].socket.send(response);
-  }
-
-  /*
     This handles saveTiddler messages sent from the browser.
 
     If we always want to ignore draft tiddlers,
@@ -238,7 +219,7 @@ if($tw.node) {
   /*
     This updates what wikis are being served and where they are being served
   */
-  $tw.nodeMessageHandlers.updateRoutes = function (data) {
+  $tw.nodeMessageHandlers.updateRoutes = function(data) {
     // Then clear all the routes to the non-root wiki
     $tw.httpServer.clearRoutes();
     // The re-add all the routes from the settings
@@ -249,7 +230,7 @@ if($tw.node) {
   /*
     This sends back a list of all wikis that are viewable using the current access token.
   */
-  $tw.nodeMessageHandlers.getViewableWikiList = function (data) {
+  $tw.nodeMessageHandlers.getViewableWikiList = function(data) {
     data = data || {};
     const viewableWikis = $tw.ServerSide.getViewableWikiList(data);
     const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
@@ -270,7 +251,7 @@ if($tw.node) {
     This walks though subfolders too.
   */
   /*
-  $tw.nodeMessageHandlers.findAvailableWikis = function (data) {
+  $tw.nodeMessageHandlers.findAvailableWikis = function(data) {
     $tw.ServerSide.updateWikiListing(data);
   }
   */
