@@ -49,6 +49,13 @@ used. If the json isn't formatted correctly than default values will be used.
     "interval": 1000,
     "timeout": 5000
   },
+    "reconnect": {
+    "auto": true,
+    "initial": 100,
+    "decay": 1.5,
+    "max": 10000,
+    "abort": 60000
+  },
   "mimeMap": {
     ".ico": "image/x-icon",
     ".html": "text/html",
@@ -131,6 +138,12 @@ in windows replace `/home` with `C:\Users` and change the `/` into `\`.
 * `heartbeat` settings for the heartbeat that makes sure the browser and server are still connected. You can almost certainly ignore these settings.
 ** `interval` the heartbeat message is sent every `interval` milliseconds (1000 milliseconds = 1 second).
 ** `timeout` is the length of time to wait for a heartbeat signal before assuming that the connection is no longer working.
+* `reconnect` settings for automatic reconnections. After the abort timeout, the user will need to manually reconnect with the `action-reconnectwebsocket` widget. The automatic reconnection logic uses a random factor between `0.5-1.5` and the below values to calculate the delay between each reconnection attempt. This means attempts start with very little time between them, but if they continiously fail, the delay between attempts grows larger and larger. With the below settings, the delay quickly rises to the maximum of 1 minute, and will attempt reconnects for a total of 5 minutes before aborting.
+** `auto` will trigger automatic reconnection attempts if set to `true` (the default).
+** `initial` is the initial delay between automatic reconnection attempts, default `100` ms.
+** `decay` is the factor used in the exponential decay, default `1.5`. This base number is raised to the power of `N` or the number of attempts made during this reconnection cycle.
+** `max` is the maximum delay between reconnection attempts, default `60000` ms is 1 minute.
+** `abort` is the maximum ammount of time to attempt automatic reconnection, default `300000` ms is 5 minutes.
 * `mimeMap` lists the file extensions and their associated mime-types that the server is allowed to serve. This only has an effect if `filePathRoot` is set.
 * `API` things in this group are used for the api used for inter-server communication using the TWederBob plugin. This is only active if you use the `--wsserver` command, if you use an external server than these don't do anything.
 ** `enablePush` if this is set to `yes` than the server will accept tiddlers pushed using the TWederBob plugin.

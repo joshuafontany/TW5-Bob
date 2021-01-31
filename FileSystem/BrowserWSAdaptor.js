@@ -116,7 +116,7 @@ $tw.Bob.init = function() {
       type: 'setLoggedIn',
       wiki: $tw.wikiName
     };
-    $tw.Bob.sendToServer(login);
+    $tw.Bob.sendToServer(connectionIndex, login);
     $tw.Bob.getSettings();
     */
   }
@@ -130,7 +130,7 @@ $tw.Bob.init = function() {
     let self = this;
     let connectionIndex = $tw.connections.findIndex(function(connection) {return connection.socket === self;});
     console.log(`Closed socket ${connectionIndex} to ${$tw.connections[connectionIndex].url}`, JSON.stringify(event));
-    // log the disconnection time
+    // log the disconnection time & handle the message queue
     $tw.connections[connectionIndex].disconnected = Date.now();
     // clear the ping timers
     clearTimeout($tw.connections[connectionIndex].pingTimeout);
@@ -266,8 +266,8 @@ $tw.Bob.init = function() {
     }
   }
 
-  $tw.Bob.sendToServer = function(message, callback) {
-    const connectionIndex = 0;
+  $tw.Bob.sendToServer = function(connectionIndex, message, callback) {
+    connectionIndex = connectionIndex || 0;
     let messageData = {};
     // If the connection is open, send the message
     if($tw.connections[connectionIndex].socket.readyState === 1 && $tw.readOnly !== 'yes') {
@@ -363,7 +363,7 @@ $tw.Bob.init = function() {
       hashes: tiddlerHashes,
       wiki: $tw.wikiName
     };
-    $tw.Bob.sendToServer(message);
+    $tw.Bob.sendToServer(connectionIndex, message);
     //this.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Socket ${connectionIndex}/Unsent`);
   }
 
@@ -374,7 +374,8 @@ $tw.Bob.init = function() {
     Some unused hooks have commented out skeletons for adding those hooks in
     the future if they are needed.
   */
-  $tw.Bob.addHooks = function() {
+  $tw.Bob.addHooks = function(connectionIndex) {
+    connectionIndex = connectionIndex || 0;
     if(!$tw.wikiName) {
       $tw.wikiName = '';
     }
@@ -395,7 +396,7 @@ $tw.Bob.init = function() {
                 },
                 wiki: $tw.wikiName
               };
-              $tw.Bob.sendToServer(message);
+              $tw.Bob.sendToServer(connectionIndex, message);
             }
           }
         }, 200, event.tiddlerTitle)
@@ -409,7 +410,7 @@ $tw.Bob.init = function() {
         },
         wiki: $tw.wikiName
       };
-      $tw.Bob.sendToServer(message);
+      $tw.Bob.sendToServer(connectionIndex, message);
       // do the normal editing actions for the event
       return true;
     });
@@ -426,7 +427,7 @@ $tw.Bob.init = function() {
         },
         wiki: $tw.wikiName
       };
-      $tw.Bob.sendToServer(message);
+      $tw.Bob.sendToServer(connectionIndex, message);
       // Do the normal handling
       return event;
     });
@@ -802,7 +803,7 @@ BrowserWSAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
       changeCount: options.changeCount,
       tiddlerInfo: options.tiddlerInfo
     };
-    $tw.Bob.sendToServer(message, function(err, id){
+    $tw.Bob.sendToServer(connectionIndex, message, function(err, id){
       if(err){
         callback(err);
       }
@@ -839,7 +840,7 @@ BrowserWSAdaptor.prototype.loadTiddler = function(title, options, callback) {
       changeCount: options.changeCount,
       tiddlerInfo: options.tiddlerInfo
     }
-    $tw.Bob.sendToServer(message, function(err, id){
+    $tw.Bob.sendToServer(connectionIndex, message, function(err, id){
       if(err){
         callback(err);
       }
@@ -882,7 +883,7 @@ BrowserWSAdaptor.prototype.deleteTiddler = function(title, options, callback) {
       changeCount: options.changeCount,
       tiddlerInfo: options.tiddlerInfo
     };
-    $tw.Bob.sendToServer(message, function(err, id){
+    $tw.Bob.sendToServer(connectionIndex, message, function(err, id){
       if(err){
         callback(err);
       }
@@ -979,7 +980,7 @@ function setupSkinnyTiddlerLoading() {
             setTimeout(function() {
               if($tw.connections) {
                 if($tw.connections[0].socket.readyState === 1) {
-                  id = $tw.Bob.sendToServer(message)
+                  id = $tw.Bob.sendToServer(connectionIndex, message)
                   $tw.rootWidget.addEventListener('skinny-tiddlers', function(e) {
                     handleSkinnyTiddlers(e.detail)
                   })
@@ -993,7 +994,7 @@ function setupSkinnyTiddlerLoading() {
           }
           if($tw.connections) {
             if($tw.connections[0].socket.readyState === 1) {
-              id = $tw.Bob.sendToServer(message)
+              id = $tw.Bob.sendToServer(connectionIndex, message)
               $tw.rootWidget.addEventListener('skinny-tiddlers', function(e) {
                 handleSkinnyTiddlers(e.detail)
               })

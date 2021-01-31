@@ -14,10 +14,10 @@ disconnected.
 Any content of the `action-reconnectwebsocket` widget is ignored.
 
 |!Attribute |!Description |
-|!sync |If this is set to `true` than the wiki sends the server a list of its unsent changes and asks for any changes on the server since the wiki was disconnected (Default: `false`) |
+|!index | Reconnects the wesocket of the given index number to the server. (Default: `0`) |
 
 ! Examples
 
 ```
-<$action-reconnectwebsocet sync='false'/>
+<$action-reconnectwebsocet index='0'/>
 ```

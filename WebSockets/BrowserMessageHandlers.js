@@ -171,6 +171,7 @@ it will overwrite this file.
     system or if you only want a sub-set of existing tiddlers in the browser.
   */
   $tw.browserMessageHandlers.listTiddlers = function(data) {
+    const connectionIndex = data.source_connection;
     // This is an array of tiddler titles, each title is a string.
     const response = $tw.wiki.allTitles();
     // Send the response JSON as a string.
@@ -182,7 +183,7 @@ it will overwrite this file.
       wiki: $tw.wiki.getTiddlerText('$:/WikiName')
     };
     console.log("handler-listTiddlers: should send list here")
-    //$tw.Bob.sendToServer(message);
+    //$tw.Bob.sendToServer(connectionIndex, message);
   }
 
   /*

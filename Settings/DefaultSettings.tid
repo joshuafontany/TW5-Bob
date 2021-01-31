@@ -38,6 +38,13 @@ title: $:/plugins/OokTech/Bob/DefaultSettings
     "interval": 1000,
     "timeout": 5000
   },
+  "reconnect": {
+    "auto": true,
+    "initial": 100,
+    "decay": 1.5,
+    "max": 60000,
+    "abort": 300000
+  },
   "mimeMap": {
     ".aac": "audio/aac",
     ".avi": "video/x-msvideo",
