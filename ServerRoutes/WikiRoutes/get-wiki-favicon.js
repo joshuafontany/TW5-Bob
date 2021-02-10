@@ -21,8 +21,8 @@ module.exports = function(fullName) {
     method: "GET",
     path: thePath,
     handler: function(request,response,state) {
-      const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
-      const authorised = $tw.Bob.AccessCheck(fullName, token, 'view', 'wiki');
+      const token = $tw.utils.getCookie(request.headers.cookie, 'token');
+      const authorised = $tw.Bob.wsServer.AccessCheck(fullName, token, 'view', 'wiki');
       if(authorised) {
         // Load the wiki
         const exists = $tw.ServerSide.loadWiki(fullName);

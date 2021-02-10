@@ -1,7 +1,7 @@
 /*\
 title: $:/plugins/OokTech/Bob/NodeServerHandlers.js
 type: application/javascript
-module-type: startup
+module-type: node-messagehandlers
 
 These are message handler functions for the web socket servers. Use this file
 as a template for extending the web socket funcitons.
@@ -14,17 +14,13 @@ This handles messages sent to the node process.
 /*global $tw: false */
 "use strict";
 
-exports.platforms = ["node"];
-exports.startup = function() {
-  $tw.nodeMessageHandlers = $tw.nodeMessageHandlers || {};
-
   /* REQUIRED
     This responds to a ping from the browser. This is used to check and make sure
     that the browser and server are connected.
     It also echos back any data that was sent. This is used by the heartbeat to
     make sure that the server and browser are still connected.
   */
-  $tw.nodeMessageHandlers.ping = function(data) {
+  exports.ping = function(data) {
     let message = {};
     Object.keys(data).forEach(function(key) {
       message[key] = data[key];
@@ -35,7 +31,7 @@ exports.startup = function() {
     const response = JSON.stringify(message);
     const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
     if (connectionIndex) {
-      $tw.connections[connectionIndex].socket.send(response);
+      $tw.Bob.sessions[connectionIndex].socket.send(response);
     }
   }
 
@@ -44,7 +40,7 @@ exports.startup = function() {
     to ensure that the connection to the server is still live. How do we use this in the
     server? Server to server communication?
   */
-  $tw.nodeMessageHandlers.pong = function(data) {
+  exports.pong = function(data) {
     // Who did we ping?
   }
 
@@ -52,15 +48,15 @@ exports.startup = function() {
   $tw.Bob.Federation = $tw.Bob.Federation || {};
   $tw.Bob.Federation.remoteConnections = $tw.Bob.Federation.remoteConnections || {};
 
-  $tw.nodeMessageHandlers.openRemoteConnection = function(data) {
+  $tw.Bob.nodeMessageHandlers.openRemoteConnection = function(data) {
     $tw.Bob.logger.log('openRemoteConnection', data, {level: 3})
     if(data.url) {
       function authenticateMessage() {
         return true
       }
       function openRemoteSocket() {
-        $tw.settings.federation = $tw.settings.federation || {};
-        const serverName = $tw.settings.federation.serverName || 'Noh Neigh-m';
+        $tw.Bob.settings.federation = $tw.Bob.settings.federation || {};
+        const serverName = $tw.Bob.settings.federation.serverName || 'Noh Neigh-m';
         const serverFederationInfo = {
           type: 'requestServerInfo',
           info: {
@@ -70,12 +66,12 @@ exports.startup = function() {
             available_wikis: $tw.ServerSide.getViewableWikiList(),
             available_chats: [],
             staticUrl: 'no',
-            port: $tw.settings['ws-server'].port
+            port: $tw.Bob.settings['ws-server'].port
           }
         }
         $tw.Bob.logger.log('REMOTE SOCKET OPENED', data.url, {level: 4})
         $tw.Bob.Federation.sendToRemoteServer(serverFederationInfo, data.url)
-        $tw.Bob.Federation.sendToRemoteServer({type:'requestServerInfo', port:$tw.settings['ws-server'].port}, data.url)
+        $tw.Bob.Federation.sendToRemoteServer({type:'requestServerInfo', port:$tw.Bob.settings['ws-server'].port}, data.url)
         $tw.Bob.Federation.updateConnections()
       }
       // Check to make sure that we don't already have a connection to the
@@ -118,7 +114,7 @@ exports.startup = function() {
       otherThings: data to pass on to the other server as parameters of the message being sent.
     }
   */
-  $tw.nodeMessageHandlers.sendRemoteMessage = function(data) {
+  $tw.Bob.nodeMessageHandlers.sendRemoteMessage = function(data) {
     if(data.$server && data.$message) {
       const newData = {
         type: data.$message
@@ -147,7 +143,7 @@ exports.startup = function() {
     To do this the tiddler that has the information about the connection gets
     sent with the message and it is parsed here.
   */
-  $tw.nodeMessageHandlers.updateFederatedConnectionInfo = function(data) {
+  $tw.Bob.nodeMessageHandlers.updateFederatedConnectionInfo = function(data) {
     if(data.tid_param) {
       $tw.Bob.Federation.connections[data.tid_param.server_name].available_wikis[data.tid_param.name] = $tw.Bob.Federation.connections[data.tid_param.server_name].available_wikis[data.tid_param.name] || {};
       // $tw.Bob.Federation.connections[data.tid_param.server_name].availableWikis[data.tid_param.name] = $tw.Bob.Federation.connections[data.tid_param.server_name].availableWikis[data.tid_param.name] || {};
@@ -167,7 +163,7 @@ exports.startup = function() {
   /*
     This lets us shutdown the server from within the wiki.
   */
-  $tw.nodeMessageHandlers.shutdownServer = function(data) {
+  exports.shutdownServer = function(data) {
     $tw.Bob.logger.log('Shutting down server.', {level:0});
     // TODO figure out if there are any cleanup tasks we should do here.
     process.exit();
@@ -182,8 +178,8 @@ exports.startup = function() {
     - populate the list of viewable wikis
     - add any configuration interface things
   */
-  $tw.nodeMessageHandlers.setLoggedIn = function(data) {
-    //$tw.CreateSettingsTiddlers(data);
+  exports.setLoggedIn = function(data) {
+    //$tw.ServerSide.CreateSettingsTiddlers(data);
   }
 
   /*
@@ -192,7 +188,7 @@ exports.startup = function() {
     viewers - the list of people who can view the wiki
     editors - the list of people who can edit the wiki
   */
-  $tw.nodeMessageHandlers.setWikiPermissions = function(data) {
+  exports.setWikiPermissions = function(data) {
     // If the person doing this is owner of the wiki they can continue
     if($tw.ExternalServer) {
       $tw.ExternalServer.updatePermissions(data);
@@ -228,7 +224,7 @@ exports.startup = function() {
     For now we can send a list of tiddlers in the browser and any on the server
     that aren't listed need to be sent.
   */
-  $tw.nodeMessageHandlers.syncChanges = function(data) {
+  exports.syncChanges = function(data) {
     // Make sure that the wiki that the syncing is for is actually loaded
     // TODO make sure that this works for wikis that are under multiple levels
     $tw.ServerSide.loadWiki(data.wiki);
@@ -273,7 +269,7 @@ exports.startup = function() {
           tempTid.fields.title = messageData.title;
           tempTid.hash = messageData.hash;
           const serverTiddler = $tw.Bob.Wikis[data.wiki].wiki.getTiddler(tempTid.fields.title);
-          if($tw.Bob.Shared.TiddlerHasChanged(serverTiddler, tempTid)) {
+          if($tw.utils.TiddlerHasChanged(serverTiddler, tempTid)) {
             conflicts.push(messageData.title);
           }
         }
@@ -284,7 +280,7 @@ exports.startup = function() {
     queue.forEach(function(messageData){
       if(conflicts.indexOf(messageData.title) === -1) {
         // Send the message to the handler with the appropriate setup
-        $tw.Bob.handleMessage.call($tw.connections[data.source_connection].socket, JSON.stringify(messageData.message));
+        $tw.Bob.wsServer.handleMessage.call($tw.Bob.sessions[data.source_connection].socket, JSON.stringify(messageData.message));
       }
     });
     // Then from the server side
@@ -311,7 +307,7 @@ exports.startup = function() {
         }
         message.tiddler = tiddler;
         if(typeof tiddler === 'object') {
-          $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message)
+          $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message)
         }
       }
     });
@@ -347,7 +343,7 @@ exports.startup = function() {
           };
         }
         if(message) {
-          $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message);
+          $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
         }
       }
     })
@@ -372,7 +368,7 @@ exports.startup = function() {
         tiddler: tid
       };
       if(tid) {
-        if(data.hashes[tidTitle] !== $tw.Bob.Shared.getTiddlerHash(tid)) {
+        if(data.hashes[tidTitle] !== $tw.utils.getTiddlerHash(tid)) {
           // Send the updated tiddler
           message.type = 'saveTiddler'
         }
@@ -383,12 +379,12 @@ exports.startup = function() {
         message.message = 'deleteTiddler'
       }
       if(message.type) {
-        $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message);
+        $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
       }
     })
   }
 
-  $tw.nodeMessageHandlers.updateSetting = function(data) {
+  exports.updateSetting = function(data) {
     const path = require('path');
     const fs = require('fs');
     if(data.remove && typeof data.remove === 'string') {
@@ -396,11 +392,11 @@ exports.startup = function() {
       const pieces = data.remove.split('.');
       if(pieces) {
         if(pieces.length === 1) {
-          if($tw.settings[pieces[0]]) {
-            delete $tw.settings[pieces[0]]
+          if($tw.Bob.settings[pieces[0]]) {
+            delete $tw.Bob.settings[pieces[0]]
           }
-        } else if($tw.settings[pieces[0]]) {
-          let current = $tw.settings;
+        } else if($tw.Bob.settings[pieces[0]]) {
+          let current = $tw.Bob.settings;
           for(let i = 0; i < pieces.length ; i++) {
             if(i == pieces.length - 1) {
               // If we are at the end and it exists delete the setting
@@ -417,7 +413,7 @@ exports.startup = function() {
           }
         }
       }
-      $tw.CreateSettingsTiddlers(data);
+      $tw.ServerSide.CreateSettingsTiddlers(data);
       const message = {
         alert: 'Updated 1 wiki settings.'
       };
@@ -454,44 +450,44 @@ exports.startup = function() {
         error = e;
       }
       if(Object.keys(updatesObject).length > 0) {
-        $tw.updateSettings($tw.settings, updatesObject);
+        $tw.ServerSide.updateSettings($tw.Bob.settings, updatesObject);
       }
       if(!failed) {
-        $tw.CreateSettingsTiddlers(data);
+        $tw.ServerSide.CreateSettingsTiddlers(data);
         const message = {
           alert: 'Updated ' + Object.keys(updatesObject).length + ' wiki settings.'
         };
         $tw.ServerSide.sendBrowserAlert(message);
       } else {
-        $tw.CreateSettingsTiddlers(data);
+        $tw.ServerSide.CreateSettingsTiddlers(data);
         const message = {
           alert: 'Failed to update settings with error: ' + error
         };
         $tw.ServerSide.sendBrowserAlert(message);
       }
     }
-    $tw.nodeMessageHandlers.saveSettings({fromServer: true, wiki: data.wiki})
+    this.saveSettings({fromServer: true, wiki: data.wiki})
   }
 
   /*
     This updates the settings.json file based on the changes that have been made
     in the browser.
   */
-  $tw.nodeMessageHandlers.saveSettings = function(data) {
+  exports.saveSettings = function(data) {
     if($tw.ExternalServer) {
       // save the settings to the database
-      $tw.saveSetting($tw.settings);
+      $tw.saveSetting($tw.Bob.settings);
     } else {
       const path = require('path');
       const fs = require('fs');
-      let settings = JSON.stringify($tw.settings, "", 2);
+      let settings = JSON.stringify($tw.Bob.settings, "", 2);
       if(data.fromServer !== true && data.settingsString) {
         // Get first tiddler to start out
         settings = data.settingsString;
 
-        // Update the $tw.settings object
+        // Update the $tw.Bob.settings object
         // Put the updated version in.
-        $tw.updateSettings($tw.settings, JSON.parse(settings));
+        $tw.ServerSide.updateSettings($tw.Bob.settings, JSON.parse(settings));
       }
       // Save the updated settings
       const userSettingsPath = path.join($tw.boot.wikiPath, 'settings', 'settings.json');
@@ -501,7 +497,7 @@ exports.startup = function() {
         fs.mkdirSync(userSettingsFolder);
       }
       // This should prevent an empty string from ever being given
-      fs.writeFile(userSettingsPath, JSON.stringify($tw.settings, "", 2), {encoding: "utf8"}, function(err) {
+      fs.writeFile(userSettingsPath, JSON.stringify($tw.Bob.settings, "", 2), {encoding: "utf8"}, function(err) {
         if(err) {
           const message = {
             alert: 'Error saving settings:' + err,
@@ -535,13 +531,13 @@ exports.startup = function() {
     /*
     if(typeof data.settingsString === "string") {
       try {
-        $tw.updateSettings($tw.settings, JSON.parse(data.settingsString));
+        $tw.ServerSide.updateSettings($tw.Bob.settings, JSON.parse(data.settingsString));
       } catch (e) {
         // nothing
       }
     }
     */
-    $tw.CreateSettingsTiddlers(data);
+    $tw.ServerSide.CreateSettingsTiddlers(data);
     const message = {
       alert: 'Saved wiki settings.',
       wikis: [data.wiki]
@@ -558,14 +554,14 @@ exports.startup = function() {
     wiki. And it also need to find all of the tiddlers for the wiki and remove
     them. But I don't know how to do that without deleting the tiddlers.
   */
-  $tw.nodeMessageHandlers.unloadWiki = function(data) {
+  exports.unloadWiki = function(data) {
     $tw.Bob.unloadWiki(data.wikiName);
   }
 
   /*
     This sends a list of all available plugins to the wiki
   */
-  $tw.nodeMessageHandlers.getPluginList = function(data) {
+  exports.getPluginList = function(data) {
     const pluginNames = $tw.ServerSide.getViewablePluginsList(data);
     const fields = {
       title: '$:/Bob/AvailablePluginList',
@@ -579,13 +575,13 @@ exports.startup = function() {
       tiddler: tiddler,
       wiki: data.wiki
     }
-    $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message)
+    $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message)
   }
 
   /*
     This sends a list of all available plugins to the wiki
   */
-  $tw.nodeMessageHandlers.getThemeList = function(data) {
+  exports.getThemeList = function(data) {
     const themeNames = ServerSide.getViewableThemesList(data);
     const fields = {
       title: '$:/Bob/AvailableThemeList',
@@ -599,14 +595,14 @@ exports.startup = function() {
       tiddler: tiddler,
       wiki: data.wiki
     };
-    $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message)
+    $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message)
   }
 
   /*
     This loads the tiddlywiki.info and if new versions are given it updates the
     description, list of plugins, themes and languages
   */
-  $tw.nodeMessageHandlers.updateTiddlyWikiInfo = function(data) {
+  exports.updateTiddlyWikiInfo = function(data) {
     if(data.wiki) {
       const path = require('path')
       const fs = require('fs')
@@ -644,7 +640,7 @@ exports.startup = function() {
     But first it checks the plugin version to make sure that it is newer than
     the existing one
   */
-  $tw.nodeMessageHandlers.savePluginFolder = function(data) {
+  exports.savePluginFolder = function(data) {
     if(data.plugin) {
       const fs = require('fs')
       const path = require('path')
@@ -653,7 +649,7 @@ exports.startup = function() {
       if(pluginTiddler) {
         const pluginName = data.plugin.replace(/^\$:\/plugins\//, '')
         const basePath = $tw.ServerSide.getBasePath()
-        const pluginFolderPath = path.resolve(basePath, $tw.settings.pluginsPath, pluginName)
+        const pluginFolderPath = path.resolve(basePath, $tw.Bob.settings.pluginsPath, pluginName)
         const pluginInfoPath = path.join(pluginFolderPath, 'plugin.info')
         let isNewVersion = true
         let oldVersion = {}
@@ -735,7 +731,7 @@ exports.startup = function() {
     Given a url that points to either github, gitlab or a zip file with a
     plugin this gets the plugin and adds it to the plugins on the server.
   */
-  $tw.nodeMessageHandlers.getGitPlugin = function(data) {
+  exports.getGitPlugin = function(data) {
     if(data.url) {
       // Special handling for github, we will see about other things later.
       if(!data.url.toLowerCase().endsWith('.zip')) {
@@ -789,7 +785,7 @@ exports.startup = function() {
               exists = true;
             }
             const basePath = $tw.ServerSide.getBasePath()
-            const pluginsPath = path.resolve(basePath, $tw.settings.pluginsPath);
+            const pluginsPath = path.resolve(basePath, $tw.Bob.settings.pluginsPath);
             // If we don't have the plugin than create the plugin folder, also
             // creating the author folder if we don't have it already.
             if(!exists) {
@@ -851,10 +847,10 @@ exports.startup = function() {
     wiki puts the files in the wiki specific folder
 
   */
-  $tw.nodeMessageHandlers.makeImagesExternal = function(data) {
-    const authorised = $tw.Bob.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'makeImagesExternal', 'server');
+  exports.makeImagesExternal = function(data) {
+    const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'makeImagesExternal', 'server');
     if(authorised) {
-      $tw.settings.fileURLPrefix = $tw.settings.fileURLPrefix || 'files'
+      $tw.Bob.settings.fileURLPrefix = $tw.Bob.settings.fileURLPrefix || 'files'
       const path = require('path');
       const fs = require('fs');
       // Get all the tiddlers that have a media type we care about
@@ -862,9 +858,9 @@ exports.startup = function() {
       const basePath = $tw.ServerSide.getBasePath()
       let midPath;
       if(data.storeIn !== 'wiki') {
-        midPath = path.join($tw.settings.wikisPath, data.wiki);
+        midPath = path.join($tw.Bob.settings.wikisPath, data.wiki);
       } else {
-        //midPath = $tw.settings.filePathRoot;
+        //midPath = $tw.Bob.settings.filePathRoot;
         midPath = $tw.ServerSide.getFilePathRoot();
       }
       let filesPath;
@@ -892,9 +888,9 @@ exports.startup = function() {
                     let newFields = JSON.parse(JSON.stringify(tiddler.fields));
                     newFields.text = ''
                     if(data.storeIn === 'wiki') {
-                      newFields._canonical_uri = path.join('/', data.wiki, $tw.settings.fileURLPrefix, fileName);
+                      newFields._canonical_uri = path.join('/', data.wiki, $tw.Bob.settings.fileURLPrefix, fileName);
                     } else {
-                      newFields._canonical_uri = path.join('/', $tw.settings.fileURLPrefix, fileName);
+                      newFields._canonical_uri = path.join('/', $tw.Bob.settings.fileURLPrefix, fileName);
                     }
                     //delete the original tiddler
                     $tw.Bob.DeleteTiddler($tw.Bob.Files[data.wiki][tidTitle].filepath.split('/').slice(0,-1).join('/'), fileName, data.wiki);
@@ -930,7 +926,7 @@ exports.startup = function() {
 
     If the new name is an existing wiki than this won't do anything.
   */
-  $tw.nodeMessageHandlers.renameWiki = function(data) {
+  exports.renameWiki = function(data) {
     $tw.ServerSide.renameWiki(data, function(e) {
       if(!e) {
         const message = {
@@ -960,7 +956,7 @@ exports.startup = function() {
     child wikis, is deleted, Otherwise only the tiddlywiki.info file and the
     tiddlers folder is removed.
   */
-  $tw.nodeMessageHandlers.deleteWiki = function(data) {
+  exports.deleteWiki = function(data) {
     $tw.ServerSide.deleteWiki(data, thisCallback);
 
     function thisCallback(err) {
@@ -998,9 +994,9 @@ exports.startup = function() {
 
     TODO figure out the authorisation level for this one
   */
-  $tw.nodeMessageHandlers.listFiles = function(data) {
+  exports.listFiles = function(data) {
     function thisCallback(prefix, filteredItems, urlPath) {
-      data.tiddler = data.tiddler || path.join('$:/state/fileList/', data.wiki, $tw.settings.fileURLPrefix, urlPath);
+      data.tiddler = data.tiddler || path.join('$:/state/fileList/', data.wiki, $tw.Bob.settings.fileURLPrefix, urlPath);
       data.field = data.field || 'list';
 
       const fields = {
@@ -1016,7 +1012,7 @@ exports.startup = function() {
         },
         wiki: data.wiki
       }
-      $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message);
+      $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
     }
 
     $tw.ServerSide.listFiles(data, thisCallback);
@@ -1052,16 +1048,16 @@ exports.startup = function() {
     TODO - maybe add some check to limit where the folders can be
     TODO - add a flag to add folders to the static file server component
   */
-  $tw.nodeMessageHandlers.mediaScan = function(data) {
+  exports.mediaScan = function(data) {
     data.prefix = data.prefix || 'prefix';
     const path = require('path');
     const fs = require('fs');
-    const authorised = $tw.Bob.AccessCheck(data.wiki, {"decoded":data.decoded}, 'serverAdmin');
+    const authorised = $tw.Bob.wsServer.AccessCheck(data.wiki, {"decoded":data.decoded}, 'serverAdmin');
     const filePathRoot = $tw.ServerSide.getFilePathRoot();
-    $tw.settings.fileURLPrefix = $tw.settings.fileURLPrefix || 'files';
+    $tw.Bob.settings.fileURLPrefix = $tw.Bob.settings.fileURLPrefix || 'files';
     if(authorised) {
-      $tw.settings.servingFiles[data.prefix] = data.folder;
-      const mimeMap = $tw.settings.mimeMap || {
+      $tw.Bob.settings.servingFiles[data.prefix] = data.folder;
+      const mimeMap = $tw.Bob.settings.mimeMap || {
         '.aac': 'audio/aac',
         '.avi': 'video/x-msvideo',
         '.csv': 'text/csv',
@@ -1096,8 +1092,8 @@ exports.startup = function() {
         // Make sure the folder exists
         let mediaURIList = [];
         /*
-        if(typeof $tw.settings.filePathRoot !== 'string') {
-          $tw.settings.filePathRoot = './files';
+        if(typeof $tw.Bob.settings.filePathRoot !== 'string') {
+          $tw.Bob.settings.filePathRoot = './files';
         }
         */
         const mediaDir = path.resolve($tw.ServerSide.getBasePath(), filePathRoot, data.folder)
@@ -1122,7 +1118,7 @@ exports.startup = function() {
               if(fs.statSync(path.join(mediaDir, file)).isFile()) {
                 const pathInfo = path.parse(file);
                 if(data.mediaTypes.indexOf(pathInfo.ext) !== -1) {
-                  const thisURI = '/' + $tw.settings.fileURLPrefix + '/' + data.prefix + '/' + path.relative(path.resolve(data.folder),path.join(mediaDir, file));
+                  const thisURI = '/' + $tw.Bob.settings.fileURLPrefix + '/' + data.prefix + '/' + path.relative(path.resolve(data.folder),path.join(mediaDir, file));
                   if(data.prune === 'yes') {
                     // Remove any _canonical_uri tiddlers that have paths to
                     // this folder but no files exist for them.
@@ -1180,14 +1176,14 @@ exports.startup = function() {
         }
       }
       // Save the settings
-      $tw.nodeMessageHandlers.saveSettings({fromServer: true, wiki: data.wiki});
+      this.saveSettings({fromServer: true, wiki: data.wiki});
     }
   }
 
   /*
     List visible profiles
   */
-  $tw.nodeMessageHandlers.listProfiles = function(data) {
+  exports.listProfiles = function(data) {
     // Access is controlled by the listProfile function, it checks each profile
     // to see if the logged in person can view it.
     const profiles = $tw.ServerSide.listProfiles(data);
@@ -1195,8 +1191,8 @@ exports.startup = function() {
       type: "profileList",
       profiles: profiles
     }
-    $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message);
+    $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
   }
 
-}
+
 })();

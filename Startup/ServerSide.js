@@ -11,10 +11,6 @@ This is server functions that can be shared between different server types
 /*jslint node: true, browser: true */
 /*global $tw: false */
 
-if($tw.ServerSide) {
-  return $tw.ServerSide;
-} else {
-
 let ServerSide = {};
 
 const path = require('path');
@@ -37,23 +33,19 @@ if(!Object.values) {
 }
 // END POLYFILL
 
-$tw.Bob = $tw.Bob || {};
-$tw.Bob.Files = $tw.Bob.Files || {};
-$tw.Bob.EditingTiddlers = $tw.Bob.EditingTiddlers || {};
-
 /*
   Return the resolved filePathRoot
 */
 ServerSide.getFilePathRoot= function() {
   const currPath = path.parse(process.argv[0]).name !== 'node' ? path.dirname(process.argv[0]) : process.cwd();
   let basePath = '';
-  $tw.settings.filePathRoot = $tw.settings.filePathRoot || './files';
-  if($tw.settings.filePathRoot === 'cwd') {
+  $tw.Bob.settings.filePathRoot = $tw.Bob.settings.filePathRoot || './files';
+  if($tw.Bob.settings.filePathRoot === 'cwd') {
     basePath = path.parse(process.argv[0]).name !== 'node' ? path.dirname(process.argv[0]) : process.cwd();
-  } else if($tw.settings.filePathRoot === 'homedir') {
+  } else if($tw.Bob.settings.filePathRoot === 'homedir') {
     basePath = os.homedir();
   } else {
-    basePath = path.resolve(currPath, $tw.settings.filePathRoot);
+    basePath = path.resolve(currPath, $tw.Bob.settings.filePathRoot);
   }
 }
 
@@ -63,13 +55,13 @@ ServerSide.getFilePathRoot= function() {
 ServerSide.getBasePath = function() {
   const currPath = path.parse(process.argv[0]).name !== 'node' ? path.dirname(process.argv[0]) : process.cwd();
   let basePath = '';
-  $tw.settings.wikiPathBase = $tw.settings.wikiPathBase || 'cwd';
-  if($tw.settings.wikiPathBase === 'homedir') {
+  $tw.Bob.settings.wikiPathBase = $tw.Bob.settings.wikiPathBase || 'cwd';
+  if($tw.Bob.settings.wikiPathBase === 'homedir') {
     basePath = os.homedir();
-  } else if($tw.settings.wikiPathBase === 'cwd' || !$tw.settings.wikiPathBase) {
+  } else if($tw.Bob.settings.wikiPathBase === 'cwd' || !$tw.Bob.settings.wikiPathBase) {
     basePath = path.parse(process.argv[0]).name !== 'node' ? path.dirname(process.argv[0]) : process.cwd();
   } else {
-    basePath = path.resolve(currPath, $tw.settings.wikiPathBase);
+    basePath = path.resolve(currPath, $tw.Bob.settings.wikiPathBase);
   }
   return basePath;
 }
@@ -79,8 +71,8 @@ ServerSide.getBasePath = function() {
 */
 ServerSide.generateWikiPath = function(wikiName) {
   const basePath = $tw.ServerSide.getBasePath();
-  $tw.settings.wikisPath = $tw.settings.wikisPath || './Wikis';
-  return path.resolve(basePath, $tw.settings.wikisPath, wikiName);
+  $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis';
+  return path.resolve(basePath, $tw.Bob.settings.wikisPath, wikiName);
 }
 
 /*
@@ -92,15 +84,15 @@ ServerSide.getWikiPath = function(wikiName) {
   let wikiPath = undefined;
   if(wikiName === 'RootWiki') {
     wikiPath = path.resolve($tw.boot.wikiPath);
-  } else if(wikiName.indexOf('/') === -1 && $tw.settings.wikis[wikiName]) {
-    if(typeof $tw.settings.wikis[wikiName] === 'string') {
-      wikiPath = $tw.settings.wikis[wikiName];
-    } else if(typeof $tw.settings.wikis[wikiName].__path === 'string') {
-      wikiPath = $tw.settings.wikis[wikiName].__path;
+  } else if(wikiName.indexOf('/') === -1 && $tw.Bob.settings.wikis[wikiName]) {
+    if(typeof $tw.Bob.settings.wikis[wikiName] === 'string') {
+      wikiPath = $tw.Bob.settings.wikis[wikiName];
+    } else if(typeof $tw.Bob.settings.wikis[wikiName].__path === 'string') {
+      wikiPath = $tw.Bob.settings.wikis[wikiName].__path;
     }
   } else {
     const parts = wikiName.split('/');
-    let obj = $tw.settings.wikis;
+    let obj = $tw.Bob.settings.wikis;
     for (let i = 0; i < parts.length; i++) {
       if(obj[parts[i]]) {
         if(i === parts.length - 1) {
@@ -121,9 +113,9 @@ ServerSide.getWikiPath = function(wikiName) {
   }
   // If the wikiPath exists convert it to an absolute path
   if(typeof wikiPath !== 'undefined') {
-    $tw.settings.wikisPath = $tw.settings.wikisPath || './Wikis';
+    $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis';
     const basePath = $tw.ServerSide.getBasePath()
-    wikiPath = path.resolve(basePath, $tw.settings.wikisPath, wikiPath);
+    wikiPath = path.resolve(basePath, $tw.Bob.settings.wikisPath, wikiPath);
   }
   return wikiPath;
 }
@@ -135,7 +127,7 @@ ServerSide.wikiExists = function(wikiFolder) {
   let exists = false;
   // Make sure that the wiki actually exists
   if(wikiFolder) {
-    $tw.settings.wikisPath = $tw.settings.wikisPath || './Wikis'
+    $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis'
     const basePath = $tw.ServerSide.getBasePath()
     // This is a bit hacky to get around problems with loading the root wiki
     // This tests if the wiki is the root wiki and ignores the other pathing
@@ -144,7 +136,7 @@ ServerSide.wikiExists = function(wikiFolder) {
       wikiFolder = path.resolve($tw.boot.wikiPath)
     } else {
       // Get the correct path to the tiddlywiki.info file
-      wikiFolder = path.resolve(basePath, $tw.settings.wikisPath, wikiFolder);
+      wikiFolder = path.resolve(basePath, $tw.Bob.settings.wikisPath, wikiFolder);
       // Make sure it exists
     }
     exists = fs.existsSync(path.resolve(wikiFolder, 'tiddlywiki.info'));
@@ -175,7 +167,7 @@ ServerSide.existsListed = function(wikiName) {
   This function loads a wiki and returns a timeout with any callback.
 */
 ServerSide.loadWiki = function(wikiName, cb) {
-  $tw.settings['ws-server'] = $tw.settings['ws-server'] || {}
+  $tw.Bob.settings['ws-server'] = $tw.Bob.settings['ws-server'] || {}
   $tw.Bob = $tw.Bob || {};
   $tw.Bob.Wikis = $tw.Bob.Wikis || {};
   $tw.Bob.Wikis[wikiName] = $tw.Bob.Wikis[wikiName] || {};
@@ -259,7 +251,7 @@ ServerSide.loadWiki = function(wikiName, cb) {
       }
       // Recursively build the folder tree structure
       $tw.Bob.Wikis[wikiName].FolderTree = buildTree('.', $tw.Bob.Wikis[wikiName].wikiTiddlersPath, {});
-      if($tw.settings.disableFileWatchers !== 'yes') {
+      if($tw.Bob.settings.disableFileWatchers !== 'yes') {
         // Watch the root tiddlers folder for chanegs
         $tw.Bob.WatchAllFolders($tw.Bob.Wikis[wikiName].FolderTree, wikiName);
       }
@@ -498,17 +490,17 @@ ServerSide.prepareWiki = function(fullName, servePlugin, cache='yes') {
         $tw.Bob.Wikis[fullName].plugins.push('$:/plugins/OokTech/Bob');
       }
     }
-    $tw.settings.includePluginList = $tw.settings.includePluginList || [];
-    $tw.settings.excludePluginList = $tw.settings.excludePluginList || [];
+    $tw.Bob.settings.includePluginList = $tw.Bob.settings.includePluginList || [];
+    $tw.Bob.settings.excludePluginList = $tw.Bob.settings.excludePluginList || [];
     // Add any plugins that should be included in every wiki
-    const includeList = Object.values($tw.settings.includePluginList).filter(function(plugin) {
+    const includeList = Object.values($tw.Bob.settings.includePluginList).filter(function(plugin) {
       return $tw.Bob.Wikis[fullName].plugins.indexOf(plugin) === -1;
     }).map(function(pluginName) {return '$:/plugins/'+pluginName;})
     $tw.Bob.Wikis[fullName].plugins = $tw.Bob.Wikis[fullName].plugins.concat(includeList);
     // Remove any plugins in the excluded list
     // The exclude list takes precidence over the include list
     $tw.Bob.Wikis[fullName].plugins = $tw.Bob.Wikis[fullName].plugins.filter(function(plugin) {
-      return Object.values($tw.settings.excludePluginList).indexOf(plugin) === -1;
+      return Object.values($tw.Bob.settings.excludePluginList).indexOf(plugin) === -1;
     })
     // Make sure that all the plugins are actually loaded.
     const missingPlugins = $tw.Bob.Wikis[fullName].plugins.filter(function(plugin) {
@@ -535,7 +527,7 @@ ServerSide.prepareWiki = function(fullName, servePlugin, cache='yes') {
       }
     };
     $tw.Bob.Wikis[fullName].wiki.addTiddler(new $tw.Tiddler({title: '$:/WikiName', text: fullName}))
-    const text = $tw.Bob.Wikis[fullName].wiki.renderTiddler("text/plain", $tw.settings['ws-server'].rootTiddler || "$:/core/save/all", options);
+    const text = $tw.Bob.Wikis[fullName].wiki.renderTiddler("text/plain", $tw.Bob.settings['ws-server'].rootTiddler || "$:/core/save/all", options);
     // Only cache the wiki if it isn't too big.
     if(text.length < 10*1024*1024 && cache !== 'no') {
       $tw.Bob.Wikis[fullName].cached = text;
@@ -699,7 +691,7 @@ const buildTree = function(location, parent) {
   We can turn off browser messages
 */
 ServerSide.sendBrowserAlert = function(input) {
-  if($tw.settings.disableBrowserAlerts !== 'yes') {
+  if($tw.Bob.settings.disableBrowserAlerts !== 'yes') {
     const message = {
       type:'browserAlert',
       alert: input.alert
@@ -714,7 +706,7 @@ ServerSide.sendBrowserAlert = function(input) {
       let authenticationsList = false;
       if(input.connections.length > 0) {
         connectionsList = [];
-        $tw.connections.forEach(function(connection) {
+        $tw.Bob.sessions.forEach(function(connection) {
           if(input.connections.indexOf(connection.index) !== -1) {
             connectionsList.push(connection.index);
           }
@@ -722,7 +714,7 @@ ServerSide.sendBrowserAlert = function(input) {
       }
       if(input.wikis.length > 0) {
         wikisList = [];
-        $tw.connections.forEach(function(connection) {
+        $tw.Bob.sessions.forEach(function(connection) {
           if(input.wikis.indexOf(connection.wiki) !== -1) {
             wikisList.push(connection.index);
           }
@@ -751,8 +743,8 @@ ServerSide.sendBrowserAlert = function(input) {
           intersection = new Set([...intersection].filter(x => authenticationsSet.has(x)));
         }
         intersection.forEach(function(index) {
-          message.wiki = $tw.connections.wiki
-          $tw.Bob.SendToBrowser($tw.connections[index], message);
+          message.wiki = $tw.Bob.sessions.wiki
+          $tw.Bob.SendToBrowser($tw.Bob.sessions[index], message);
         });
       } else {
         $tw.Bob.logger.log('send message to all browsers', {level: 4})
@@ -790,10 +782,10 @@ ServerSide.getViewableWikiList = function(data) {
     return output;
   }
   // Get the wiki list of wiki names from the settings object
-  const wikiList = getList($tw.settings.wikis, '');
+  const wikiList = getList($tw.Bob.settings.wikis, '');
   const viewableWikis = [];
   wikiList.forEach(function(wikiName) {
-    if($tw.Bob.AccessCheck(wikiName, {"decoded": data.decoded}, 'view', 'wiki')) {
+    if($tw.Bob.wsServer.AccessCheck(wikiName, {"decoded": data.decoded}, 'view', 'wiki')) {
       viewableWikis.push(wikiName);
     }
   });
@@ -801,7 +793,7 @@ ServerSide.getViewableWikiList = function(data) {
   for (let i = 0; i < viewableWikis.length; i++) {
     tempObj[viewableWikis[i]] = ['view'];
     // Check if you can edit it
-    if($tw.Bob.AccessCheck(viewableWikis[i], {"decoded": data.decoded}, 'edit', 'wiki')) {
+    if($tw.Bob.wsServer.AccessCheck(viewableWikis[i], {"decoded": data.decoded}, 'edit', 'wiki')) {
       tempObj[viewableWikis[i]].push('edit');
     }
   }
@@ -812,11 +804,11 @@ ServerSide.getViewablePluginsList = function(data) {
   data = data || {};
   const viewablePlugins = [];
   const pluginList = $tw.utils.getPluginInfo();
-  if($tw.settings.pluginLibrary.allPublic === 'yes') {
+  if($tw.Bob.settings.pluginLibrary.allPublic === 'yes') {
     return pluginList;
   }
   Object.keys(pluginList).forEach(function(pluginName) {
-    if($tw.Bob.AccessCheck(pluginName, {"decoded": data.decoded}, 'view', 'plugin')) {
+    if($tw.Bob.wsServer.AccessCheck(pluginName, {"decoded": data.decoded}, 'view', 'plugin')) {
       viewablePlugins[pluginName] = pluginList[pluginName];
     }
   })
@@ -827,11 +819,11 @@ ServerSide.getViewableThemesList = function(data) {
   data = data || {};
   const viewableThemes = [];
   const themeList = $tw.utils.getThemeInfo();
-  if($tw.settings.themeLibrary.allPublic === 'yes') {
+  if($tw.Bob.settings.themeLibrary.allPublic === 'yes') {
     return themeList;
   }
   Object.keys(themeList).forEach(function(themeName) {
-    if($tw.Bob.AccessCheck(themeName, {"decoded": data.decoded}, 'view', 'theme')) {
+    if($tw.Bob.wsServer.AccessCheck(themeName, {"decoded": data.decoded}, 'view', 'theme')) {
       viewableThemes[themeName] = themeList[themeName];
     }
   })
@@ -840,10 +832,10 @@ ServerSide.getViewableThemesList = function(data) {
 
 ServerSide.getViewableEditionsList = function(data) {
   // This may not be needed anymore
-  if(typeof $tw.settings.editionsPath === 'string') {
+  if(typeof $tw.Bob.settings.editionsPath === 'string') {
     const basePath = $tw.ServerSide.getBasePath();
     // We need to make sure this doesn't overwrite existing thing
-    const fullEditionsPath = path.resolve(basePath, $tw.settings.editionsPath);
+    const fullEditionsPath = path.resolve(basePath, $tw.Bob.settings.editionsPath);
     if(process.env["TIDDLYWIKI_EDITION_PATH"] !== undefined && process.env["TIDDLYWIKI_EDITION_PATH"] !== '') {
       process.env["TIDDLYWIKI_EDITION_PATH"] = process.env["TIDDLYWIKI_EDITION_PATH"] + path.delimiter + fullEditionsPath;
     } else {
@@ -853,11 +845,11 @@ ServerSide.getViewableEditionsList = function(data) {
   data = data || {};
   const viewableEditions = {};
   const editionList =  $tw.utils.getEditionInfo();
-  if($tw.settings.editionLibrary.allPublic === 'yes') {
+  if($tw.Bob.settings.editionLibrary.allPublic === 'yes') {
     return editionList;
   }
   Object.keys(editionList).forEach(function(editionName) {
-    if($tw.Bob.AccessCheck(editionName, {"decoded": data.decoded}, 'view', 'edition')) {
+    if($tw.Bob.wsServer.AccessCheck(editionName, {"decoded": data.decoded}, 'view', 'edition')) {
       Object.keys(editionList).forEach(function(index) {
         viewableEditions[index] = editionList[index].description;
       });
@@ -871,7 +863,7 @@ ServerSide.getViewableLanguagesList = function(data) {
   const viewableLanguages = {};
   const languageList =  $tw.utils.getLanguageInfo();
   Object.keys(languageList).forEach(function(languageName) {
-    if($tw.Bob.AccessCheck(languageName, {"decoded": data.decoded}, 'view', 'edition')) {
+    if($tw.Bob.wsServer.AccessCheck(languageName, {"decoded": data.decoded}, 'view', 'edition')) {
       Object.keys(languageList).forEach(function(index) {
         viewableLanguages[index] = languageList[index].description;
       });
@@ -885,71 +877,71 @@ ServerSide.getViewableSettings = function(data) {
   // section visible to anyone
   // Nothing that uses websocket stuff here because they only work when logged
   // in
-  tempSettings.API = $tw.settings.API;
+  tempSettings.API = $tw.Bob.settings.API;
   // Federation stuff is visible because you don't have to login to want to see
   // if federation is possible with a server
-  tempSettings.enableFederation = $tw.settings.enableFederation;
-  tempSettings.federation = $tw.settings.federation;
+  tempSettings.enableFederation = $tw.Bob.settings.enableFederation;
+  tempSettings.federation = $tw.Bob.settings.federation;
 
   // Section visible by logged in people
   if(data.decoded) {
-    tempSettings.backups = $tw.settings.backups;
-    tempSettings.defaultVisibility = $tw.settings.defaultVisibility;
-    tempSettings.disableBrowserAlerts = $tw.settings.disableBrowserAlerts;
-    tempSettings.editionLibrary = $tw.settings.editionLibrary;
-    tempSettings.enableFileServer = $tw.settings.enableFileServer;
-    tempSettings.excludePluginList = $tw.settings.excludePluginList;
-    tempSettings.fileURLPrefix = $tw.settings.fileURLPrefix;
-    tempSettings.heartbeat = $tw.settings.heartbeat;
-    tempSettings.includePluginList = $tw.settings.includePluginList;
-    tempSettings.mimeMap = $tw.settings.mimeMap;
-    tempSettings.namespacedWikis = $tw.settings.namespacedWikis;
-    tempSettings.persistentUsernames = $tw.settings.persistentUsernames;
-    tempSettings.perWikiFiles = $tw.settings.perWikiFiles;
-    tempSettings.pluginLibrary = $tw.settings.pluginLibrary;
-    tempSettings.profileOptions = $tw.settings.profileOptions;
-    tempSettings.saveMediaOnServer = $tw.settings.saveMediaOnServer;
-    tempSettings.themeLibrary = $tw.settings.themeLibrary;
-    tempSettings.tokenTTL = $tw.settings.tokenTTL;
+    tempSettings.backups = $tw.Bob.settings.backups;
+    tempSettings.defaultVisibility = $tw.Bob.settings.defaultVisibility;
+    tempSettings.disableBrowserAlerts = $tw.Bob.settings.disableBrowserAlerts;
+    tempSettings.editionLibrary = $tw.Bob.settings.editionLibrary;
+    tempSettings.enableFileServer = $tw.Bob.settings.enableFileServer;
+    tempSettings.excludePluginList = $tw.Bob.settings.excludePluginList;
+    tempSettings.fileURLPrefix = $tw.Bob.settings.fileURLPrefix;
+    tempSettings.heartbeat = $tw.Bob.settings.heartbeat;
+    tempSettings.includePluginList = $tw.Bob.settings.includePluginList;
+    tempSettings.mimeMap = $tw.Bob.settings.mimeMap;
+    tempSettings.namespacedWikis = $tw.Bob.settings.namespacedWikis;
+    tempSettings.persistentUsernames = $tw.Bob.settings.persistentUsernames;
+    tempSettings.perWikiFiles = $tw.Bob.settings.perWikiFiles;
+    tempSettings.pluginLibrary = $tw.Bob.settings.pluginLibrary;
+    tempSettings.profileOptions = $tw.Bob.settings.profileOptions;
+    tempSettings.saveMediaOnServer = $tw.Bob.settings.saveMediaOnServer;
+    tempSettings.themeLibrary = $tw.Bob.settings.themeLibrary;
+    tempSettings.tokenTTL = $tw.Bob.settings.tokenTTL;
   }
   // advanced section only visible to admins
   if((data.decoded && data.decoded.level === 'Admin') || data.decoded === true) {
-    tempSettings.actions = $tw.settings.actions;
-    tempSettings.admin = $tw.settings.admin;
-    tempSettings.advanced = $tw.settings.advanced;
-    tempSettings.certPath = $tw.settings.certPath;
-    tempSettings.disableFileWatchers = $tw.settings.disableFileWatchers;
-    tempSettings.editions = $tw.settings.editions;
-    tempSettings.editionsPath = $tw.settings.editionsPath;
-    tempSettings.enableBobSaver = $tw.settings.enableBobSaver;
-    tempSettings.filePathRoot = $tw.settings.filePathRoot;
-    tempSettings['fed-wss'] = $tw.settings['fed-wss'];
-    tempSettings.httpsPort = $tw.settings.httpsPort;
-    tempSettings.languages = $tw.settings.languages;
-    tempSettings.languagesPath = $tw.settings.languagesPath;
-    tempSettings.logger = $tw.settings.logger;
-    tempSettings.plugins = $tw.settings.plugins;
-    tempSettings.pluginsPath = $tw.settings.pluginsPath;
-    tempSettings.profiles = $tw.settings.profiles;
-    tempSettings.reverseProxy = $tw.settings.reverseProxy;
-    tempSettings.rootWikiName = $tw.settings.rootWikiName;
-    tempSettings.saltRounds = $tw.settings.saltRounds;
-    tempSettings.saver = $tw.settings.saver;
-    tempSettings.scripts = $tw.settings.scripts;
-    tempSettings.servingFiles = $tw.settings.servingFiles;
-    tempSettings.server = $tw.settings.server;
-    tempSettings.serverInfo = $tw.settings.serverInfo;
-    tempSettings.serverKeyPath = $tw.settings.serverKeyPath;
-    tempSettings.serveWikiOnRoot = $tw.settings.serveWikiOnRoot;
-    tempSettings.suppressBrowser = $tw.settings.suppressBrowser;
-    tempSettings.themes = $tw.settings.themes;
-    tempSettings.themesPath = $tw.settings.themesPath;
-    tempSettings.tokenPrivateKeyPath = $tw.settings.tokenPrivateKeyPath;
-    tempSettings.useHTTPS = $tw.settings.useHTTPS;
-    tempSettings.wikiPathBase = $tw.settings.wikiPathBase;
-    tempSettings.wikiPermissionsPath = $tw.settings.wikiPermissionsPath;
-    tempSettings.wikisPath = $tw.settings.wikisPath;
-    tempSettings['ws-server'] = $tw.settings['ws-server'];
+    tempSettings.actions = $tw.Bob.settings.actions;
+    tempSettings.admin = $tw.Bob.settings.admin;
+    tempSettings.advanced = $tw.Bob.settings.advanced;
+    tempSettings.certPath = $tw.Bob.settings.certPath;
+    tempSettings.disableFileWatchers = $tw.Bob.settings.disableFileWatchers;
+    tempSettings.editions = $tw.Bob.settings.editions;
+    tempSettings.editionsPath = $tw.Bob.settings.editionsPath;
+    tempSettings.enableBobSaver = $tw.Bob.settings.enableBobSaver;
+    tempSettings.filePathRoot = $tw.Bob.settings.filePathRoot;
+    tempSettings['fed-wss'] = $tw.Bob.settings['fed-wss'];
+    tempSettings.httpsPort = $tw.Bob.settings.httpsPort;
+    tempSettings.languages = $tw.Bob.settings.languages;
+    tempSettings.languagesPath = $tw.Bob.settings.languagesPath;
+    tempSettings.logger = $tw.Bob.settings.logger;
+    tempSettings.plugins = $tw.Bob.settings.plugins;
+    tempSettings.pluginsPath = $tw.Bob.settings.pluginsPath;
+    tempSettings.profiles = $tw.Bob.settings.profiles;
+    tempSettings.reverseProxy = $tw.Bob.settings.reverseProxy;
+    tempSettings.rootWikiName = $tw.Bob.settings.rootWikiName;
+    tempSettings.saltRounds = $tw.Bob.settings.saltRounds;
+    tempSettings.saver = $tw.Bob.settings.saver;
+    tempSettings.scripts = $tw.Bob.settings.scripts;
+    tempSettings.servingFiles = $tw.Bob.settings.servingFiles;
+    tempSettings.server = $tw.Bob.settings.server;
+    tempSettings.serverInfo = $tw.Bob.settings.serverInfo;
+    tempSettings.serverKeyPath = $tw.Bob.settings.serverKeyPath;
+    tempSettings.serveWikiOnRoot = $tw.Bob.settings.serveWikiOnRoot;
+    tempSettings.suppressBrowser = $tw.Bob.settings.suppressBrowser;
+    tempSettings.themes = $tw.Bob.settings.themes;
+    tempSettings.themesPath = $tw.Bob.settings.themesPath;
+    tempSettings.tokenPrivateKeyPath = $tw.Bob.settings.tokenPrivateKeyPath;
+    tempSettings.useHTTPS = $tw.Bob.settings.useHTTPS;
+    tempSettings.wikiPathBase = $tw.Bob.settings.wikiPathBase;
+    tempSettings.wikiPermissionsPath = $tw.Bob.settings.wikiPermissionsPath;
+    tempSettings.wikisPath = $tw.Bob.settings.wikisPath;
+    tempSettings['ws-server'] = $tw.Bob.settings['ws-server'];
   }
   tempSettings.advanced = tempSettings.avanced || {};
   tempSettings['ws-server'] = tempSettings['ws-server'] || {};
@@ -959,20 +951,20 @@ ServerSide.getViewableSettings = function(data) {
 }
 
 ServerSide.getProfileInfo = function(data) {
-  $tw.settings.profiles = $tw.settings.profiles || {};
-  if ($tw.Bob.AccessCheck(data.profileName, {"decoded": data.decoded}, 'view', 'profile')) {
-    return $tw.settings.profiles[data.profileName] || {};
+  $tw.Bob.settings.profiles = $tw.Bob.settings.profiles || {};
+  if ($tw.Bob.wsServer.AccessCheck(data.profileName, {"decoded": data.decoded}, 'view', 'profile')) {
+    return $tw.Bob.settings.profiles[data.profileName] || {};
   } else {
     return {};
   }
 }
 
 ServerSide.listProfiles = function(data) {
-  $tw.settings.profiles = $tw.settings.profiles || {};
+  $tw.Bob.settings.profiles = $tw.Bob.settings.profiles || {};
   const result = {};
-  Object.keys($tw.settings.profiles).forEach(function(profileName) {
-    if ($tw.Bob.AccessCheck(profileName, data, 'view', 'profile') || $tw.Bob.AccessCheck(profileName, data, 'view/anyProfile', 'server')) {
-      result[profileName] = $tw.settings.profiles[profileName]
+  Object.keys($tw.Bob.settings.profiles).forEach(function(profileName) {
+    if ($tw.Bob.wsServer.AccessCheck(profileName, data, 'view', 'profile') || $tw.Bob.wsServer.AccessCheck(profileName, data, 'view/anyProfile', 'server')) {
+      result[profileName] = $tw.Bob.settings.profiles[profileName]
     }
   })
   return result;
@@ -1001,17 +993,17 @@ ServerSide.getOwnedWikis = function(data) {
     return output;
   }
   function wikiInfo(wikiName) {
-    let thisObj = $tw.settings.wikis;
+    let thisObj = $tw.Bob.settings.wikis;
     wikiName.split('/').forEach(function(part) {
       thisObj = thisObj[part];
     })
     return thisObj.__permissions;
   }
   // Get the list of wiki names from the settings object
-  const wikiList = getList($tw.settings.wikis, '');
+  const wikiList = getList($tw.Bob.settings.wikis, '');
   const ownedWikis = {};
   wikiList.forEach(function(wikiName) {
-    if($tw.Bob.AccessCheck(wikiName, {"decoded": data.decoded}, 'owner', 'wiki')) {
+    if($tw.Bob.wsServer.AccessCheck(wikiName, {"decoded": data.decoded}, 'owner', 'wiki')) {
       ownedWikis[wikiName] = wikiInfo(wikiName);
     }
   });
@@ -1022,7 +1014,7 @@ ServerSide.findName = function(url) {
   url = url.startsWith('/') ? url.slice(1,url.length) : url;
   const pieces = url.split('/')
   let name = ''
-  let settingsObj = $tw.settings.wikis[pieces[0]]
+  let settingsObj = $tw.Bob.settings.wikis[pieces[0]]
   if(settingsObj) {
     name = pieces[0]
   }
@@ -1048,14 +1040,14 @@ ServerSide.findName = function(url) {
 ServerSide.listFiles = function(data, cb) {
   const path = require('path');
   const fs = require('fs');
-  const authorised = $tw.Bob.AccessCheck(data.wiki, {"decoded":data.decoded}, 'listFiles', 'wiki');
+  const authorised = $tw.Bob.wsServer.AccessCheck(data.wiki, {"decoded":data.decoded}, 'listFiles', 'wiki');
 
   if(authorised) {
-    $tw.settings.fileURLPrefix = $tw.settings.fileURLPrefix || 'files';
-    data.folder = data.folder || $tw.settings.fileURLPrefix;
+    $tw.Bob.settings.fileURLPrefix = $tw.Bob.settings.fileURLPrefix || 'files';
+    data.folder = data.folder || $tw.Bob.settings.fileURLPrefix;
     data.folder = data.folder.startsWith('/') ? data.folder : '/' + data.folder;
     const wikiName = data.wiki || $tw.ServerSide.findName(data.folder);
-    const repRegex = new RegExp(`^\/?.+?\/?${$tw.settings.fileURLPrefix}\/?`)
+    const repRegex = new RegExp(`^\/?.+?\/?${$tw.Bob.settings.fileURLPrefix}\/?`)
     const thePath = data.folder.replace(repRegex, '').replace(/^\/*/,'');
     let fileFolder
     if(thePath === '' && wikiName === '') {
@@ -1064,14 +1056,14 @@ ServerSide.listFiles = function(data, cb) {
       fileFolder = path.resolve($tw.ServerSide.getBasePath(), filePathRoot);
       // send to browser
       next(fileFolder, '');
-    } else if(wikiName === '' && $tw.settings.servingFiles[thePath]) {
+    } else if(wikiName === '' && $tw.Bob.settings.servingFiles[thePath]) {
       // Explicitly listed folders that are globally available
-      fileFolder = $tw.settings.servingFiles[thePath];
+      fileFolder = $tw.Bob.settings.servingFiles[thePath];
       // send to browser
       next(fileFolder, thePath);
     } else if(wikiName !== '') {
       // Wiki specific files, need to check to make sure that if perwikiFiles is set this only works from the target wiki.
-      if($tw.settings.perWikiFiles !== 'yes' || wikiName === data.wiki) {
+      if($tw.Bob.settings.perWikiFiles !== 'yes' || wikiName === data.wiki) {
         const wikiPath = $tw.ServerSide.existsListed(wikiName);
         if(!wikiPath) {
           return;
@@ -1080,7 +1072,7 @@ ServerSide.listFiles = function(data, cb) {
         next(fileFolder, thePath, wikiName);
       }
     } else {
-      const testPaths = [path.resolve($tw.ServerSide.getBasePath())].concat( Object.values($tw.settings.servingFiles));
+      const testPaths = [path.resolve($tw.ServerSide.getBasePath())].concat( Object.values($tw.Bob.settings.servingFiles));
       let ind = 0
       nextTest(0, testPaths)
       function nextTest(index, pathsToTest) {
@@ -1101,15 +1093,15 @@ ServerSide.listFiles = function(data, cb) {
     }
     function next(folder, urlPath, wikiName) {
       wikiName = wikiName || '';
-      // if the folder listed in data.folder is either a child of the filePathRoot or if it is a child of one of the folders listed in the $tw.settings.servingFiles thing we will continue, otherwise end.
+      // if the folder listed in data.folder is either a child of the filePathRoot or if it is a child of one of the folders listed in the $tw.Bob.settings.servingFiles thing we will continue, otherwise end.
       const filePathRoot = $tw.ServerSide.getFilePathRoot();
-      const usedPaths = Object.values($tw.settings.servingFiles).map(function(item) {
+      const usedPaths = Object.values($tw.Bob.settings.servingFiles).map(function(item) {
           return path.resolve($tw.ServerSide.getBasePath(), filePathRoot, item)
         });
       const resolvedPath = path.resolve($tw.ServerSide.getBasePath(), filePathRoot, folder);
       let match = false;
       if(authorised) {
-        const mimeMap = $tw.settings.mimeMap || {
+        const mimeMap = $tw.Bob.settings.mimeMap || {
           '.aac': 'audio/aac',
           '.avi': 'video/x-msvideo',
           '.csv': 'text/csv',
@@ -1133,7 +1125,7 @@ ServerSide.listFiles = function(data, cb) {
           '.wav': 'audio/wav'
         };
         const extList = data.mediaTypes || false;
-        let prefix = path.join(wikiName, $tw.settings.fileURLPrefix, urlPath);
+        let prefix = path.join(wikiName, $tw.Bob.settings.fileURLPrefix, urlPath);
         prefix = prefix.startsWith('/') ? prefix : '/' + prefix;
         prefix = prefix.endsWith('/') ? prefix : prefix + '/';
         fs.readdir(resolvedPath, function(err, items) {
@@ -1232,7 +1224,7 @@ function deleteFile(dir, file) {
 ServerSide.deleteWiki = function(data, cb) {
   const path = require('path')
   const fs = require('fs')
-  const authorised = $tw.Bob.AccessCheck(data.deleteWiki, {"decoded":data.decoded}, 'delete', 'wiki');
+  const authorised = $tw.Bob.wsServer.AccessCheck(data.deleteWiki, {"decoded":data.decoded}, 'delete', 'wiki');
   // Make sure that the wiki exists and is listed
   if($tw.ServerSide.existsListed(data.deleteWiki) && authorised) {
     $tw.Bob.unloadWiki(data.deleteWiki);
@@ -1288,7 +1280,7 @@ ServerSide.updateWikiListing = function(data) {
     settingsKeys.forEach(function(thisKey) {
       if(thisKey === '__path') {
         // its one of the paths we want
-        outPaths.push(path.resolve(basePath, $tw.settings.wikisPath, settingsObject[thisKey]));
+        outPaths.push(path.resolve(basePath, $tw.Bob.settings.wikisPath, settingsObject[thisKey]));
       } else if(thisKey === '__permissions') {
         // Ignore it
       } else if(typeof settingsObject[thisKey] === 'object') {
@@ -1348,10 +1340,10 @@ ServerSide.updateWikiListing = function(data) {
   const fs = require('fs');
   const path = require('path');
   const basePath = $tw.ServerSide.getBasePath();
-  $tw.settings.wikisPath = $tw.settings.wikisPath || './Wikis';
-  let wikiFolderPath = path.resolve(basePath, $tw.settings.wikisPath);
+  $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis';
+  let wikiFolderPath = path.resolve(basePath, $tw.Bob.settings.wikisPath);
   // Make sure that the wikiFolderPath exists
-  const error = $tw.utils.createDirectory(path.resolve(basePath, $tw.settings.wikisPath));
+  const error = $tw.utils.createDirectory(path.resolve(basePath, $tw.Bob.settings.wikisPath));
   // Check each folder in the wikis folder to see if it has a tiddlywiki.info
   // file.
   // If there is no tiddlywiki.info file it checks sub-folders.
@@ -1359,7 +1351,7 @@ ServerSide.updateWikiListing = function(data) {
   // If it does check to see if any listed wiki has the same path, if so skip
   // it
   let alreadyListed = [];
-  const listedWikis = getWikiPaths($tw.settings.wikis);
+  const listedWikis = getWikiPaths($tw.Bob.settings.wikis);
   realFolders.forEach(function(folder) {
     // Check is the wiki is listed
     if(listedWikis.indexOf(folder) > -1) {
@@ -1389,7 +1381,7 @@ ServerSide.updateWikiListing = function(data) {
         }
       } else {
         const nameParts = wikiName.split('/');
-        let settingsObj = $tw.settings.wikis;
+        let settingsObj = $tw.Bob.settings.wikis;
         let i;
         for (i = 0; i < nameParts.length; i++) {
           if(typeof settingsObj[nameParts[i]] === 'object' && i < nameParts.length - 1) {
@@ -1411,14 +1403,14 @@ ServerSide.updateWikiListing = function(data) {
   if(data.remove.toLowerCase() === 'true') {
     // update the wikis listing in the settings with a version that doesn't
     // have the wikis that don't exist.
-    $tw.settings.wikis = pruneWikiList(dontExist, $tw.settings.wikis);
+    $tw.Bob.settings.wikis = pruneWikiList(dontExist, $tw.Bob.settings.wikis);
   }
   // Save the new settings, update routes, update settings tiddlers in the
   // browser and update the list of available wikis
   if(data.saveSettings) {
     data.fromServer = true;
-    $tw.nodeMessageHandlers.saveSettings(data);
-    $tw.nodeMessageHandlers.updateRoutes(data);
+    $tw.Bob.nodeMessageHandlers.saveSettings(data);
+    $tw.Bob.nodeMessageHandlers.updateRoutes(data);
   }
 }
 
@@ -1437,13 +1429,13 @@ $tw.stopFileWatchers = function(wikiName) {
 ServerSide.renameWiki = function(data, cb) {
   const path = require('path')
   const fs = require('fs')
-  const authorised = $tw.Bob.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'rename', 'wiki');
+  const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'rename', 'wiki');
   if($tw.ServerSide.existsListed(data.oldWiki) && !$tw.ServerSide.existsListed(data.newWiki) && authorised) {
     // Unload the old wiki
     $tw.Bob.unloadWiki(data.oldWiki);
     const basePath = $tw.ServerSide.getBasePath();
     const oldWikiPath = $tw.ServerSide.getWikiPath(data.oldWiki);
-    const newWikiPath = path.resolve(basePath, $tw.settings.wikisPath, data.newWiki);
+    const newWikiPath = path.resolve(basePath, $tw.Bob.settings.wikisPath, data.newWiki);
     fs.rename(oldWikiPath, newWikiPath, function(e) {
       if(e) {
         $tw.Bob.logger.log('failed to rename wiki',e,{level:1});
@@ -1474,7 +1466,7 @@ function GetWikiName (wikiName, count, wikiObj, fullName) {
     wikiName = 'NewWiki'
   }
   fullName = fullName || wikiName || 'NewWiki';
-  wikiObj = wikiObj || $tw.settings.wikis;
+  wikiObj = wikiObj || $tw.Bob.settings.wikis;
   const nameParts = wikiName.split('/');
   if(nameParts.length === 1) {
     updatedName = nameParts[0];
@@ -1514,23 +1506,23 @@ function GetWikiName (wikiName, count, wikiObj, fullName) {
 }
 
 ServerSide.createWiki = function(data, cb) {
-  const authorised = $tw.Bob.AccessCheck('create/wiki', {"decoded": data.decoded}, 'create/wiki', 'server');
-  const quotasOk = $tw.Bob.CheckQuotas(data, 'wiki');
+  const authorised = $tw.Bob.wsServer.AccessCheck('create/wiki', {"decoded": data.decoded}, 'create/wiki', 'server');
+  const quotasOk = $tw.Bob.wsServer.CheckQuotas(data, 'wiki');
   if(authorised && quotasOk) {
     const fs = require("fs"),
       path = require("path");
-    $tw.settings.wikisPath = $tw.settings.wikisPath || 'Wikis';
+    $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || 'Wikis';
     // if we are using namespaced wikis prepend the logged in profiles name to
     // the wiki name.
-    const name = ($tw.settings.namespacedWikis === 'yes') ? GetWikiName((data.decoded.name || 'imaginaryPerson') + '/' + (data.wikiName || data.newWiki || 'NewWiki')) : GetWikiName(data.wikiName || data.newWiki);
+    const name = ($tw.Bob.settings.namespacedWikis === 'yes') ? GetWikiName((data.decoded.name || 'imaginaryPerson') + '/' + (data.wikiName || data.newWiki || 'NewWiki')) : GetWikiName(data.wikiName || data.newWiki);
     const basePath = data.basePath || $tw.ServerSide.getBasePath();
-    const destination = path.resolve(basePath, $tw.settings.wikisPath, name);
-    $tw.utils.createDirectory(path.join(basePath, $tw.settings.wikisPath));
+    const destination = path.resolve(basePath, $tw.Bob.settings.wikisPath, name);
+    $tw.utils.createDirectory(path.join(basePath, $tw.Bob.settings.wikisPath));
     if(data.nodeWikiPath) {
       // This is just adding an existing node wiki to the listing
       addListing(name, data.nodeWikiPath);
       data.fromServer = true;
-      $tw.nodeMessageHandlers.saveSettings(data);
+      $tw.Bob.nodeMessageHandlers.saveSettings(data);
       finish();
     } else if(data.tiddlers || data.externalTiddlers) {
       data.tiddlers = data.tiddlers || data.externalTiddlers;
@@ -1540,7 +1532,7 @@ ServerSide.createWiki = function(data, cb) {
       const searchPaths = $tw.getLibraryItemSearchPaths($tw.config.editionsPath,$tw.config.editionsEnvVar);
       const editionPath = $tw.findLibraryItem('empty',searchPaths);
       const err = $tw.ServerSide.specialCopy(editionPath, destination, true);
-      $tw.utils.createDirectory(path.join(basePath, $tw.settings.wikisPath, name));
+      $tw.utils.createDirectory(path.join(basePath, $tw.Bob.settings.wikisPath, name));
       for(let i = 0; i < data.tiddlers.length; i++) {
         $tw.syncadaptor.getTiddlerFileInfo(new $tw.Tiddler(tiddler.fields), name,
         function(err,fileInfo) {
@@ -1554,7 +1546,7 @@ ServerSide.createWiki = function(data, cb) {
       // name isn't in use
       if($tw.ServerSide.existsListed(data.fromWiki)) {
         // Get the paths for the source and destination
-        $tw.settings.wikisPath = $tw.settings.wikisPath || './Wikis';
+        $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis';
         const source = $tw.ServerSide.getWikiPath(data.fromWiki);
         data.copyChildren = data.copyChildren || 'no';
         const copyChildren = data.copyChildren.toLowerCase() === 'yes'?true:false;
@@ -1650,12 +1642,12 @@ ServerSide.UpdateEditingTiddlers = function(tiddler, wikiName) {
     if(tiddler && !$tw.Bob.EditingTiddlers[wikiName][tiddler]) {
       $tw.Bob.EditingTiddlers[wikiName][tiddler] = true;
     }
-    Object.keys($tw.connections).forEach(function(index) {
-      if($tw.connections[index].wiki === wikiName) {
+    Object.keys($tw.Bob.sessions).forEach(function(index) {
+      if($tw.Bob.sessions[index].wiki === wikiName) {
         $tw.Bob.EditingTiddlers[wikiName] = $tw.Bob.EditingTiddlers[wikiName] || {};
         const list = Object.keys($tw.Bob.EditingTiddlers[wikiName]);
         const message = {type: 'updateEditingTiddlers', list: list, wiki: wikiName};
-        $tw.Bob.SendToBrowser($tw.connections[index], message);
+        $tw.Bob.SendToBrowser($tw.Bob.sessions[index], message);
         $tw.Bob.logger.log('Update Editing Tiddlers', {level: 4})
       }
     });
@@ -1717,12 +1709,12 @@ $tw.Bob.UpdateHistory = function(message) {
 */
 $tw.Bob.SendToBrowsers = function(message, excludeConnection) {
   $tw.Bob.UpdateHistory(message);
-  const messageData = $tw.Bob.Shared.createMessageData(message);
+  const messageData = $tw.utils.createMessageData(message);
 
-  $tw.connections.forEach(function(connection, ind) {
+  $tw.Bob.sessions.forEach(function(connection, ind) {
     if((ind !== excludeConnection) && connection.socket) {
       if(connection.socket.readyState === 1 && (connection.wiki === message.wiki || !message.wiki)) {
-        $tw.Bob.Shared.sendMessage(message, connection.index, messageData);
+        $tw.utils.sendMessage(message, connection.index, messageData);
       }
     }
   })
@@ -1740,10 +1732,10 @@ $tw.Bob.SendToBrowsers = function(message, excludeConnection) {
 $tw.Bob.SendToBrowser = function(connection, message) {
   if(connection) {
     $tw.Bob.UpdateHistory(message);
-    const messageData = $tw.Bob.Shared.createMessageData(message);
+    const messageData = $tw.utils.createMessageData(message);
     if(connection.socket) {
       if(connection.socket.readyState === 1 && (connection.wiki === message.wiki || !message.wiki)) {
-        $tw.Bob.Shared.sendMessage(message, connection.index, messageData);
+        $tw.utils.sendMessage(message, connection.index, messageData);
       }
     }
   }
@@ -1755,7 +1747,7 @@ $tw.Bob.SendToBrowser = function(connection, message) {
   with a disconnected wiki.
 */
 $tw.Bob.DisconnectWiki = function(wiki) {
-  $tw.connections.forEach(function(connectionIndex) {
+  $tw.Bob.sessions.forEach(function(connectionIndex) {
     if(connectionIndex.wiki === wiki) {
       if(connectionIndex.socket !== undefined) {
         // Close the websocket connection
@@ -1788,8 +1780,8 @@ $tw.Bob.unloadWiki = function(wikiName) {
   the wiki.
 */
 $tw.Bob.PruneConnections = function() {
-  if($tw.settings.autoUnloadWikis === "true") {
-    $tw.connections.forEach(function(connection) {
+  if($tw.Bob.settings.autoUnloadWikis === "true") {
+    $tw.Bob.sessions.forEach(function(connection) {
       if(connection.socket !== undefined) {
         if(connection.socket.readyState !== 1) {
           connection.socket.terminate();
@@ -1800,7 +1792,131 @@ $tw.Bob.PruneConnections = function() {
   }
 }
 
-module.exports = ServerSide
+// Settings Methods
+
+/*
+  Parse the default settings file and the normal user settings file
+  This function modifies the input settings object with the properties in the
+  json file at newSettingsPath
+*/
+ServerSide.loadSettings = function(settings,bootPath) {
+  const newSettingsPath = path.join(bootPath, 'settings', 'settings.json');
+  let newSettings;
+  if(typeof $tw.ExternalServer !== 'undefined') {
+    newSettings = require(path.join(process.cwd(),'LoadConfig.js')).settings;
+  } else {
+    if($tw.node && !fs) {
+      const fs = require('fs')
+    }
+    let rawSettings;
+    // try/catch in case defined path is invalid.
+    try {
+      rawSettings = fs.readFileSync(newSettingsPath);
+    } catch (err) {
+      console.log('NodeSettings - No settings file, creating one with default values.');
+      rawSettings = '{}';
+    }
+    // Try to parse the JSON after loading the file.
+    try {
+      newSettings = JSON.parse(rawSettings);
+      console.log('NodeSettings - Parsed raw settings.');
+    } catch (err) {
+      console.log('NodeSettings - Malformed user settings. Using empty default.');
+      console.log('NodeSettings - Check settings. Maybe comma error?');
+      // Create an empty default settings.
+      newSettings = {};
+    }
+  }
+  // Extend the default with the user settings & normalize the wiki objects
+  $tw.ServerSide.updateSettings(settings,newSettings);
+  $tw.ServerSide.updateSettingsWikiPaths(settings.wikis);
 }
+
+/*
+  Given a local and a global settings, this returns the global settings but with
+  any properties that are also in the local settings changed to the values given
+  in the local settings.
+  Changes to the settings are later saved to the local settings.
+*/
+ServerSide.updateSettings = function(globalSettings, localSettings) {
+  //Walk though the properties in the localSettings, for each property set the global settings equal to it, but only for singleton properties. Don't set something like GlobalSettings.Accelerometer = localSettings.Accelerometer, set globalSettings.Accelerometer.Controller = localSettings.Accelerometer.Contorller
+  Object.keys(localSettings).forEach(function(key,index){
+    if(typeof localSettings[key] === 'object') {
+      if(!globalSettings[key]) {
+        globalSettings[key] = {};
+      }
+      //do this again!
+      $tw.ServerSide.updateSettings(globalSettings[key], localSettings[key]);
+    } else {
+      globalSettings[key] = localSettings[key];
+    }
+  });
+}
+
+/*
+  This allows people to add wikis using name: path in the settings.json and
+  still have them work correctly with the name: {__path: path} setup.
+
+  It takes the wikis section of the settings and changes any entries that are
+  in the form name: path and puts them in the form name: {__path: path}, and
+  recursively walks through all the wiki entries.
+*/
+ServerSide.updateSettingsWikiPaths = function(inputObj) {
+  Object.keys(inputObj).forEach(function(entry) {
+    if(typeof inputObj[entry] === 'string' && entry !== '__path') {
+      inputObj[entry] = {'__path': inputObj[entry]}
+    } else if(typeof inputObj[entry] === 'object' && entry !== '__permissions') {
+      updateSettingsWikiPaths(inputObj[entry])
+    }
+  })
+}
+
+/*
+  Creates initial settings tiddlers for the wiki.
+*/
+ServerSide.CreateSettingsTiddlers = function(data) {
+  data = data || {}
+  data.wiki = data.wiki || 'RootWiki'
+
+  // Create the $:/ServerIP tiddler
+  const message = {
+    type: 'saveTiddler',
+    wiki: data.wiki
+  };
+  message.tiddler = {fields: {title: "$:/ServerIP", text: $tw.Bob.settings.serverInfo.ipAddress, port: $tw.Bob.settings.serverInfo.port, host: $tw.Bob.settings.serverInfo.host}};
+  $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
+
+  let wikiInfo = undefined
+  try {
+    // Save the lists of plugins, languages and themes in tiddlywiki.info
+    const wikiInfoPath = path.join($tw.Bob.Wikis[data.wiki].wikiPath, 'tiddlywiki.info');
+    wikiInfo = JSON.parse(fs.readFileSync(wikiInfoPath,"utf8"));
+  } catch(e) {
+    console.log(e)
+  }
+  if(typeof wikiInfo === 'object') {
+    // Get plugin list
+    const fieldsPluginList = {
+      title: '$:/Bob/ActivePluginList',
+      list: $tw.utils.stringifyList(wikiInfo.plugins)
+    }
+    message.tiddler = {fields: fieldsPluginList};
+    $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
+    const fieldsThemesList = {
+      title: '$:/Bob/ActiveThemesList',
+      list: $tw.utils.stringifyList(wikiInfo.themes)
+    }
+    message.tiddler = {fields: fieldsThemesList};
+    $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
+    const fieldsLanguagesList = {
+      title: '$:/Bob/ActiveLanguagesList',
+      list: $tw.utils.stringifyList(wikiInfo.languages)
+    }
+    message.tiddler = {fields: fieldsLanguagesList};
+    $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
+  }
+}
+
+module.exports = ServerSide
 
 })();

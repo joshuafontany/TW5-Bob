@@ -15,11 +15,11 @@ This has some functions that are needed by Bob in different places.
   // Export name and synchronous status
   exports.name = "federation-shared-functions";
   exports.platforms = ["node"];
-  exports.after = ["render"];
+  exports.after = ["BobStartup"];
   exports.synchronous = true;
 
   exports.startup = function() {
-    if(false && $tw.node && $tw.settings.enableFederation === 'yes') {
+    if(false && $tw.node && $tw.Bob.settings.enableFederation === 'yes') {
 
       let idNumber = 0;
       let messageQueue = [];
@@ -29,8 +29,8 @@ This has some functions that are needed by Bob in different places.
       $tw.Bob.Federation = $tw.Bob.Federation || {};
       $tw.Bob.Federation.connections = $tw.Bob.Federation.connections || {};
       $tw.Bob.Federation.nonce = $tw.Bob.Federation.nonce || [];
-      $tw.settings.federation = $tw.settings.federation || {};
-      $tw.settings.advanced = $tw.settings.advanced || {};
+      $tw.Bob.settings.federation = $tw.Bob.settings.federation || {};
+      $tw.Bob.settings.advanced = $tw.Bob.settings.advanced || {};
 
       /*
         This function checks the message queue to see if anything should be done.
@@ -66,7 +66,7 @@ This has some functions that are needed by Bob in different places.
           }
         } else {
           clearTimeout(messageQueueTimer);
-          messageQueueTimer = setTimeout(checkMessageQueue, $tw.settings.advanced.federatedMessageQueueTimeout || 500);
+          messageQueueTimer = setTimeout(checkMessageQueue, $tw.Bob.settings.advanced.federatedMessageQueueTimeout || 500);
         }
       }
 
@@ -261,7 +261,7 @@ This has some functions that are needed by Bob in different places.
         for that messageData is set to the current time so it can be properly
         removed later.
       */
-      function handleAck(data) {
+      function handleMessageAck(data) {
         if(data.id) {
           // a quick hack to make this work
           if($tw.browser) {
@@ -342,7 +342,7 @@ This has some functions that are needed by Bob in different places.
       /*
         This acknowledges that a message has been received.
       */
-      $tw.Bob.Federation.sendAck = function(data) {
+      $tw.Bob.Federation.sendMessageAck = function(data) {
         data = data || {};
         if($tw.browser) {
           const token = localStorage.getItem('ws-token')
@@ -390,7 +390,7 @@ This has some functions that are needed by Bob in different places.
         const token = false;
         message.id = id;
         message.rnonce = nonce;
-        message.serverName = $tw.settings.federation.serverName;
+        message.serverName = $tw.Bob.settings.federation.serverName;
         let messageData = {
           message: message,
           id: id,
@@ -399,7 +399,7 @@ This has some functions that are needed by Bob in different places.
           ack: {},
           token: token,
           _target_info: targetInfo,
-          serverName: $tw.settings.federation.serverName,
+          serverName: $tw.Bob.settings.federation.serverName,
           exclude: exclude || [],
           wiki: wiki
         };

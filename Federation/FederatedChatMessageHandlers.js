@@ -14,11 +14,11 @@ This handles messages sent to the node process.
 
 exports.name = "federation-chat-messages";
 exports.platforms = ["node"];
-exports.after = ["render"];
+exports.after = ["BobStartup"];
 exports.synchronous = true;
 
 exports.startup = function() {
-  if(false && $tw.node && $tw.settings.enableFederation === 'yes') {
+  if(false && $tw.node && $tw.Bob.settings.enableFederation === 'yes') {
     $tw.Bob.Federation = $tw.Bob.Federation || {};
     $tw.Bob.Federation.remoteConnections = $tw.Bob.Federation.remoteConnections || {};
     $tw.Bob.Federation.messageHandlers = $tw.Bob.Federation.messageHandlers || {};

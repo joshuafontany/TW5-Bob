@@ -19,12 +19,12 @@ exports.method = "POST";
 exports.path = /^\/api\/tiddlers\/push\/(.+?)\/?$/;
 
 exports.handler = function(request,response,state) {
-  $tw.settings.API = $tw.settings.API || {};
-  if($tw.settings.API.enablePush === 'yes') {
+  $tw.Bob.settings.API = $tw.Bob.settings.API || {};
+  if($tw.Bob.settings.API.enablePush === 'yes') {
     // Make sure that the token sent here matches the https header
     // and that the token has push access to the toWiki
-    const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
-    const authorised = $tw.Bob.AccessCheck(request.params[0], token, 'push', 'wiki');
+    const token = $tw.utils.getCookie(request.headers.cookie, 'token');
+    const authorised = $tw.Bob.wsServer.AccessCheck(request.params[0], token, 'push', 'wiki');
     if(authorised) {
       let body = ''
       request.on('data', function(chunk){

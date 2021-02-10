@@ -23,7 +23,7 @@ exports.method = "GET";
 exports.path = /^\/api\/tiddlers\/fetch\/html\/(.+?)\/?$/;
 
 exports.handler = function(request,response,state) {
-	if($tw.settings.API.enableFetch === 'yes') {
+	if($tw.Bob.settings.API.enableFetch === 'yes') {
 		const URL = require('url');
 		const parsed = URL.parse(request.url);
 		const params = {};
@@ -39,10 +39,10 @@ exports.handler = function(request,response,state) {
 	    })
 		}
 		console.log(params)
-		const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
+		const token = $tw.utils.getCookie(request.headers.cookie, 'token');
 		// make sure that the wiki exists
 		const exists = $tw.ServerSide.existsListed(wikiName);
-		const authorised = $tw.Bob.AccessCheck(wikiName, token, 'view', 'wiki');
+		const authorised = $tw.Bob.wsServer.AccessCheck(wikiName, token, 'view', 'wiki');
 		if(exists && authorised) {
 			$tw.ServerSide.loadWiki(wikiName);
 			const tiddler = $tw.Bob.Wikis[wikiName].wiki.getTiddler(params['tiddler']);
@@ -52,11 +52,11 @@ exports.handler = function(request,response,state) {
 				// Tiddler fields '_render_type' and '_render_template' overwrite
 				// system wide settings for render type and template
 				if($tw.Bob.Wikis[wikiName].wiki.isSystemTiddler(params['tiddler'])) {
-					renderType = renderType || $tw.httpServer.get("system-tiddler-render-type");
-					renderTemplate = renderTemplate || $tw.httpServer.get("system-tiddler-render-template");
+					renderType = renderType || $tw.Bob.httpServer.get("system-tiddler-render-type");
+					renderTemplate = renderTemplate || $tw.Bob.httpServer.get("system-tiddler-render-template");
 				} else {
-					renderType = renderType || $tw.httpServer.get("tiddler-render-type");
-					renderTemplate = renderTemplate || $tw.httpServer.get("tiddler-render-template");
+					renderType = renderType || $tw.Bob.httpServer.get("tiddler-render-type");
+					renderTemplate = renderTemplate || $tw.Bob.httpServer.get("tiddler-render-template");
 				}
 				let text = $tw.Bob.Wikis[wikiName].wiki.renderTiddler(renderType,renderTemplate,{parseAsInline: true, variables: {currentTiddler: params['tiddler']}});
 				// Naughty not to set a content-type, but it's the easiest way to ensure the browser will see HTML pages as HTML, and accept plain text tiddlers as CSS or JS

@@ -17,21 +17,15 @@ delete files to remove the tiddlers from the browser.
 "use strict";
 
 exports.name = 'FileSystemMonitor';
-exports.after = ["load-modules"];
+exports.after = ["BobStartup"];
 exports.platforms = ["node"];
 exports.synchronous = true;
 
 exports.startup = function() {
-  $tw.settings = $tw.settings || {};
-
-  if($tw.node && $tw.settings.disableFileWatchers !== 'yes') {
+  if($tw.node && $tw.Bob.settings.disableFileWatchers !== 'yes') {
     // require the fs module if we are running node
     const fs = require("fs");
     const path = require("path");
-
-    // Initialise objects
-    $tw.Bob = $tw.Bob || {};
-    $tw.Bob.Files = $tw.Bob.Files || {};
 
     /*
       This watches for changes to a folder and updates the wiki prefix when anything changes in the folder.
@@ -115,7 +109,7 @@ exports.startup = function() {
                     newTitle = path.dirname(fileInfo.filepath);
                     const existingTiddler = $tw.Bob.Wikis[prefix].wiki.getTiddler(title);
                     // Load the tiddler from the wiki, check if they are different (non-existent is changed)
-                    if($tw.Bob.Shared.TiddlerHasChanged(existingTiddler, {fields: tiddlerObject.tiddlers[0]})) {
+                    if($tw.utils.TiddlerHasChanged(existingTiddler, {fields: tiddlerObject.tiddlers[0]})) {
                       // Rename the file
                       // If $:/config/FileSystemPaths is used than the folder and
                       // newTitle may overlap.
@@ -146,7 +140,7 @@ exports.startup = function() {
                           // nothing, error if the tiddler doesn't exist just means the monitor is most likely fighting with another syncer like git.
                         }
                         // Create the new tiddler
-                        const newTiddler = $tw.Bob.Shared.normalizeTiddler({fields: tiddlerObject.tiddlers[0]});
+                        const newTiddler = $tw.utils.normalizeTiddler({fields: tiddlerObject.tiddlers[0]});
                         // Save the new file
                         $tw.syncadaptor.saveTiddler(newTiddler, prefix);
                       });

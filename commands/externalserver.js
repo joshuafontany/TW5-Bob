@@ -24,8 +24,6 @@ if($tw.node) {
     this.params = params;
     this.commander = commander;
     this.callback = callback;
-    // Commands that are just for the server
-    $tw.ServerSide = require('$:/plugins/OokTech/Bob/ServerSide.js');
   };
 
   Command.prototype.execute = function() {
@@ -39,7 +37,7 @@ if($tw.node) {
     // connect.
     const ip = require('$:/plugins/OokTech/Bob/External/IP/ip.js');
     const ipAddress = ip.address();
-    $tw.settings.serverInfo = {
+    $tw.Bob.settings.serverInfo = {
       ipAddress: ipAddress
     };
 

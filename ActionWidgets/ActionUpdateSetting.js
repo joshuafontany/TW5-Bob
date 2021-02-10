@@ -97,7 +97,7 @@ ActionUpdateSetting.prototype.invokeAction = function(triggeringWidget,event) {
     "remove": remove,
     "wiki": wikiName
   };
-  $tw.Bob.Shared.sendMessage(message, 0);
+  $tw.utils.sendMessage(message, 0);
   return true; // Action was invoked
 };
 

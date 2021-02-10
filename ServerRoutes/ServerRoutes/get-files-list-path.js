@@ -18,15 +18,15 @@ const thePath = /^\/api\/files\/list\/path\/(.+?)\/?$/;
 exports.method = "GET";
 exports.path = thePath;
 exports.handler = function(request,response,state) {
-  if($tw.settings.enableFileServer === 'yes') {
+  if($tw.Bob.settings.enableFileServer === 'yes') {
     const path = require('path');
-    const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
-    const authorised = $tw.Bob.AccessCheck("", token, 'view', 'wiki');
+    const token = $tw.utils.getCookie(request.headers.cookie, 'token');
+    const authorised = $tw.Bob.wsServer.AccessCheck("", token, 'view', 'wiki');
     if(authorised) {
-      $tw.settings.fileURLPrefix = $tw.settings.fileURLPrefix || 'files'
+      $tw.Bob.settings.fileURLPrefix = $tw.Bob.settings.fileURLPrefix || 'files'
       const data = {
-        //folder:  path.join($tw.settings.fileURLPrefix,state.params[0]),
-        folder:  path.join($tw.settings.fileURLPrefix,request.params[0]),
+        //folder:  path.join($tw.Bob.settings.fileURLPrefix,state.params[0]),
+        folder:  path.join($tw.Bob.settings.fileURLPrefix,request.params[0]),
         wiki: "",
         decoded: authorised,
         mediaTypes: ""

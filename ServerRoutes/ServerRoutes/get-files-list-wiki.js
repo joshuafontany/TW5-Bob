@@ -18,9 +18,9 @@ const thePath = /^\/api\/files\/list\/wiki\/(.+?)\/?$/;
 exports.method = "GET";
 exports.path = thePath;
 exports.handler = function(request,response,state) {
-  if($tw.settings.enableFileServer === 'yes') {
-    const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
-    const authorised = $tw.Bob.AccessCheck(request.params[0], token, 'view', 'wiki');
+  if($tw.Bob.settings.enableFileServer === 'yes') {
+    const token = $tw.utils.getCookie(request.headers.cookie, 'token');
+    const authorised = $tw.Bob.wsServer.AccessCheck(request.params[0], token, 'view', 'wiki');
     if(authorised) {
       const data = {
         folder: "",

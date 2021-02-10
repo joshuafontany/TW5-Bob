@@ -21,7 +21,7 @@ exports.method = "GET";
 exports.path = /^\/api\/tiddlers\/fetch\/list\/(.+?)\/?$/;
 
 exports.handler = function(request,response,state) {
-  if($tw.settings.API.enableFetch === 'yes') {
+  if($tw.Bob.settings.API.enableFetch === 'yes') {
     const wikiName = request.params[0];
     const URL = require('url');
     const parsed = URL.parse(request.url);
@@ -37,13 +37,13 @@ exports.handler = function(request,response,state) {
       response.writeHead(403).end();
     }
     // Make sure that the person has access to the wiki
-    const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
-    const authorised = $tw.Bob.AccessCheck(wikiName, token, 'view', 'wiki');
+    const token = $tw.utils.getCookie(request.headers.cookie, 'token');
+    const authorised = $tw.Bob.wsServer.AccessCheck(wikiName, token, 'view', 'wiki');
     if(authorised) {
       let list = [];
       let data = {};
       // Make sure that the wiki is listed
-      if($tw.settings.wikis[wikiName] || wikiName === 'RootWiki') {
+      if($tw.Bob.settings.wikis[wikiName] || wikiName === 'RootWiki') {
         // Make a temp wiki to run the filter on
         let tempWiki = new $tw.Wiki();
         // If the wiki isn't loaded than load it

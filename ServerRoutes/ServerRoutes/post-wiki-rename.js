@@ -18,9 +18,9 @@ const thePath = /^\/api\/wiki\/rename\/(.+?)?$/;
 exports.method = "POST";
 exports.path = thePath;
 exports.handler = function(request,response,state) {
-  $tw.settings.API = $tw.settings.API || {};
-  if($tw.settings.API.enableCreate === 'yes') {
-    const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
+  $tw.Bob.settings.API = $tw.Bob.settings.API || {};
+  if($tw.Bob.settings.API.enableCreate === 'yes') {
+    const token = $tw.utils.getCookie(request.headers.cookie, 'token');
     const fromName = request.params[0];
     const URL = require('url')
     const parsed = URL.parse(request.url);
@@ -32,7 +32,7 @@ exports.handler = function(request,response,state) {
       })
     }
     const toName = params['newname'];
-    const authorised = $tw.Bob.AccessCheck(fromName, token, 'rename', 'wiki');
+    const authorised = $tw.Bob.wsServer.AccessCheck(fromName, token, 'rename', 'wiki');
     if(authorised) {
       const data = {
         decoded: authorised,

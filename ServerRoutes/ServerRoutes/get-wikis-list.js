@@ -18,8 +18,8 @@ const thePath = /^\/api\/wikis\/list\/?$/;
 exports.method = "GET";
 exports.path = thePath;
 exports.handler = function(request,response,state) {
-  const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
-  const authorised = $tw.Bob.AccessCheck("", token, 'view', 'wiki');
+  const token = $tw.utils.getCookie(request.headers.cookie, 'token');
+  const authorised = $tw.Bob.wsServer.AccessCheck("", token, 'view', 'wiki');
   if(authorised) {
     const data = {
       decoded: authorised

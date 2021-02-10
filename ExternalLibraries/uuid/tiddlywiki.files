@@ -1,0 +1,15 @@
+{
+  "tiddlers": [
+    {
+      "file": "uuidv4.min.js",
+      "fields": {
+        "title": "$:/plugins/OokTech/Bob/External/uuid/uuidv4.js",
+        "type": "application/javascript",
+        "module-type": "library",
+        "source": "https://www.npmjs.com/package/uuid"
+      },
+      "prefix": "(function(){\n",
+      "suffix": "})();"
+    }
+  ]
+}

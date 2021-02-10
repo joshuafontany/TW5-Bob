@@ -19,9 +19,9 @@ exports.method = "GET";
 exports.path = /^\/api\/plugins\/list\/?$/;
 
 exports.handler = function(request,response,state) {
-  $tw.settings.API = $tw.settings.API || {};
-  if($tw.settings.API.pluginLibrary === 'yes') {
-    const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
+  $tw.Bob.settings.API = $tw.Bob.settings.API || {};
+  if($tw.Bob.settings.API.pluginLibrary === 'yes') {
+    const token = $tw.utils.getCookie(request.headers.cookie, 'token');
     const pluginList = $tw.ServerSide.getViewablePluginsList({decoded: token})
     response.writeHead(200, {"Access-Control-Allow-Origin": "*", "Content-Type": "application/json"})
     response.end(JSON.stringify(pluginList))

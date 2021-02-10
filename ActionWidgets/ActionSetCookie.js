@@ -59,7 +59,7 @@ ActionSetCookie.prototype.refresh = function(changedTiddlers) {
 Invoke the action associated with this widget
 */
 ActionSetCookie.prototype.invokeAction = function(triggeringWidget,event) {
-  $tw.utils.setcookie(this.name, this.value);
+  $tw.utils.setCookie(this.name, this.value);
   return true; // Action was invoked
 };
 

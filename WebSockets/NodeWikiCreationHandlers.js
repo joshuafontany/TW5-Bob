@@ -1,7 +1,7 @@
 /*\
 title: $:/plugins/OokTech/Bob/NodeWikiCreationHandlers.js
 type: application/javascript
-module-type: startup
+module-type: node-messagehandlers
 
 These are message handler functions for the web socket servers. Use this file
 as a template for extending the web socket funcitons.
@@ -14,11 +14,6 @@ This handles messages sent to the node process.
 /*global $tw: false */
 "use strict";
 
-exports.platforms = ["node"];
-
-exports.startup = function() {
-if($tw.node) {
-  $tw.nodeMessageHandlers = $tw.nodeMessageHandlers || {};
   /*
     This builds a single file html version of the current wiki.
     This is a modified version of the renderTiddler command.
@@ -35,7 +30,7 @@ if($tw.node) {
       Each key is a the name of a wiki served by Bob, the value is a filter
       that will be run in that wiki and any returned tiddlers will be included in the output html file.
   */
-  $tw.nodeMessageHandlers.buildHTMLWiki = function(data) {
+  exports.buildHTMLWiki = function(data) {
     const path = require('path');
     const fs = require('fs');
     let wikiPath, fullName, excludeList = [];
@@ -123,7 +118,7 @@ if($tw.node) {
     than a number will be appended to the end of the name to make it unique,
     similarly to how new tiddler titles are made unique.
   */
-  $tw.nodeMessageHandlers.newWikiFromTiddlers = function(data) {
+  exports.newWikiFromTiddlers = function(data) {
     // Do nothing unless there is an input file path given
     if(data.tiddlers || data.externalTiddlers) {
       const path = require('path');
@@ -251,7 +246,7 @@ if($tw.node) {
           transformFilters = JSON.parse(transformFilters);
         }
         Object.keys(externalData).forEach(function(wikiTitle) {
-          const allowed = $tw.Bob.AccessCheck(wikiTitle, {"decoded": decodedToken}, 'view', 'wiki');
+          const allowed = $tw.Bob.wsServer.AccessCheck(wikiTitle, {"decoded": decodedToken}, 'view', 'wiki');
           if(allowed) {
             const exists = $tw.ServerSide.loadWiki(wikiTitle);
             if(exists) {
@@ -295,7 +290,7 @@ if($tw.node) {
       wikiName = 'NewWiki'
     }
     fullName = fullName || wikiName || 'NewWiki';
-    wikiObj = wikiObj || $tw.settings.wikis;
+    wikiObj = wikiObj || $tw.Bob.settings.wikis;
     const nameParts = wikiName.split('/');
     if(nameParts.length === 1) {
       updatedName = nameParts[0];
@@ -336,7 +331,7 @@ if($tw.node) {
 
   function addListing(wikiName, wikiPath, overwrite) {
     const pieces = wikiName.split('/');
-    let current = $tw.settings.wikis
+    let current = $tw.Bob.settings.wikis
     for(let i = 0; i < pieces.length; i++) {
       current[pieces[i]] = current[pieces[i]] || {};
       current = current[pieces[i]];
@@ -353,7 +348,7 @@ if($tw.node) {
     Anything that adds a wiki to the listing uses this.
   */
   // This is just a copy of the init command modified to work in this context
-  $tw.nodeMessageHandlers.createNewWiki = function(data, cb) {
+  exports.createNewWiki = function(data, cb) {
     $tw.ServerSide.createWiki(data, callback);
 
     function callback(err) {
@@ -379,10 +374,10 @@ if($tw.node) {
     It defaults to the current wiki but if you give a forWiki input it
     downloads that wiki instead.
   */
-  $tw.nodeMessageHandlers.downloadHTMLFile = function(data) {
+  exports.downloadHTMLFile = function(data) {
     if(data.wiki) {
       const downloadWiki = data.forWiki || data.wiki;
-      const allowed = $tw.Bob.AccessCheck(downloadWiki, {"decoded":data.decoded}, 'view', 'wiki');
+      const allowed = $tw.Bob.wsServer.AccessCheck(downloadWiki, {"decoded":data.decoded}, 'view', 'wiki');
       if(allowed) {
         const path = require('path');
         const fs = require('fs');
@@ -391,7 +386,7 @@ if($tw.node) {
           const file = fs.readFileSync(outputFilePath);
           // Send file to browser in a websocket message
           const message = {'type': 'downloadFile', 'file': file};
-          $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message);
+          $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
           $tw.Bob.logger.log('Downloading wiki ', name, {level: 2})
         } catch (e) {
           $tw.Bob.logger.error('Error:', e, {level:1})
@@ -415,9 +410,9 @@ if($tw.node) {
           saved in a temporary place to be accepted or rejected.
         - force - all imported tiddlers are saved regardelss of conflicts
   */
-  $tw.nodeMessageHandlers.internalFetch = function(data) {
+  exports.internalFetch = function(data) {
     // Make sure that the person has access to the wiki
-    const authorised = $tw.Bob.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'view', 'wiki');
+    const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'view', 'wiki');
     if(authorised) {
       let externalTiddlers = {};
       if(data.externalTiddlers) {
@@ -461,7 +456,7 @@ if($tw.node) {
             wiki: data.wiki
           };
         }
-        $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message)
+        $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message)
       })
       // Make the import list and send that tiddler too
       const importListTiddler = {
@@ -476,7 +471,7 @@ if($tw.node) {
         tiddler: importListTiddler,
         wiki: data.wiki
       };
-      $tw.Bob.SendToBrowser($tw.connections[data.source_connection], message)
+      $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message)
       if(data.resolution !== 'force') {
         const thisMessage = {
           alert: 'Fetched Tiddlers, see import list',
@@ -509,7 +504,7 @@ if($tw.node) {
     the empty edition is used, if no newWiki is given than the default new name
     is used.
   */
-  $tw.nodeMessageHandlers.duplicateWiki = function(data) {
+  exports.duplicateWiki = function(data) {
     if(typeof data.fromWiki === 'undefined') {
       return;
     }
@@ -517,15 +512,15 @@ if($tw.node) {
     const fs = require('fs');
     // Make sure that the wiki to duplicate exists and that the target wiki
     // name isn't in use
-    const authorised = $tw.Bob.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'duplicate', 'wiki');
+    const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'duplicate', 'wiki');
     if($tw.ServerSide.existsListed(data.fromWiki) && authorised) {
       const wikiName = GetWikiName(data.newWiki);
       // Get the paths for the source and destination
-      $tw.settings.wikisPath = $tw.settings.wikisPath || './Wikis';
-      data.wikisFolder = data.wikisFolder || $tw.settings.wikisPath;
+      $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis';
+      data.wikisFolder = data.wikisFolder || $tw.Bob.settings.wikisPath;
       const source = $tw.ServerSide.getWikiPath(data.fromWiki);
       const basePath = $tw.ServerSide.getBasePath();
-      const destination = path.resolve(basePath, $tw.settings.wikisPath, wikiName);
+      const destination = path.resolve(basePath, $tw.Bob.settings.wikisPath, wikiName);
       data.copyChildren = data.copyChildren || 'no';
       const copyChildren = data.copyChildren.toLowerCase() === 'yes'?true:false;
       // Make the duplicate
@@ -553,6 +548,5 @@ if($tw.node) {
       }
     }
   }
-}
-}
+
 })()

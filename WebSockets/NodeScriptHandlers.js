@@ -1,7 +1,7 @@
 /*\
 title: $:/plugins/OokTech/Bob/NodeScriptHandlers.js
 type: application/javascript
-module-type: startup
+module-type: node-messagehandlers
 
 These are message handler functions for the web socket servers. Use this file
 as a template for extending the web socket funcitons.
@@ -14,11 +14,6 @@ This handles messages sent to the node process.
 /*global $tw: false */
 "use strict";
 
-exports.platforms = ["node"];
-
-exports.startup = function() {
-if($tw.node) {
-  $tw.nodeMessageHandlers = $tw.nodeMessageHandlers || {};
   /*
     This message lets you run a script defined in the settings.json file.
     You name and define the script there and then you can run it using this.
@@ -38,45 +33,41 @@ if($tw.node) {
     It is possible to run non-sequential scripts and sequential scripts
     simultaneously.
   */
-  // This holds
-  let scriptQueue = {};
-  let scriptActive = {};
-  let childproc = false;
   // This function checks if a script is currently running, if not it runs the
   // next script in the queue.
-  function processScriptQueue (queue) {
-    if(!scriptActive[queue] && scriptQueue[queue].length > 0) {
-      childproc = require('child_process').spawn(scriptQueue[queue][0].command, scriptQueue[queue][0].args, scriptQueue[queue][0].options);
-      scriptActive[queue] = true;
-      childproc.on('error', function(err) {
+  exports.process$tw.Bob.scriptQueue = function(queue) {
+    if(!$tw.Bob.scriptActive[queue] && $tw.Bob.scriptQueue[queue].length > 0) {
+      $tw.Bob.childproc = require('child_process').spawn($tw.Bob.scriptQueue[queue][0].command, $tw.Bob.scriptQueue[queue][0].args, $tw.Bob.scriptQueue[queue][0].options);
+      $tw.Bob.scriptActive[queue] = true;
+      $tw.Bob.childproc.on('error', function(err) {
         clearQueue(queue);
         $tw.Bob.logger.log('Script error: ', err, {level:1});
       })
-      childproc.on('exit', function() {
+      $tw.Bob.childproc.on('exit', function() {
         // Remove the finished task from the queue
-        if(scriptQueue[queue].length > 0) {
-          scriptQueue[queue].shift();
+        if($tw.Bob.scriptQueue[queue].length > 0) {
+          $tw.Bob.scriptQueue[queue].shift();
         }
         // Set the queue as inactive
-        scriptActive[queue] = false;
+        $tw.Bob.scriptActive[queue] = false;
         // Process the next task in the queue, if any.
-        processScriptQueue(queue);
+        this.process$tw.Bob.scriptQueue(queue);
       });
     }
   }
-  function clearQueue (queue) {
-    scriptQueue[queue] = [];
-    if(scriptActive[queue]) {
-      childproc.kill('SIGINT');
+  exports.clearQueue = function(queue) {
+    $tw.Bob.scriptQueue[queue] = [];
+    if($tw.Bob.scriptActive[queue]) {
+      $tw.Bob.childproc.kill('SIGINT');
     }
   }
-  $tw.nodeMessageHandlers.runScript = function(data) {
+  exports.runScript = function(data) {
     const path = require('path');
     if(data.name) {
-      if($tw.settings.scripts) {
-        if($tw.settings.scripts[data.name]) {
-          if(typeof $tw.settings.scripts[data.name] === 'string') {
-            let splitThing = $tw.settings.scripts[data.name].split(" ");
+      if($tw.Bob.settings.scripts) {
+        if($tw.Bob.settings.scripts[data.name]) {
+          if(typeof $tw.Bob.settings.scripts[data.name] === 'string') {
+            let splitThing = $tw.Bob.settings.scripts[data.name].split(" ");
             const command = splitThing.shift(),
             args = splitThing || [],
             options = {
@@ -95,15 +86,15 @@ if($tw.node) {
             });
             if(data.sequential) {
               data.queue = data.queue || 0;
-              scriptActive[data.queue] = scriptActive[data.queue] || false;
-              scriptQueue[data.queue] = scriptQueue[data.queue] || [];
+              $tw.Bob.scriptActive[data.queue] = $tw.Bob.scriptActive[data.queue] || false;
+              $tw.Bob.scriptQueue[data.queue] = $tw.Bob.scriptQueue[data.queue] || [];
               // Add the current script to the queue
-              scriptQueue[data.queue].push({command: command, args: args, options: options, queue: data.queue});
+              $tw.Bob.scriptQueue[data.queue].push({command: command, args: args, options: options, queue: data.queue});
               // Process the queue to run a command
-              processScriptQueue(data.queue);
+              this.process$tw.Bob.scriptQueue(data.queue);
             } else {
-              childproc = require('child_process').spawn(command, args, options);
-              childproc.on('error', function(err) {
+              $tw.Bob.childproc = require('child_process').spawn(command, args, options);
+              $tw.Bob.childproc.on('error', function(err) {
                 const message = {
                   alert: 'Script error: ' + err,
                   connections: [data.source_connection]
@@ -118,9 +109,9 @@ if($tw.node) {
     }
   }
   // Stop any currently running script queues
-  $tw.nodeMessageHandlers.stopScripts = function(data) {
+  exports.stopScripts = function(data) {
     data.queue = data.queue || 0;
-    clearQueue(data.queue);
+    this.clearQueue(data.queue);
     const message = {
       alert: 'Stopped all running scripts.',
       wikis: [data.wiki]
@@ -128,6 +119,4 @@ if($tw.node) {
     $tw.ServerSide.sendBrowserAlert(message);
   }
 
-}
-}
 })();

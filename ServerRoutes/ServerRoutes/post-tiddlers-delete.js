@@ -18,11 +18,11 @@ const thePath = /^\/api\/tiddlers\/delete\/(.+?)\/?$/;
 exports.method = "POST";
 exports.path = thePath;
 exports.handler = function(request,response,state) {
-  $tw.settings.API = $tw.settings.API || {};
-  if($tw.settings.API.enableDelete === 'yes') {
-    const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
+  $tw.Bob.settings.API = $tw.Bob.settings.API || {};
+  if($tw.Bob.settings.API.enableDelete === 'yes') {
+    const token = $tw.utils.getCookie(request.headers.cookie, 'token');
     const fromWiki = request.params[0];
-    const authorised = $tw.Bob.AccessCheck(fromWiki, token, 'edit', 'wiki');
+    const authorised = $tw.Bob.wsServer.AccessCheck(fromWiki, token, 'edit', 'wiki');
     if(authorised) {
       let body = ''
       request.on('data', function(chunk){

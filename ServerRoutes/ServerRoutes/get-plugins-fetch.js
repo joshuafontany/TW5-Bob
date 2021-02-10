@@ -19,8 +19,8 @@ exports.method = "GET";
 exports.path = /^\/api\/plugins\/fetch\/(.+)\/?$/;
 
 exports.handler = function(request,response,state) {
-  $tw.settings.API = $tw.settings.API || {};
-  if($tw.settings.API.pluginLibrary === 'yes') {
+  $tw.Bob.settings.API = $tw.Bob.settings.API || {};
+  if($tw.Bob.settings.API.pluginLibrary === 'yes') {
     const path = require('path');
     const fs = require('fs');
     const getPlugin = function(request) {
@@ -33,8 +33,8 @@ exports.handler = function(request,response,state) {
       }
       return false
     }
-    const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
-    const authorised = $tw.Bob.AccessCheck('', token, 'fetch', 'plugin');
+    const token = $tw.utils.getCookie(request.headers.cookie, 'token');
+    const authorised = $tw.Bob.wsServer.AccessCheck('', token, 'fetch', 'plugin');
     if(authorised) {
       const plugin = getPlugin(request)
       if(plugin) {

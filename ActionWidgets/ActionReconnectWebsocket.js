@@ -3,7 +3,7 @@ title: $:/plugins/OokTech/Bob/action-reconnectwebsocket.js
 type: application/javascript
 module-type: widget
 
-Action widget that reconnects a $tw.connections[index].socket to a wiki server
+Action widget that reconnects a $tw.Bob.sessions[index].socket to a wiki server
 
 <$action-reconnectwebsocket/>
 

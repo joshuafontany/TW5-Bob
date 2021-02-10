@@ -1,7 +1,7 @@
 /*\
 title: $:/plugins/OokTech/Bob/NodeBasicHandlers.js
 type: application/javascript
-module-type: startup
+module-type: node-messagehandlers
 
 These are message handler functions for the web socket servers. Use this file
 as a template for extending the web socket funcitons.
@@ -14,19 +14,13 @@ This handles messages sent to the node process.
 /*global $tw: false */
 "use strict";
 
-exports.platforms = ["node"];
-
-exports.startup = function() {
-if($tw.node) {
   const util = require("util");
-  $tw.nodeMessageHandlers = $tw.nodeMessageHandlers || {};
-  $tw.Bob.Shared = require('$:/plugins/OokTech/Bob/SharedFunctions.js');
   /*
     This handles when the browser sends the list of all tiddlers that currently
     exist in the browser version of the wiki. This is different than the list of
     all tiddlers in files.
   */
-  $tw.nodeMessageHandlers.browserTiddlerList = function(data) {
+  exports.browserTiddlerList = function(data) {
     // Save the list of tiddlers in the browser as part of the $tw object so it
     // can be used elsewhere.
     const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
@@ -36,7 +30,7 @@ if($tw.node) {
   /*
     For a lazily loaded wiki this gets the skinny tiddler list.
   */
-  $tw.nodeMessageHandlers.getSkinnyTiddlers = function(data) {
+  exports.getSkinnyTiddlers = function(data) {
     // We need at least the name of the wiki
     if(data.wiki) {
       const prefix = data.wiki || 'RootWiki';
@@ -55,7 +49,7 @@ if($tw.node) {
           type: 'skinnyTiddlers',
           tiddlers: tiddlers
         }
-        $tw.Bob.Shared.sendMessage(message, connectionIndex)
+        $tw.utils.sendMessage(message, connectionIndex)
       })
       .catch(err => {
         $tw.Bob.logger.log(`${prefix}[${connectionIndex}] Handler error. Unable to getSkinnyTiddlers`, err, {level: 1});
@@ -67,7 +61,7 @@ if($tw.node) {
   /*
     For lazy loading this gets a full tiddler
   */
-  $tw.nodeMessageHandlers.getFullTiddler = function(data) {
+  exports.getFullTiddler = function(data) {
     const prefix = data.wiki || 'RootWiki';
     const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
     let promiseLoadWiki = util.promisify($tw.ServerSide.loadWiki);
@@ -78,7 +72,7 @@ if($tw.node) {
         type: 'loadTiddler',
         tiddler: tiddler || {}
       }
-      $tw.Bob.Shared.sendMessage(message, connectionIndex)
+      $tw.utils.sendMessage(message, connectionIndex)
     })
     .catch(err => {
       $tw.Bob.logger.log(`${prefix}[${connectionIndex}] Handler error. Unable to getFullTiddler for '${data.title}'`, err, {level: 1});
@@ -92,7 +86,7 @@ if($tw.node) {
     If we always want to ignore draft tiddlers,
     use `[is[draft]]` in $:/plugins/OokTech/Bob/ExcludeSync
   */
-  $tw.nodeMessageHandlers.saveTiddler = function(data) {
+  exports.saveTiddler = function(data) {
     // Make sure there is actually a tiddler sent & it has fields
     if(data.tiddler && data.tiddler.fields) {
       const prefix = data.wiki || 'RootWiki';
@@ -100,7 +94,7 @@ if($tw.node) {
       // Set the saved tiddler as no longer being edited. It isn't always
       // being edited but checking each time is more complex than just
       // always setting it this way and doesn't benifit us.
-      /*$tw.nodeMessageHandlers.cancelEditingTiddler({
+      /*this.cancelEditingTiddler({
         tiddler:{
           fields:{
             title:data.tiddler.fields.title
@@ -144,7 +138,7 @@ if($tw.node) {
   /*
     This is the handler for when the browser sends the deleteTiddler message.
   */
-  $tw.nodeMessageHandlers.deleteTiddler = function(data) {
+  exports.deleteTiddler = function(data) {
     data.tiddler = data.tiddler || {};
     data.tiddler.fields = data.tiddler.fields || {};
     const title = data.tiddler.fields.title;
@@ -185,7 +179,7 @@ if($tw.node) {
   /*
     This is the handler for when a browser sends the editingTiddler message.
   */
-  $tw.nodeMessageHandlers.editingTiddler = function(data) {
+  exports.editingTiddler = function(data) {
     data.tiddler = data.tiddler || {};
     data.tiddler.fields = data.tiddler.fields || {};
     const title = data.tiddler.fields.title;
@@ -199,7 +193,7 @@ if($tw.node) {
   /*
     This is the handler for when a browser stops editing a tiddler.
   */
-  $tw.nodeMessageHandlers.cancelEditingTiddler = function(data) {
+  exports.cancelEditingTiddler = function(data) {
     data.tiddler = data.tiddler || {};
     data.tiddler.fields = data.tiddler.fields || {};
     let title = data.tiddler.fields.title;
@@ -219,18 +213,18 @@ if($tw.node) {
   /*
     This updates what wikis are being served and where they are being served
   */
-  $tw.nodeMessageHandlers.updateRoutes = function(data) {
+  exports.updateRoutes = function(data) {
     // Then clear all the routes to the non-root wiki
-    $tw.httpServer.clearRoutes();
+    $tw.Bob.httpServer.clearRoutes();
     // The re-add all the routes from the settings
     // This reads the settings so we don't need to give it any arguments
-    $tw.httpServer.addOtherRoutes();
+    $tw.Bob.httpServer.addOtherRoutes();
   }
 
   /*
     This sends back a list of all wikis that are viewable using the current access token.
   */
-  $tw.nodeMessageHandlers.getViewableWikiList = function(data) {
+  exports.getViewableWikiList = function(data) {
     data = data || {};
     const viewableWikis = $tw.ServerSide.getViewableWikiList(data);
     const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
@@ -240,7 +234,7 @@ if($tw.node) {
       list: $tw.utils.stringifyList(viewableWikis),
       wiki: data.wiki
     };
-    $tw.Bob.SendToBrowser($tw.connections[connectionIndex], message);
+    $tw.Bob.SendToBrowser($tw.Bob.sessions[connectionIndex], message);
   }
 
   /*
@@ -251,7 +245,7 @@ if($tw.node) {
     This walks though subfolders too.
   */
   /*
-  $tw.nodeMessageHandlers.findAvailableWikis = function(data) {
+  exports.findAvailableWikis = function(data) {
     $tw.ServerSide.updateWikiListing(data);
   }
   */
@@ -259,8 +253,6 @@ if($tw.node) {
   /*
     This handles ack messages.
   */
-  $tw.nodeMessageHandlers.ack = $tw.Bob.Shared.handleAck;
+  exports.ack = $tw.utils.handleMessageAck;
 
-}
-}
 })();

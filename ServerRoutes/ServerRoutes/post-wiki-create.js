@@ -18,9 +18,9 @@ const thePath = /^\/api\/wiki\/create\/(.+?)\/?$/;
 exports.method = "POST";
 exports.path = thePath;
 exports.handler = function(request,response,state) {
-  $tw.settings.API = $tw.settings.API || {};
-  if($tw.settings.API.enableCreate === 'yes') {
-    const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
+  $tw.Bob.settings.API = $tw.Bob.settings.API || {};
+  if($tw.Bob.settings.API.enableCreate === 'yes') {
+    const token = $tw.utils.getCookie(request.headers.cookie, 'token');
     const URL = require('url')
     const parsed = URL.parse(request.url);
     const params = {};
@@ -32,7 +32,7 @@ exports.handler = function(request,response,state) {
     }
     const edition = params['edition'];
     const duplicate = params['duplicate'];
-    const authorised = $tw.Bob.AccessCheck('', token, 'create/wiki', 'server');
+    const authorised = $tw.Bob.wsServer.AccessCheck('', token, 'create/wiki', 'server');
     if(authorised) {
       const data = {
         decoded: authorised,

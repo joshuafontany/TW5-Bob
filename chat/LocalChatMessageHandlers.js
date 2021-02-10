@@ -13,15 +13,14 @@ This handles messages sent to the node process.
 "use strict";
 
 exports.platforms = ["node"];
+exports.after = ["BobStartup"];
 
 exports.startup = function() {
   if($tw.node) {
-    $tw.nodeMessageHandlers = $tw.nodeMessageHandlers || {};
-
     /*
       Receive a chat message from a browser, they are automatically sent to other connected browsers when the tiddlers are synced.
     */
-    $tw.nodeMessageHandlers.chatMessage = function(data) {
+    $tw.Bob.nodeMessageHandlers.chatMessage = function(data) {
       const conversationTiddler = data.conversation || 'DefaultChat'
       if(conversationTiddler && data.message) {
         // Get the history tiddler
@@ -48,7 +47,7 @@ exports.startup = function() {
           title: `$:/chat/${conversationTiddler}`,
           type: 'application/json'
         }), data.wiki);
-        if($tw.settings.enableFederation === 'yes') {
+        if($tw.Bob.settings.enableFederation === 'yes') {
           // Send it to any connected servers
           $tw.Bob.Federation.sendToRemoteServers(data);
         }

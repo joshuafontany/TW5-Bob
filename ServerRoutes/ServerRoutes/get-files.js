@@ -20,24 +20,24 @@ exports.method = "GET";
 
 // Start with the same base path as the --listen command
 let pathRegExp = /^\/?(.*)(?<!api\/.*)(?:\/files\/)(.+)/;
-if(typeof $tw.settings.fileURLPrefix === 'string' && $tw.settings.fileURLPrefix !== 'files' && ($tw.settings.fileURLPrefix !== '' || $tw.settings.accptance === "I Will Not Get Tech Support For This")) {
-  if($tw.settings.fileURLPrefix === '') {
+if(typeof $tw.Bob.settings.fileURLPrefix === 'string' && $tw.Bob.settings.fileURLPrefix !== 'files' && ($tw.Bob.settings.fileURLPrefix !== '' || $tw.Bob.settings.accptance === "I Will Not Get Tech Support For This")) {
+  if($tw.Bob.settings.fileURLPrefix === '') {
     pathRegExp = new RegExp('^/.+$');
   } else {
-    pathRegExp = new RegExp('^\/?(.*)\/' + $tw.settings.fileURLPrefix + '\/.+$');
+    pathRegExp = new RegExp('^\/?(.*)\/' + $tw.Bob.settings.fileURLPrefix + '\/.+$');
   }
 }
 
 exports.path = pathRegExp;
 
 exports.handler = function(request,response,state) {
-  if($tw.settings.enableFileServer === 'yes') {
+  if($tw.Bob.settings.enableFileServer === 'yes') {
     const filePathRoot = $tw.ServerSide.getFilePathRoot();
-    $tw.settings.servingFiles = $tw.settings.servingFiles || {};
+    $tw.Bob.settings.servingFiles = $tw.Bob.settings.servingFiles || {};
     const path = require('path');
     const fs = require('fs');
     const URL = require('url');
-    const strippedURL = request.url.replace($tw.settings['ws-server'].pathprefix,'').replace(/^\/*/, '');
+    const strippedURL = request.url.replace($tw.Bob.settings['ws-server'].pathprefix,'').replace(/^\/*/, '');
     const wikiName = $tw.ServerSide.findName(strippedURL);
     // Check to see if the wiki matches the referer url, if not respond with a 403 if the setting is set
     let referer = {path: ""}
@@ -46,8 +46,8 @@ exports.handler = function(request,response,state) {
     } catch(e) {
 
     }
-    const filePrefix = $tw.settings.fileURLPrefix?$tw.settings.fileURLPrefix:'files';
-    if($tw.settings.perWikiFiles === 'yes'
+    const filePrefix = $tw.Bob.settings.fileURLPrefix?$tw.Bob.settings.fileURLPrefix:'files';
+    if($tw.Bob.settings.perWikiFiles === 'yes'
       && !(request.url.startsWith(path.join(referer.path,filePrefix)) || ((wikiName === 'RootWiki' || wikiName === '') && request.url.startsWith(path.join(referer.path, 'RootWiki', filePrefix))))
       && !(strippedURL.startsWith(filePrefix) && (wikiName === filePrefix || wikiName === ''))) {
       // return 403
@@ -70,13 +70,13 @@ exports.handler = function(request,response,state) {
     }
     let offset = 1;
     let secondPathPart = '';
-    if($tw.settings.servingFiles[urlPieces[urlPieces.indexOf(filePrefix)+1]]) {
-      secondPathPart = $tw.settings.servingFiles[urlPieces[urlPieces.indexOf(filePrefix)+1]];
+    if($tw.Bob.settings.servingFiles[urlPieces[urlPieces.indexOf(filePrefix)+1]]) {
+      secondPathPart = $tw.Bob.settings.servingFiles[urlPieces[urlPieces.indexOf(filePrefix)+1]];
       offset += 1;
     }
     const filePath = decodeURIComponent(urlPieces.slice(urlPieces.indexOf(filePrefix)+offset).join('/'));
-    const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
-    const authorised = $tw.Bob.AccessCheck(wikiName, token, 'view', 'wiki');
+    const token = $tw.utils.getCookie(request.headers.cookie, 'token');
+    const authorised = $tw.Bob.wsServer.AccessCheck(wikiName, token, 'view', 'wiki');
     if(authorised && ok) {
       const basePath = $tw.ServerSide.getBasePath();
       let pathRoot = path.resolve(basePath,filePathRoot);
@@ -92,7 +92,7 @@ exports.handler = function(request,response,state) {
             response.end();
           }
           const ext = path.parse(pathname).ext.toLowerCase();
-          const mimeMap = $tw.settings.mimeMap || {
+          const mimeMap = $tw.Bob.settings.mimeMap || {
             '.aac': 'audio/aac',
             '.avi': 'video/x-msvideo',
             '.csv': 'text/csv',
@@ -119,7 +119,7 @@ exports.handler = function(request,response,state) {
           };
           // Special handling for streaming video types
           // ref: https://gist.github.com/paolorossi/1993068
-          if(mimeMap[ext] || ($tw.settings.allowUnsafeMimeTypes && $tw.settings.accptance === "I Will Not Get Tech Support For This")) {
+          if(mimeMap[ext] || ($tw.Bob.settings.allowUnsafeMimeTypes && $tw.Bob.settings.accptance === "I Will Not Get Tech Support For This")) {
             fs.stat(pathname, function(err, stat) {
               if(err) {
                 $tw.Bob.logger.error(err, {level:1})

@@ -15,7 +15,7 @@ above into the address bar of a browser.
 You can configure the plugin (and possibly other things in the future) using
 the `Bob Settings` tab in the [[$:/ControlPanel]].
 
-These settings are available to the node process in the $tw.settings object.
+These settings are available to the node process in the $tw.Bob.settings object.
 
 After changing any of the settings they are not saved in a way that will change
 anything until you click the `Update Settings` button. Note that some settings

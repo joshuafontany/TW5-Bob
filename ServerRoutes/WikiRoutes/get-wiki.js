@@ -23,8 +23,8 @@ module.exports = function(fullName) {
     method: "GET",
     path: thePath,
     handler: function(request,response,state) {
-      const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
-      const authorised = $tw.Bob.AccessCheck(fullName, token, 'view', 'wiki');
+      const token = $tw.utils.getCookie(request.headers.cookie, 'token');
+      const authorised = $tw.Bob.wsServer.AccessCheck(fullName, token, 'view', 'wiki');
       let text;
       if(authorised) {
         // Make sure we have loaded the wiki tiddlers.
@@ -36,11 +36,11 @@ module.exports = function(fullName) {
           // This allows you to only serve the plugin to logged in people if
           // you have a secure server, so everyone else gets read-only versions
           // of public wikis.
-          const loggedIn = (!$tw.ExternalServer || request.decoded || ($tw.ExternalServer && $tw.settings.wsserver.servePluginWithoutLogin !== 'no'))
+          const loggedIn = (!$tw.ExternalServer || request.decoded || ($tw.ExternalServer && $tw.Bob.settings.wsserver.servePluginWithoutLogin !== 'no'))
           // If servePlugin is not false than we strip out the filesystem
           // and tiddlyweb plugins if they are there and add in the
           // Bob plugin.
-          const servePlugin = (($tw.settings['ws-server'].servePlugin !== 'no') && loggedIn) ? 'yes' : 'no';
+          const servePlugin = (($tw.Bob.settings['ws-server'].servePlugin !== 'no') && loggedIn) ? 'yes' : 'no';
           // Get the full text of the html wiki to send as the response.
           text = $tw.ServerSide.prepareWiki(fullName, servePlugin);
         } else {

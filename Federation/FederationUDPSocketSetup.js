@@ -14,15 +14,15 @@ A module that adds the framework for inter-server communication
 
 exports.name = "federation-websockets-setup";
 exports.platforms = ["node"];
-exports.after = ["websocket-server"];
+exports.after = ["BobStartup"];
 exports.synchronous = true;
 
 exports.startup = function() {
-  if(false && $tw.node && $tw.settings.enableFederation === 'yes') {
+  if(false && $tw.node && $tw.Bob.settings.enableFederation === 'yes') {
     const dgram = require('dgram');
     const setup = function() {
       $tw.Bob = $tw.Bob || {};
-      $tw.settings.federation = $tw.settings.federation || {};
+      $tw.Bob.settings.federation = $tw.Bob.settings.federation || {};
       $tw.Bob.Federation = $tw.Bob.Federation || {};
       $tw.Bob.Federation.connections = loadConnections();
       $tw.Bob.Federation.messageHandlers = $tw.Bob.Federation.messageHandlers || {};
@@ -78,20 +78,20 @@ exports.startup = function() {
 
       // Create the UDP socket to use
       $tw.Bob.Federation.socket = dgram.createSocket({type:'udp4', reuseAddr: true});
-      $tw.settings.federation.udpPort = $tw.settings.federation.udpPort || '3232';
-      $tw.settings.federation.serverName = $tw.settings.federation.serverName || 'Server of Eternal Mystery';
-      $tw.Bob.Federation.socket.bind($tw.settings.federation.udpPort)
+      $tw.Bob.settings.federation.udpPort = $tw.Bob.settings.federation.udpPort || '3232';
+      $tw.Bob.settings.federation.serverName = $tw.Bob.settings.federation.serverName || 'Server of Eternal Mystery';
+      $tw.Bob.Federation.socket.bind($tw.Bob.settings.federation.udpPort)
       $tw.Bob.Federation.socket.on('listening', ()=>{
         $tw.Bob.Federation.updateConnections()
-        $tw.Bob.logger.log('listening on udp port', $tw.settings.federation.udpPort, {level: 2})
-        if($tw.settings.federation.enableMulticast === 'yes') {
-          $tw.settings.federation.multicastAddress = $tw.settings.federation.multicastAddress || '224.0.0.114';
-          $tw.Bob.logger.log('using multicast address ', $tw.settings.federation.multicastAddress,{level: 2});
+        $tw.Bob.logger.log('listening on udp port', $tw.Bob.settings.federation.udpPort, {level: 2})
+        if($tw.Bob.settings.federation.enableMulticast === 'yes') {
+          $tw.Bob.settings.federation.multicastAddress = $tw.Bob.settings.federation.multicastAddress || '224.0.0.114';
+          $tw.Bob.logger.log('using multicast address ', $tw.Bob.settings.federation.multicastAddress,{level: 2});
           $tw.Bob.Federation.socket.setTTL(128);
           $tw.Bob.Federation.socket.setBroadcast(true);
           $tw.Bob.Federation.socket.setMulticastLoopback(false);
           $tw.Bob.Federation.socket.setMulticastInterface('0.0.0.0');
-          $tw.Bob.Federation.socket.addMembership($tw.settings.federation.multicastAddress, '0.0.0.0');
+          $tw.Bob.Federation.socket.addMembership($tw.Bob.settings.federation.multicastAddress, '0.0.0.0');
 
           // Broadcast a message informing other nodes that this one is on the
           // local net pubKey and signed will be used later, the public key and a
@@ -99,12 +99,12 @@ exports.startup = function() {
           $tw.Bob.Federation.multicastSearch = function() {
             const message = {
               type: 'multicastSearch',
-              serverName: $tw.settings.federation.serverName,
+              serverName: $tw.Bob.settings.federation.serverName,
               pubKey: '',
               signed: ''
             }
             const messageBuffer = Buffer.from(JSON.stringify(message))
-            $tw.Bob.Federation.socket.send(messageBuffer, 0, messageBuffer.length, $tw.settings.federation.udpPort, $tw.settings.federation.multicastAddress, function(err) {
+            $tw.Bob.Federation.socket.send(messageBuffer, 0, messageBuffer.length, $tw.Bob.settings.federation.udpPort, $tw.Bob.settings.federation.multicastAddress, function(err) {
               if(err) {
                 $tw.Bob.logger.error(err, {level: 3})
               }
@@ -178,15 +178,15 @@ exports.startup = function() {
         Setup the websocket server if we aren't using an external one
       */
       function finishSetup () {
-        $tw.settings.federation.rebroadcastInterval = $tw.settings.federation.rebroadcastInterval || 5000;
+        $tw.Bob.settings.federation.rebroadcastInterval = $tw.Bob.settings.federation.rebroadcastInterval || 5000;
         setInterval(function() {
-          if($tw.settings.federation.broadcast === 'yes') {
+          if($tw.Bob.settings.federation.broadcast === 'yes') {
             $tw.Bob.Federation.multicastSearch()
           }
-          if($tw.settings.federation.checkConnections !== 'no') {
+          if($tw.Bob.settings.federation.checkConnections !== 'no') {
             pingConnections('all');
           }
-        }, $tw.settings.federation.rebroadcastInterval);
+        }, $tw.Bob.settings.federation.rebroadcastInterval);
       }
 
       /*
@@ -311,7 +311,7 @@ exports.startup = function() {
             $tw.Bob.Federation.connections[messageData._source_info.serverKey].address = messageData._source_info.address;
             $tw.Bob.Federation.connections[messageData._source_info.serverKey].port = messageData._source_info.port;
             // Request server info for the new one
-            $tw.Bob.Federation.sendToRemoteServer({type:'requestServerInfo', port:$tw.settings.federation.udpPort}, messageData._source_info)
+            $tw.Bob.Federation.sendToRemoteServer({type:'requestServerInfo', port:$tw.Bob.settings.federation.udpPort}, messageData._source_info)
             $tw.Bob.Federation.updateConnectionsInfo();
           }
         } else {

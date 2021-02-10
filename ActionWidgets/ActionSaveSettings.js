@@ -64,7 +64,7 @@ ActionSaveSettings.prototype.invokeAction = function(triggeringWidget,event) {
     "settingsString": settings,
     "wiki": wikiName
   }
-  $tw.Bob.Shared.sendMessage(message, 0)
+  $tw.utils.sendMessage(message, 0)
   return true; // Action was invoked
 };
 

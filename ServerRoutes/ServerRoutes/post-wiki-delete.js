@@ -18,8 +18,8 @@ const thePath = /^\/api\/wiki\/delete\/(.+?)\/?$/;
 exports.method = "POST";
 exports.path = thePath;
 exports.handler = function(request,response,state) {
-  $tw.settings.API = $tw.settings.API || {};
-  if($tw.settings.API.enableDelete === 'yes') {
+  $tw.Bob.settings.API = $tw.Bob.settings.API || {};
+  if($tw.Bob.settings.API.enableDelete === 'yes') {
     const URL = require('url')
     const parsed = URL.parse(request.url);
     const params = {};
@@ -29,10 +29,10 @@ exports.handler = function(request,response,state) {
         params[parts[0]] = decodeURIComponent(parts[1]);
       })
     }
-    const token = $tw.Bob.getCookie(request.headers.cookie, 'token');
+    const token = $tw.utils.getCookie(request.headers.cookie, 'token');
     const deleteChildren = params['deletechildren'];
     const toDelete = request.params[0];
-    const authorised = $tw.Bob.AccessCheck(toDelete, token, 'delete', 'wiki');
+    const authorised = $tw.Bob.wsServer.AccessCheck(toDelete, token, 'delete', 'wiki');
     if(authorised) {
       const data = {
         decoded: authorised,

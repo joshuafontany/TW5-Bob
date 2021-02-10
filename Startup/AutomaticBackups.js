@@ -13,20 +13,15 @@ This module setups up automatic backups, if they are enabled.
 "use strict";
 
 exports.name = 'AutomaticBackups';
-exports.after = ["load-modules"];
+exports.after = ["BobStartup"];
 exports.platforms = ["node"];
 exports.synchronous = true;
 
 exports.startup = function() {
   if($tw.node) {
-    $tw.ServerSide = require('$:/plugins/OokTech/Bob/ServerSide.js');
-    // Make sure that $tw.settings is available.
     // require the fs module if we are running node
     const fs = require("fs");
     const path = require("path");
-
-    // Initialise objects
-    $tw.Bob = $tw.Bob || {};
 
     /*
       When a wiki is loaded save a backup, then save a backup at regular
@@ -40,11 +35,10 @@ exports.startup = function() {
       when a wiki is edited and there isn't already a timer, start a timer, when
       the timer runs out save the wiki.
     */
-    $tw.settings.backups = $tw.settings.backups || {};
-    if($tw.settings.backups.enable === 'yes') {
-      $tw.settings.backups.backupFolder = $tw.settings.backups.backupFolder || './backups';
-      $tw.settings.backups.backupInterval = $tw.settings.backups.backupInterval || 600000;
-      if($tw.settings.backups.saveOnLoad === 'yes') {
+    if($tw.Bob.settings.backups.enable === 'yes') {
+      $tw.Bob.settings.backups.backupFolder = $tw.Bob.settings.backups.backupFolder || './backups';
+      $tw.Bob.settings.backups.backupInterval = $tw.Bob.settings.backups.backupInterval || 600000;
+      if($tw.Bob.settings.backups.saveOnLoad === 'yes') {
         $tw.hooks.addHook('wiki-loaded', function(wikiName) {
           saveWikiBackup(wikiName);
         });
@@ -53,16 +47,16 @@ exports.startup = function() {
           saveSettingsBackup();
         });
       }
-      if($tw.settings.backups.saveOnModified) {
+      if($tw.Bob.settings.backups.saveOnModified) {
         $tw.hooks.addHook('wiki-modified', function(wikiName) {
           if($tw.Bob.Wikis[wikiName].timer === false || typeof $tw.Bob.Wikis[wikiName].timer === 'undefined') {
-            setTimeout(saveWikiBackup, $tw.settings.backups.backupInterval, wikiName);
+            setTimeout(saveWikiBackup, $tw.Bob.settings.backups.backupInterval, wikiName);
           }
         });
       }
 
       function saveWikiBackup(wikiName) {
-        const folder = path.resolve($tw.ServerSide.getBasePath(), $tw.settings.backups.backupFolder, wikiName);
+        const folder = path.resolve($tw.ServerSide.getBasePath(), $tw.Bob.settings.backups.backupFolder, wikiName);
         const filePath = path.join(folder, 'backup-' + $tw.utils.stringifyDate(new Date()) + '.html');
         $tw.utils.createDirectory(folder);
         fs.writeFile(filePath, $tw.ServerSide.prepareWiki(wikiName, 'no', 'no'), function(err) {
@@ -70,7 +64,7 @@ exports.startup = function() {
             $tw.Bob.logger.error('error saving backup:', err, {level: 1});
           }
           $tw.Bob.Wikis[wikiName].timer = false;
-          if($tw.settings.backups.maxBackups > 0) {
+          if($tw.Bob.settings.backups.maxBackups > 0) {
             // make sure there are at most maxBackups wikis saved in the folder.
             fs.readdir(folder, function(err2, filelist) {
               if(err2) {
@@ -79,8 +73,8 @@ exports.startup = function() {
                 const backupsList = filelist.filter(function(item) {
                   return item.startsWith('backup-')
                 }).sort()
-                if(backupsList.length > $tw.settings.backups.maxBackups) {
-                  for (let i = 0; i < backupsList.length - $tw.settings.backups.maxBackups; i++) {
+                if(backupsList.length > $tw.Bob.settings.backups.maxBackups) {
+                  for (let i = 0; i < backupsList.length - $tw.Bob.settings.backups.maxBackups; i++) {
                     fs.unlink(path.join(folder,backupsList[i]),function(err3){
                       if(err3) {
                         $tw.Bob.logger.error('error removing old backup:',err3)
@@ -95,14 +89,14 @@ exports.startup = function() {
       }
 
       function saveSettingsBackup() {
-        const folder = path.resolve($tw.ServerSide.getBasePath(), $tw.settings.backups.backupFolder, 'settings');
+        const folder = path.resolve($tw.ServerSide.getBasePath(), $tw.Bob.settings.backups.backupFolder, 'settings');
         const filePath = path.join(folder, 'settings-backup-' + $tw.utils.stringifyDate(new Date()) + '.json');
         $tw.utils.createDirectory(folder);
-        fs.writeFile(filePath, JSON.stringify($tw.settings, "", 2), function(err) {
+        fs.writeFile(filePath, JSON.stringify($tw.Bob.settings, "", 2), function(err) {
           if(err) {
             $tw.Bob.logger.error('error saving settings backup', err, {level: 1});
           }
-          if($tw.settings.backups.maxBackups > 0) {
+          if($tw.Bob.settings.backups.maxBackups > 0) {
             fs.readdir(folder, function(err2, filelist) {
               if(err2) {
                 $tw.Bob.logger.error('error reading backups folder', err2, {level: 1});
@@ -110,8 +104,8 @@ exports.startup = function() {
                 const backupsList = filelist.filter(function(item) {
                   return item.startsWith('settings-backup')
                 }).sort()
-                if(backupsList.length > $tw.settings.backups.maxBackups) {
-                  for (let i = 0; i < backupsList.length - $tw.settings.backups.maxBackups; i++) {
+                if(backupsList.length > $tw.Bob.settings.backups.maxBackups) {
+                  for (let i = 0; i < backupsList.length - $tw.Bob.settings.backups.maxBackups; i++) {
                     fs.unlink(path.join(folder,backupsList[i]),function(err3){
                       if(err3) {
                         $tw.Bob.logger.error('error removing old backup:',err3)

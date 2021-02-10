@@ -12,10 +12,11 @@ These are basic handlers for federation between different Bob servers.
 "use strict";
 
 exports.platforms = ["node"];
+exports.after = ["BobStartup"];
 
 exports.startup = function() {
-  if(false && $tw.node && $tw.settings.enableFederation === 'yes') {
-    $tw.settings.federation = $tw.settings.federation || {};
+  if(false && $tw.node && $tw.Bob.settings.enableFederation === 'yes') {
+    $tw.Bob.settings.federation = $tw.Bob.settings.federation || {};
     $tw.Bob.Federation = $tw.Bob.Federation || {};
     $tw.Bob.Federation.messageHandlers = $tw.Bob.Federation.messageHandlers || {};
 
@@ -55,10 +56,10 @@ exports.startup = function() {
         return output;
       }
       // Get the wiki list of wiki names from the settings object
-      const wikiList = getList($tw.settings.wikis, '')
+      const wikiList = getList($tw.Bob.settings.wikis, '')
       const viewableWikis = []
       wikiList.forEach(function(wikiName) {
-        if($tw.Bob.AccessCheck(wikiName, {"decoded": data.decoded}, 'view', 'wiki')) {
+        if($tw.Bob.wsServer.AccessCheck(wikiName, {"decoded": data.decoded}, 'view', 'wiki')) {
           viewableWikis.push(wikiName);
         }
       })
@@ -141,13 +142,13 @@ exports.startup = function() {
       // Reply with the server info listed above
       const reply = {
         type: 'sendServerInfo',
-        serverName: $tw.settings.federation.serverName,
+        serverName: $tw.Bob.settings.federation.serverName,
         info: {
-          name: $tw.settings.federation.serverName || 'Sever Name',
-          allows_login: $tw.settings.federation.allows_login || 'no',
+          name: $tw.Bob.settings.federation.serverName || 'Sever Name',
+          allows_login: $tw.Bob.settings.federation.allows_login || 'no',
           available_wikis: $tw.ServerSide.getViewableWikiList(data),
           available_chats: getAvailableChats(data),
-          port: $tw.settings.federation.udpPort,
+          port: $tw.Bob.settings.federation.udpPort,
           publicKey: 'c minor',
           staticUrl: 'no'
         },
@@ -253,7 +254,7 @@ exports.startup = function() {
         // get tiddler hashes
         const outputHashes = {};
         titleList.forEach(function(thisTitle) {
-          outputHashes[encodeURIComponent(thisTitle)] = $tw.Bob.Shared.getTiddlerHash($tw.Bob.Wikis[data.tid_param.name].wiki.getTiddler(thisTitle));
+          outputHashes[encodeURIComponent(thisTitle)] = $tw.utils.getTiddlerHash($tw.Bob.Wikis[data.tid_param.name].wiki.getTiddler(thisTitle));
         })
         // send them back
         const message = {
@@ -281,7 +282,7 @@ exports.startup = function() {
           const wikiData = {
             wikiName: localName
           }
-          $tw.nodeMessageHandlers.createNewWiki(wikiData, nextBit);
+          $tw.Bob.nodeMessageHandlers.createNewWiki(wikiData, nextBit);
         } else {
           nextBit();
         }
@@ -299,7 +300,7 @@ exports.startup = function() {
             const thisTid = $tw.Bob.Wikis[localName].wiki.getTiddler(tidTitle);
             if(thisTid) {
               // If the tiddler exists than check if the hashes match
-              if(data.hashes[rawTitle] !== $tw.Bob.Shared.getTiddlerHash(thisTid)) {
+              if(data.hashes[rawTitle] !== $tw.utils.getTiddlerHash(thisTid)) {
                 // If the hashes don't match add it to the list
                 tiddlersToRequest.push(tidTitle);
               }
@@ -445,7 +446,7 @@ exports.startup = function() {
         tiddlerTitles.forEach(function(tidTitle) {
           const tempTid = $tw.Bob.Wikis[data.wikiName].wiki.getTiddler(tidTitle);
           const tidObj = {};
-          tidObj[encodeURIComponent(tidTitle)] = $tw.Bob.Shared.normalizeTiddler(tempTid).fields;//tempTid.fields;
+          tidObj[encodeURIComponent(tidTitle)] = $tw.utils.normalizeTiddler(tempTid).fields;//tempTid.fields;
           const message = {
             type: 'sendTiddlers',
             tiddlers: tidObj,
@@ -642,7 +643,7 @@ exports.startup = function() {
       }
       let tiddlerHashes = {}
       pushList.forEach(function(tidName) {
-        tiddlerHashes[tidName] = $tw.Bob.Shared.getTiddlerHash(tidName)
+        tiddlerHashes[tidName] = $tw.utils.getTiddlerHash(tidName)
       })
       // send a sync message with the filter and accompanying tiddler hashes.
       let message = {
