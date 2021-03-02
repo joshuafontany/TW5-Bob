@@ -19,7 +19,6 @@ const os = require('os');
 
 // A polyfilL to make this work with older node installs
 
-
 // START POLYFILL
 const reduce = Function.bind.call(Function.call, Array.prototype.reduce);
 const isEnumerable = Function.bind.call(Function.call, Object.prototype.propertyIsEnumerable);
@@ -71,7 +70,6 @@ ServerSide.getBasePath = function() {
 */
 ServerSide.generateWikiPath = function(wikiName) {
   const basePath = $tw.ServerSide.getBasePath();
-  $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis';
   return path.resolve(basePath, $tw.Bob.settings.wikisPath, wikiName);
 }
 
@@ -81,43 +79,49 @@ ServerSide.generateWikiPath = function(wikiName) {
   This can be used to determine if a wiki is listed or not.
 */
 ServerSide.getWikiPath = function(wikiName) {
-  let wikiPath = undefined;
-  if(wikiName === 'RootWiki') {
-    wikiPath = path.resolve($tw.boot.wikiPath);
-  } else if(wikiName.indexOf('/') === -1 && $tw.Bob.settings.wikis[wikiName]) {
-    if(typeof $tw.Bob.settings.wikis[wikiName] === 'string') {
-      wikiPath = $tw.Bob.settings.wikis[wikiName];
-    } else if(typeof $tw.Bob.settings.wikis[wikiName].__path === 'string') {
-      wikiPath = $tw.Bob.settings.wikis[wikiName].__path;
-    }
+  let wikiSettings = ServerSide.getWikiSettings(wikiName), wikiPath = undefined;
+  if(wikiSettings) {
+    wikiPath = wikiSettings.path;
+  }
+  // If the wikiPath exists convert it to an absolute path
+  if(typeof wikiPath !== 'undefined') {
+    const basePath = ServerSide.getBasePath()
+    wikiPath = path.resolve(basePath, $tw.Bob.settings.wikisPath, wikiPath);
+  }
+  return wikiPath;
+}
+
+/*
+  Given a wiki name this gets the wiki settings object if one is listed, 
+  if the wiki isn't listed this returns undefined.
+  This can be used to determine if a wiki is listed or not.
+*/
+ServerSide.getWikiSettings = function(wikiName) {
+  let wikiSettings = undefined;
+  if(typeof $tw.Bob.settings.wikis[wikiName] === 'object') {
+    wikiSettings = $tw.Bob.settings.wikis[wikiName];
   } else {
     const parts = wikiName.split('/');
     let obj = $tw.Bob.settings.wikis;
     for (let i = 0; i < parts.length; i++) {
       if(obj[parts[i]]) {
-        if(i === parts.length - 1) {
-          if(typeof obj[parts[i]] === 'string') {
-            wikiPath = obj[parts[i]];
-          } else if(typeof obj[parts[i]] === 'object') {
-            if(typeof obj[parts[i]].__path === 'string') {
-              wikiPath = obj[parts[i]].__path;
-            }
-          }
+        if(i === parts.length - 1 && typeof obj[parts[i]] === 'object') {
+            wikiSettings = obj[parts[i]];
         } else {
-          obj = obj[parts[i]];
+          obj = obj[parts[i]].wikis;
         }
       } else {
         break;
       }
     }
   }
-  // If the wikiPath exists convert it to an absolute path
-  if(typeof wikiPath !== 'undefined') {
-    $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis';
-    const basePath = $tw.ServerSide.getBasePath()
-    wikiPath = path.resolve(basePath, $tw.Bob.settings.wikisPath, wikiPath);
+  if (wikiName === "RootWiki") {
+    wikiSettings.path = path.resolve($tw.boot.wikiPath);
+  } else if (!wikiSettings.syncadaptor) {
+    // Set the default syncadaptor
+    wikiSettings.syncadaptor = ServerSide.getWikiSettings("RootWiki").syncadaptor;
   }
-  return wikiPath;
+  return wikiSettings;
 }
 
 /*
@@ -127,7 +131,6 @@ ServerSide.wikiExists = function(wikiFolder) {
   let exists = false;
   // Make sure that the wiki actually exists
   if(wikiFolder) {
-    $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis'
     const basePath = $tw.ServerSide.getBasePath()
     // This is a bit hacky to get around problems with loading the root wiki
     // This tests if the wiki is the root wiki and ignores the other pathing
@@ -164,86 +167,32 @@ ServerSide.existsListed = function(wikiName) {
 }
 
 /*
-  This function loads a wiki and returns a timeout with any callback.
+  This function loads a wiki and calls any callback.
 */
 ServerSide.loadWiki = function(wikiName, cb) {
-  $tw.Bob.settings['ws-server'] = $tw.Bob.settings['ws-server'] || {}
-  $tw.Bob = $tw.Bob || {};
-  $tw.Bob.Wikis = $tw.Bob.Wikis || {};
-  $tw.Bob.Wikis[wikiName] = $tw.Bob.Wikis[wikiName] || {};
-  $tw.Bob.Files[wikiName] = $tw.Bob.Files[wikiName] || {};
-  $tw.Bob.EditingTiddlers[wikiName] = $tw.Bob.EditingTiddlers[wikiName] || {};
   const wikiFolder = ServerSide.existsListed(wikiName);
   // Make sure it isn't loaded already
-  if(wikiFolder && $tw.Bob.Wikis[wikiName].State !== 'loaded') {
+  if(wikiFolder && !$tw.Bob.Wikis.has(wikiName)) {
     try{
-      // Save the wiki path and tiddlers path
-      $tw.Bob.Wikis[wikiName].wikiPath = wikiFolder;
+      let instance = (wikiName == 'RootWiki')? $tw: require("./boot/boot.js").TiddlyWiki(),
+        settings = ServerSide.getWikiSettings(wikiName);
       if(wikiName == 'RootWiki') {
-        // Assign the boot wiki object for this wiki
-        $tw.Bob.Wikis[wikiName].wiki = $tw.wiki;
-        // Save the metadata
-        $tw.Bob.Wikis[wikiName].wikiInfo = $tw.boot.wikiInfo;
-        $tw.Bob.Wikis[wikiName].wikiTiddlersPath = $tw.boot.wikiTiddlersPath;
-        $tw.Bob.Files[wikiName] = $tw.boot.files;
-        // Setup syncer
-        $tw.Bob.Wikis[wikiName].syncer = $tw.syncer;
+        
       } else {
-        // Create a wiki object for this wiki
-        $tw.Bob.Wikis[wikiName].wiki = new $tw.Wiki();
-        // From $tw.loadTiddlersNode
-        // Load the boot tiddlers
-        $tw.utils.each($tw.loadTiddlersFromPath($tw.boot.bootPath),function(tiddlerFile) {
-          $tw.Bob.Wikis[wikiName].wiki.addTiddlers(tiddlerFile.tiddlers);
-        });
-        // Load the core tiddlers
-        $tw.Bob.Wikis[wikiName].wiki.addTiddler($tw.loadPluginFolder($tw.boot.corePath));
-        // Add tiddlers to the wiki as defined by the tiddlywiki.info file
-        $tw.Bob.Wikis[wikiName].wikiInfo = loadWikiTiddlers($tw.Bob.Wikis[wikiName].wikiPath, {wikiName: wikiName});
-
-        // From $tw.boot.execStartup
-        $tw.Bob.Wikis[wikiName].wiki.readPluginInfo();
-        $tw.Bob.Wikis[wikiName].wiki.registerPluginTiddlers("plugin",$tw.safeMode ? ["$:/core"] : undefined);
-        // Unpack plugin tiddlers
-        $tw.Bob.Wikis[wikiName].wiki.unpackPluginTiddlers();
-        // Process "safe mode"
-        if($tw.safeMode) {
-          $tw.Bob.Wikis[wikiName].wiki.processSafeMode();
-        }
-
-        // Register typed modules from the tiddlers we've just loaded ??
-        // instead of calling $tw.Bob.Wikis[wikiName].wiki.defineTiddlerModules();
-        // use custom
-        // defineTiddlerModules(wikiName);
-        // And any modules within plugins ??
-        // instead of calling $tw.Bob.Wikis[wikiName].wiki.defineShadowModules();
-        // use custom
-        // defineShadowModules(wikiName);
-        // Encryption handling would go here??
-        // from $tw.boot.execStartup
-
-        // Setup syncer here
-        $tw.Bob.Wikis[wikiName].syncer = new $tw.Syncer({wiki: $tw.Bob.Wikis[wikiName].wiki, syncadaptor: $tw.syncadaptor});
+        // Pass the command line arguments to the boot kernel
+        instance.boot.argv = ["+plugins/"+settings.syncadaptor,settings.path];
+        // Boot the TW5 app
+        instance.boot.boot();
       }
       // Name the wiki
       const fields = {
         title: '$:/WikiName',
         text: wikiName
       };
-      $tw.Bob.Wikis[wikiName].wiki.addTiddler(new $tw.Tiddler(fields));
-      // Get the list of tiddlers for this wiki
-      let wikiInfo = $tw.Bob.Wikis[wikiName].wikiInfo;      
-      $tw.Bob.Wikis[wikiName].tiddlers = $tw.Bob.Wikis[wikiName].wiki.allTitles();
-      $tw.Bob.Wikis[wikiName].plugins = wikiInfo.plugins ? wikiInfo.plugins.map(function(name) {
-        return '$:/plugins/' + name;
-      }): [];
-      $tw.Bob.Wikis[wikiName].themes = wikiInfo.themes ? wikiInfo.themes.map(function(name) {
-        return '$:/themes/' + name;
-      }): [];
-      $tw.Bob.Wikis[wikiName].languages = wikiInfo.languages ? wikiInfo.languages.map(function(name) {
-        return '$:/themes/' + name;
-      }): [];
+      instance.wiki.addTiddler(new $tw.Tiddler(fields));
+
       // Setup the FileSystemMonitors
+      /*
       // Make sure that the tiddlers folder exists
       const error = $tw.utils.createDirectory($tw.Bob.Wikis[wikiName].wikiTiddlersPath);
       if(error){
@@ -255,8 +204,9 @@ ServerSide.loadWiki = function(wikiName, cb) {
         // Watch the root tiddlers folder for chanegs
         $tw.Bob.WatchAllFolders($tw.Bob.Wikis[wikiName].FolderTree, wikiName);
       }
-      // If the wiki isn't loaded yet set the wiki as loaded
-      $tw.Bob.Wikis[wikiName].State = 'loaded';
+      */
+      // Set the wiki as loaded
+      $tw.Bob.Wikis.set(wikiName,instance);
       $tw.hooks.invokeHook('wiki-loaded', wikiName);
     } catch(err) {
       if(typeof cb === 'function') {
@@ -1340,7 +1290,7 @@ ServerSide.updateWikiListing = function(data) {
   const fs = require('fs');
   const path = require('path');
   const basePath = $tw.ServerSide.getBasePath();
-  $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis';
+  
   let wikiFolderPath = path.resolve(basePath, $tw.Bob.settings.wikisPath);
   // Make sure that the wikiFolderPath exists
   const error = $tw.utils.createDirectory(path.resolve(basePath, $tw.Bob.settings.wikisPath));
@@ -1391,7 +1341,7 @@ ServerSide.updateWikiListing = function(data) {
             settingsObj = settingsObj[nameParts[i]]
           } else {
             settingsObj[nameParts[i]] = settingsObj[nameParts[i]] || {};
-            settingsObj[nameParts[i]].__path = nameParts.join('/');
+            settingsObj[nameParts[i]].path = nameParts.join('/');
           }
         }
       }
@@ -1409,8 +1359,8 @@ ServerSide.updateWikiListing = function(data) {
   // browser and update the list of available wikis
   if(data.saveSettings) {
     data.fromServer = true;
-    $tw.Bob.nodeMessageHandlers.saveSettings(data);
-    $tw.Bob.nodeMessageHandlers.updateRoutes(data);
+    $tw.Bob.wsServer.messageHandlers.saveSettings(data);
+    $tw.Bob.wsServer.messageHandlers.updateRoutes(data);
   }
 }
 
@@ -1471,10 +1421,10 @@ function GetWikiName (wikiName, count, wikiObj, fullName) {
   if(nameParts.length === 1) {
     updatedName = nameParts[0];
     if(wikiObj[updatedName]) {
-      if(wikiObj[updatedName].__path) {
+      if(wikiObj[updatedName].path) {
         count = count + 1;
         while (wikiObj[updatedName + String(count)]) {
-          if(wikiObj[updatedName + String(count)].__path) {
+          if(wikiObj[updatedName + String(count)].path) {
             count = count + 1;
           } else {
             break;
@@ -1522,7 +1472,7 @@ ServerSide.createWiki = function(data, cb) {
       // This is just adding an existing node wiki to the listing
       addListing(name, data.nodeWikiPath);
       data.fromServer = true;
-      $tw.Bob.nodeMessageHandlers.saveSettings(data);
+      $tw.Bob.wsServer.messageHandlers.saveSettings(data);
       finish();
     } else if(data.tiddlers || data.externalTiddlers) {
       data.tiddlers = data.tiddlers || data.externalTiddlers;
@@ -1546,7 +1496,6 @@ ServerSide.createWiki = function(data, cb) {
       // name isn't in use
       if($tw.ServerSide.existsListed(data.fromWiki)) {
         // Get the paths for the source and destination
-        $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis';
         const source = $tw.ServerSide.getWikiPath(data.fromWiki);
         data.copyChildren = data.copyChildren || 'no';
         const copyChildren = data.copyChildren.toLowerCase() === 'yes'?true:false;
@@ -1830,6 +1779,15 @@ ServerSide.loadSettings = function(settings,bootPath) {
   // Extend the default with the user settings & normalize the wiki objects
   $tw.ServerSide.updateSettings(settings,newSettings);
   $tw.ServerSide.updateSettingsWikiPaths(settings.wikis);
+  // Get the ip address to make it easier for other computers to connect.
+  const ip = require('$:/plugins/OokTech/Bob/External/IP/ip.js');
+  const ipAddress = ip.address();
+  settings.serverInfo = {
+    name: settings.serverName,
+    ipAddress: ipAddress,
+    port: settings['ws-server'].port || "8080",
+    host: settings['ws-server'].host || "127.0.0.1"
+  }
 }
 
 /*
@@ -1838,8 +1796,13 @@ ServerSide.loadSettings = function(settings,bootPath) {
   in the local settings.
   Changes to the settings are later saved to the local settings.
 */
-ServerSide.updateSettings = function(globalSettings, localSettings) {
-  //Walk though the properties in the localSettings, for each property set the global settings equal to it, but only for singleton properties. Don't set something like GlobalSettings.Accelerometer = localSettings.Accelerometer, set globalSettings.Accelerometer.Controller = localSettings.Accelerometer.Contorller
+ServerSide.updateSettings = function(globalSettings,localSettings) {
+  /*
+  Walk though the properties in the localSettings, for each property set the global settings equal to it, 
+  but only for singleton properties. Don't set something like 
+  GlobalSettings.Accelerometer = localSettings.Accelerometer, instead set 
+  GlobalSettings.Accelerometer.Controller = localSettings.Accelerometer.Contorller
+  */
   Object.keys(localSettings).forEach(function(key,index){
     if(typeof localSettings[key] === 'object') {
       if(!globalSettings[key]) {
@@ -1855,18 +1818,18 @@ ServerSide.updateSettings = function(globalSettings, localSettings) {
 
 /*
   This allows people to add wikis using name: path in the settings.json and
-  still have them work correctly with the name: {__path: path} setup.
+  still have them work correctly with the name: {path: path} setup.
 
   It takes the wikis section of the settings and changes any entries that are
-  in the form name: path and puts them in the form name: {__path: path}, and
+  in the form name: path and puts them in the form name: {path: path}, and
   recursively walks through all the wiki entries.
 */
 ServerSide.updateSettingsWikiPaths = function(inputObj) {
   Object.keys(inputObj).forEach(function(entry) {
-    if(typeof inputObj[entry] === 'string' && entry !== '__path') {
-      inputObj[entry] = {'__path': inputObj[entry]}
-    } else if(typeof inputObj[entry] === 'object' && entry !== '__permissions') {
-      updateSettingsWikiPaths(inputObj[entry])
+    if(typeof inputObj[entry] === 'string') {
+      inputObj[entry] = {'path': inputObj[entry]}
+    } else if(typeof inputObj[entry] === 'object' && !!inputObj[entry].wikis) {
+      ServerSide.updateSettingsWikiPaths(inputObj[entry].wikis)
     }
   })
 }

@@ -11,7 +11,9 @@ module-type: library
 /*global $tw: false */
 "use strict";
 
-const uuidv4 = require('$:/plugins/OokTech/Bob/External/uuid/uuidv4.js')
+const { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('$:/plugins/OokTech/Bob/External/uuid/src/index.js'),
+    WebSocketSession = require('$:/plugins/OokTech/Bob/WSSession.js').WebSocketSession,
+    WebSocketUser = require('$:/plugins/OokTech/Bob/WSUser.js').WebSocketUser;
 
 /*
     A simple session manager, it currently holds everything in server memory.
@@ -20,81 +22,84 @@ const uuidv4 = require('$:/plugins/OokTech/Bob/External/uuid/uuidv4.js')
     options: 
 */
 function SessionManager(options) {
-    this.users = options.users || new Map();
+    options = options || {};
+    this.admin = new Set(options.admin || []);
     this.sessions = options.sessions || new Map();
+    this.anonymousUsers = options.anonymousUsers || new Map();
+    this.authorizedUsers = options.authorizedUsers || new Map();
 }
 
-SessionManager.prototype.accessLevels = {
-    Guest: 0,
-    Normal: 1,
-    Admin: 2
-};
-
-SessionManager.prototype.addUser = function(userData) {
-    let userId = userData.id || uuidv4();
-    this.users.set(userId,userData);
-}
-
-SessionManager.prototype.removeUser = function(userId) {
-    if (this.users.has(userId)) {
-        this.users.delete(userId);
-    }
-}
-
-SessionManager.prototype.getUser = function(userId) {
-    if (this.users.has(userId)) {
-       return this.users.get(userId);
-    }
-}
-
-SessionManager.prototype.isAdmin = function(userId) {
-    if (this.users.has(userId)) {
-        return this.users.get(userId).access == this.accessLevels.Admin;
-    }
-    return null;
-}
-
-SessionManager.prototype.getUsersByAccessLevel = function(level,loggedIn) {
-    var usersByAccess = new Map();
-    for (let [id,user] of this.users.entries()) {
-        if (user.access === level && (!!loggedIn && user.loggedIn)) {
-            usersByAccess.add(id,user);
+SessionManager.prototype.getUserAccess = function(username,wikiName) {
+    wikiName = wikiName || 'RootWiki';
+    if(!!username) {
+        if (this.isAdmin(username)) {
+            return "admin";
+        } else {
+            let wikiSettings = $tw.ServerSide.getWikiSettings(wikiName);
         }
     }
-    return usersByAccess;
+    return null;    //return $tw.Bob.getAccess(username,wikiName);
 }
 
-SessionManager.prototype.getUsersWithAccess = function(level,loggedIn) {
-    var usersByAccess = new Map();
-    for (let [id,user] of this.users.entries()) {
-        if (user.access >= level && (!!loggedIn && user.loggedIn)) {
-            usersByAccess.add(id,user);
-        }
+SessionManager.prototype.requestSession = function(state) {
+    let userSession, sessionId = state.queryParameters["session"];debugger;
+    if(sessionId == uuid_NIL || !this.hasSession(sessionId)  
+        || this.getSession(sessionId).username !== state.authenticatedUsername) {
+        userSession = this.newSession({
+            wikiname: state.wikiName,
+            ip: state.ip,
+            username: state.username,
+            access: this.getUserAccess(state.username,state.wikiName),
+            isLoggedIn: !!state.authenticatedUsername,
+            isReadOnly: !!state["read_only"],
+            isAnonymous: !!state.anonymous
+        });
+    } else {
+        userSession = this.getSession(sessionId);
     }
-    return usersByAccess;
+    // Set a new token and tokenEOL
+    let now = new Date();
+    userSession.tokenEOL = now.setHours(now.getHours() + 1);
+    userSession.token = uuid_v4();
+    // Log the session in this.authorizedUsers or this.anonymousUsers
+    this.updateUser(userSession);
+    return userSession;
 }
 
-SessionManager.prototype.addSession = function(sessionData) {
-    let sessionId = sessionData.id || uuidv4();
-    this.sessions.set(sessionId,sessionData);
+SessionManager.prototype.newSession = function(sessionData) {
+    sessionData.id = uuid_v4();
+    let session = new WebSocketSession(sessionData);
+    session.initState();
+    this.setSession(session);
+    return session;
 }
 
-SessionManager.prototype.removeSession = function(sessionId) {
-    if (this.sessions.has(sessionId)) {
-        this.sessions.delete(sessionId);
-    }
+SessionManager.prototype.hasSession = function(sessionId) {
+    return this.sessions.has(sessionId);
 }
 
 SessionManager.prototype.getSession = function(sessionId) {
-    if (this.sessions.has(sessionId)) {
+    if (this.hasSession(sessionId)) {
        return this.sessions.get(sessionId);
     }
 }
 
-SessionManager.prototype.getSessionsByUserId = function(userId) {
+SessionManager.prototype.setSession = function(sessionData) {
+    if (sessionData.id) {
+        this.sessions.set(sessionData.id,sessionData);
+    }
+}
+
+SessionManager.prototype.deleteSession = function(sessionId) {
+    if (this.hasSession(sessionId)) {
+        this.sessions.delete(sessionId);
+    }
+}
+
+SessionManager.prototype.getSessionsByUserId = function(userid) {
     var usersSessions = new Map();
     for (let [id,session] of this.sessions.entries()) {
-        if (session.userId === userId) {
+        if (session.userid === userid) {
             usersSessions.add(id,session);
         }
     }
@@ -111,6 +116,61 @@ SessionManager.prototype.getSessionsByWiki = function(wikiName) {
     return wikiSessions;
 }
 
+/*
+    User methods
+*/
+SessionManager.prototype.updateUser = function(sessionData) {
+    let user = null;
+    if(!!sessionData.isAnonymous) {
+        // Anon users always have a new user object created with a random userid
+        sessionData.userid = uuid_v4();
+        user = this.newUser(sessionData);
+    } else {
+        user = this.authorizedUsers.get(sessionData.username) || this.newUser(sessionData);
+    }
+    user.sessions.set(sessionData.id,sessionData.wikiName)
+}
 
-exports.SessionManager = SessionManager;
-});
+SessionManager.prototype.newUser = function(sessionData) {
+    let user = new WebSocketUser(sessionData);
+    if (user.isAnonymous) {
+        this.anonymousUsers.set(user.id,user);
+    } else {
+        this.authorizedUsers.set(user.id,user);
+    }
+    return user;
+}
+
+SessionManager.prototype.isAdmin = function(username) {
+    if (this.authorizedUsers.has(username)) {
+        return this.admin.has("(authenticated)") || this.admin.has(username);
+    } else {
+        return null;
+    }
+}
+
+SessionManager.prototype.getUsersByAccessLevel = function(level) {
+    var usersByAccess = new Map();
+    for (let [id,user] of this.authorizedUsers.entries()) {
+        if (user.access === level) {
+            usersByAccess.add(id,user);
+        }
+    }
+    return usersByAccess;
+}
+
+SessionManager.prototype.getUsersWithAccess = function(level) {
+    var usersWithAccess = new Map();
+    for (let [id,user] of this.authorizedUsers.entries()) {
+        if (user.access >= level) {
+            usersWithAccess.add(id,user);
+        }
+    }
+    return usersWithAccess;
+}
+
+if($tw.node) {
+    exports.SessionManager = SessionManager;
+}
+
+})();

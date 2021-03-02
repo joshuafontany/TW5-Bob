@@ -6,30 +6,65 @@ response: A JSON object containing status information about the server
 parameters:
 description: get server status information
 
-The returned status is used to get sever settings in opened wikis.
+Get server status information
 
-The fields `logged_in`, `username`, `authentication_level` and `read_only`
-currently have no meaning.
+```
+GET /status
+```
 
-The returned JSON object is in the form:
+Parameters:
+
+* ''id'' - the current user session UUID
+
+Response:
+
+* 200 OK
+*> `Content-Type: application/json`
+*> Body: see below
+
+The JSON data returned comprises the following properties:
+
+* ''username'' - the username of the currently authenticated user. If undefined, the [[WebServer Parameter: anon-username]] is returned instead
+* ''anonymous'' - true if the current user is anonymous
+* ''read_only'' - true if the current user is restricted to read only access to the server
+* ''session'' - the sesion object for the current user-sesion (see below)
+** ''wikiName'' - the $tw.wikiName for the session
+** ''url'' - the server endpoint URL of the session
+** ''id'' - the UUID the session
+** ''token'' - the current auth token for the session
+** ''expires'' - when the current auth token expires
+** ''user'' - the UUID of the currently authenticated user
+** ''username'' - the username of the currently authenticated user
+** ''access'' - the access level of the currently authenticated user
+** ''isLoggedIn'' - the logged in status of the currently authenticated user
+** ''isReadOnly'' - true if the current user is restricted to read only access to the current wiki
+** ''isAnonymous'' - true if the current user is anonymous
+* ''space'' - always contains the object `{recipe: "default"}`
+* ''tiddlywiki_version''  - the current TiddlyWiki version
+
+For example:
 
 ```
 {
-  logged_in: false,
-  username: "",
-  authentication_level: "Guest",
-  tiddlywiki_version: 5.1.22,
-  bob_version: 1.6.2,
-  read_only: false,
-  available_wikis: ["wiki1", "wiki2"],
-  available_themes: ["theme1", "theme2"],
-  available_plugins: ["OokTech/Bob", "OokTech/Login"],
-  available_editions: ["edition1", "edition2"],
-  available_languages: ["language1", "language2"],
-  settings: {/* The full server settings */}
+  "username": "",
+  "anonymous": true,
+  "read_only": false,
+  "session": {
+    "wikiName": "Root Wiki",
+    "url": "wss://127.0.0.1:8080"
+    "id": "00000000-0000-0000-0000-000000000000",
+    "token": "00000000-0000-0000-0000-000000000000",
+    "expires": 1614052150748,
+    "user": "00000000-0000-0000-0000-000000000000",
+    "username": "GUEST",
+    "access": 0,
+    "isLoggedIn": false,
+    "isReadOnly": true,
+    "isAnonymous": true,
+  },
+  "space": {
+    "recipe": "default"
+  },
+  "tiddlywiki_version": "5.1.18"
 }
 ```
-
-Example:
-
-* `/api/status`

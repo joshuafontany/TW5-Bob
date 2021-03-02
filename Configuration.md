@@ -14,9 +14,6 @@ marked in the explanations below.
 
 ```
 {
-  "editionsPath": "./Editions",
-  "pluginsPath": "./Plugins",
-  "themesPath": "./Themes"
   "wikisPath": "./Wikis",
   "proxyprefix": "wiki"
   "wikiPathBase": "cwd",

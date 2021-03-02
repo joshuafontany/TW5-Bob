@@ -35,7 +35,7 @@ This handles messages sent to the node process.
   */
   // This function checks if a script is currently running, if not it runs the
   // next script in the queue.
-  exports.process$tw.Bob.scriptQueue = function(queue) {
+  exports.processscriptQueue = function(queue) {
     if(!$tw.Bob.scriptActive[queue] && $tw.Bob.scriptQueue[queue].length > 0) {
       $tw.Bob.childproc = require('child_process').spawn($tw.Bob.scriptQueue[queue][0].command, $tw.Bob.scriptQueue[queue][0].args, $tw.Bob.scriptQueue[queue][0].options);
       $tw.Bob.scriptActive[queue] = true;
@@ -51,7 +51,7 @@ This handles messages sent to the node process.
         // Set the queue as inactive
         $tw.Bob.scriptActive[queue] = false;
         // Process the next task in the queue, if any.
-        this.process$tw.Bob.scriptQueue(queue);
+        this.processscriptQueue(queue);
       });
     }
   }
@@ -91,7 +91,7 @@ This handles messages sent to the node process.
               // Add the current script to the queue
               $tw.Bob.scriptQueue[data.queue].push({command: command, args: args, options: options, queue: data.queue});
               // Process the queue to run a command
-              this.process$tw.Bob.scriptQueue(data.queue);
+              this.processscriptQueue(data.queue);
             } else {
               $tw.Bob.childproc = require('child_process').spawn(command, args, options);
               $tw.Bob.childproc.on('error', function(err) {

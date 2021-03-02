@@ -1,15 +1,40 @@
 {
   "tiddlers": [
     {
-      "file": "uuidv4.min.js",
+      "file": "LICENSE.md",
       "fields": {
-        "title": "$:/plugins/OokTech/Bob/External/uuid/uuidv4.js",
-        "type": "application/javascript",
-        "module-type": "library",
+        "title": "$:/plugins/OokTech/Bob/External/uuid/LICENSE",
+        "type": "text/markdown",
         "source": "https://www.npmjs.com/package/uuid"
-      },
-      "prefix": "(function(){\n",
-      "suffix": "})();"
+      }
+    },
+        {
+      "file": "README.md",
+      "fields": {
+        "title": "$:/plugins/OokTech/Bob/External/uuid/README",
+        "type": "text/markdown",
+        "source": "https://www.npmjs.com/package/uuid"
+      }
+    }
+  ],
+    "directories": [
+    {
+      "path": "./src",
+      "filesRegExp": ".+\\.js",
+      "isTiddlerFile": false,
+      "isEditableFile": false,
+      "fields": {
+        "title": {
+          "source": "filename",
+          "prefix": "$:/plugins/OokTech/Bob/External/uuid/src/"
+        },
+        "module-type": "library",
+        "type": "application/javascript",
+        "text": {
+          "prefix": "(function(){\n",
+          "suffix": "})();"
+        }
+      }
     }
   ]
 }

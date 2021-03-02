@@ -13,7 +13,8 @@ $:/core/modules/server/server.js later on?
 /*global $tw: false */
 "use strict";
 
-let http = require ("http");
+if($tw.node) {
+  const http = require ("http");
 
 /*
     A node "saver" server 
@@ -33,7 +34,7 @@ function SaverServer(options) {
 	$tw.utils.extend({},this.defaultVariables,options.variables);
 }
 
-//SaverServer.prototype = Object.create(Server.prototype);
+SaverServer.prototype = Object.create(Object.prototype);
 SaverServer.prototype.constructor = SaverServer;
 
 SaverServer.prototype.defaultVariables = {
@@ -125,4 +126,6 @@ SaverServer.prototype.handleSaverRequest = function(request,response) {
 }
 
 exports.SaverServer = SaverServer;
-});
+
+}
+})();

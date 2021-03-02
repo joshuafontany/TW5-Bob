@@ -295,10 +295,10 @@ This handles messages sent to the node process.
     if(nameParts.length === 1) {
       updatedName = nameParts[0];
       if(wikiObj[updatedName]) {
-        if(wikiObj[updatedName].__path) {
+        if(wikiObj[updatedName].path) {
           count = count + 1;
           while (wikiObj[updatedName + String(count)]) {
-            if(wikiObj[updatedName + String(count)].__path) {
+            if(wikiObj[updatedName + String(count)].path) {
               count = count + 1;
             } else {
               break;
@@ -336,8 +336,8 @@ This handles messages sent to the node process.
       current[pieces[i]] = current[pieces[i]] || {};
       current = current[pieces[i]];
     }
-    if(!current.__path || overwrite) {
-      current.__path = wikiPath;
+    if(!current.path || overwrite) {
+      current.path = wikiPath;
     }
   }
 
@@ -516,7 +516,6 @@ This handles messages sent to the node process.
     if($tw.ServerSide.existsListed(data.fromWiki) && authorised) {
       const wikiName = GetWikiName(data.newWiki);
       // Get the paths for the source and destination
-      $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || './Wikis';
       data.wikisFolder = data.wikisFolder || $tw.Bob.settings.wikisPath;
       const source = $tw.ServerSide.getWikiPath(data.fromWiki);
       const basePath = $tw.ServerSide.getBasePath();

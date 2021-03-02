@@ -13,60 +13,85 @@ are split among the SessionManager and the WebSocketServer.
 /*global $tw: false */
 "use strict";
 
+const CONFIG_HOST_TIDDLER = "$:/config/bob/host",
+  DEFAULT_HOST_TIDDLER = "$protocol$//$host$/",
+  WebSocketSession = require('$:/plugins/OokTech/Bob/WSSession.js').WebSocketSession;
+
 /*
   A simple websocket client
   options: 
 */
 function WebSocketClient(options) {
-  // Only one user in the browser
-  this.user = options.user || {username: "Anon", access: 0, sessionId: null};
+  options = options || {};
+  this.wiki = options.wiki || $tw.wiki;
+  this.wikiName = this.wiki.getTiddlerText('$:/WikiName','');
   this.sessions = options.sessions || new Map();
-  // Setup the heartbeat settings
+  // Load the browser-messagehandlers modules
+  this.messageHandlers = {};
+  $tw.modules.applyMethods("browser-messagehandlers",this.messageHandlers);
+  // Setup the heartbeat settings RE-DO ALL OF THIS
   this.settings = options.settings || {};
-  this.settings.heartbeat = $tw.Bob.settings.heartbeat || {
+  this.settings.heartbeat = {
     "interval":1000, // default 1 sec heartbeats
     "timeout":5000 // default 5 second heartbeat timeout
   };
-  this.settings.reconnect = $tw.Bob.settings.reconnect || {
+  this.settings.reconnect = {
     "auto": true,
     "initial": 100, // small initial increment
     "decay": 1.5, // exponential decay d^n (number-of-retries)
     "max": 10000, // maximum retry increment
     "abort": 60000 // failure after this long
   }
-  // Set the on connection & close functions
 
 }
 
-WebSocketClient.prototype.accessLevels = {
-  Guest: 0,
-  Normal: 1,
-  Admin: 2
-};
+WebSocketClient.prototype.getHost = function() {
+  // Websocket host
+  let text = this.wiki.getTiddlerText(CONFIG_HOST_TIDDLER,DEFAULT_HOST_TIDDLER),
+    substitutions = [
+      {name: "protocol", value: ""},
+      {name: "host", value: document.location.host}
+    ];
+  if (document.location.protocol === "http:") {
+    substitutions["protocol"] = "ws://";
+  } else if (document.location.protocol === "https:") {
+    substitutions["protocol"] = "wss://";
+  }
+  for(let t=0; t<substitutions.length; t++) {
+    let s = substitutions[t];
+    text = $tw.utils.replaceString(text,new RegExp("\\$" + s.name + "\\$","mg"),s.value);
+  }
+  if (!!$tw.wikiName && $tw.wikiName !== "RootWiki") {
+    let regxName = new RegExp($tw.wikiName + "\\/?$");
+    text = text.replace(regxName,'');
+  }
+  return text;
+}
 
-WebSocketClient.prototype.connect = function(url,session) {
-  if(!url || !session.url) {
-    console.error(`WebSocketClient.connect error: no url or session.url`)
+// Tests a session's socket connection
+WebSocketClient.prototype.isReady = function(sessionId) {
+  let state = false;
+  if (this.sessions.has(sessionId)) {
+    state = this.sessions.get(sessionId).socket.readyState === WebSocket.OPEN;
+  }
+  return state;
+}
+
+// This handles the WSAdaptor's getSession() call and refreshes 
+// the given session data from the wsserver (or the passed url). Even anon & 
+// write-only clients get a session - to start a heartbeat, recieve alerts, etc.
+WebSocketClient.prototype.initSession = function(options){
+  let session = new WebSocketSession(options);
+  this.sessions.set(session.id,session);
+  return session.id;
+}
+
+WebSocketClient.prototype.connect = function(clientId) {
+  let session = this.sessions.get(clientId);
+  if(!session || !session.url) {
+    console.error(`WebSocketClient.connect error: no url`)
     return false;
   }
-  // Setup the connection
-  session = session || {
-    index: this.sessions.size(),
-    id: null,
-    url: url,
-    wiki: $tw.wikiName,
-    socket: null,
-    state: {
-      connected: false,
-      disconnected: null,
-      reconnecting: null,
-      delay: $tw.Bob.settings.reconnect.initial,
-      attempts: 0,
-      timeout: null
-    },
-    user: {}
-  };
-
   // Create the socket
   try{
     session.socket = new WebSocket(session.url);
@@ -74,61 +99,63 @@ WebSocketClient.prototype.connect = function(url,session) {
     session.socket.onclose = this.closeSocket;
     session.socket.onmessage = this.handleMessage;
     session.socket.binaryType = "arraybuffer";
+    session.socket.id = clientId;
   } catch (e) {
     //console.error(e)
     throw new Error(e);
   }
-  
 }
 
-WebSocketClient.prototype.reconnect = function(session) {
+WebSocketClient.prototype.reconnect = function(clientId) {
+  let session = this.sessions.get(clientId);
+  if(!session || !session.url) {
+    console.error(`WebSocketClient.reconnect error: no url`)
+    return false;
+  }
   // Clear the socket
-  $tw.Bob.sessions[connectionIndex].socket = null;
+  session.socket = null;
   // Timestamp the start time on reconnect attempts
-  if(!$tw.Bob.sessions[connectionIndex].reconnect.start){
-    $tw.Bob.sessions[connectionIndex].reconnect.start = new Date();
+  if(!session.state.reconnecting){
+    session.state.reconnecting = new Date();
   }
   // Log the attempt
-  $tw.Bob.sessions[connectionIndex].reconnect.count++;
+  session.state.attempts++;
   // Calculate the next exponential backoff delay
-  let delay = (Math.random()+0.5) * $tw.Bob.settings.reconnect.initial * Math.pow($tw.Bob.sessions[connectionIndex].reconnect.decay, $tw.Bob.sessions[connectionIndex].reconnect.count);
+  let delay = (Math.random()+0.5) * this.settings.reconnect.initial * Math.pow(this.settings.reconnect.decay, session.state.attempts);
   // Use the delay or the $tw.Bob.settings.reconnect.max value
-  $tw.Bob.sessions[connectionIndex].reconnect.delay = Math.min(delay, $tw.Bob.settings.reconnect.max);
+  session.state.delay = Math.min(delay, this.settings.reconnect.max);
   // Recreate the socket
-  $tw.Bob.Connect(connectionIndex, $tw.Bob.sessions[connectionIndex].url);
+  this.connect(clientId);
 }
 
 /*
   When the socket is opened the heartbeat timer starts. This lets us know
-  if the connection to the server gets interrupted. The reconnect object is 
-  reset, and any unacknowledged messages are sent by "syncing" to the server.
+  if the connection to the server gets interrupted. The state is reset, 
+  and any unacknowledged messages are sent by "syncing" to the server.
 */
  WebSocketClient.prototype.openSocket = function(event) {
-  // Determine which connection generated the event
-  let self = this;
-  let connectionIndex = $tw.Bob.sessions.findIndex(function(connection) {return connection.socket === self;});  
-  console.log(`Opened socket ${connectionIndex} to ${$tw.Bob.sessions[connectionIndex].url}`, JSON.stringify(event));
-  // Start a heartbeat
-  $tw.Bob.heartbeat({source_connection: connectionIndex});
-  // Clear the server warning
-  if(this.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Socket ${connectionIndex}/Warning`)) {
-    this.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Socket ${connectionIndex}/Warning`);
+  // Determine which session generated the event
+  let session = this.sessions.get(this.id);
+  console.log(`Opened socket to ${session.url}`, JSON.stringify(event));
+  // Set the WS Session id to sessionStorage here
+  if($tw.syncadaptor.session && $tw.syncadaptor.session == session.id) {
+    window.sessionStorage.setItem("ws-adaptor-session",session.id)
   }
-  // Clear the reconnect object
-  $tw.Bob.sessions[connectionIndex].reconnect = null;
+  // Clear the server warning
+  if(this.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Socket Warning/${this.id}`)) {
+    this.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Socket Warning/${this.id}`);
+  }
+  // Reset the state object
+  session.initState();
+  // Start a heartbeat
+  this.heartbeat({id: session.id});
   // Sync to the server
-  if(this.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Socket ${connectionIndex}/Unsent`)) {
-    $tw.Bob.syncToServer(connectionIndex);
+  if(this.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Sockets/${this.id}/Unsent`)) {
+    this.syncToServer(this.id);
   }
 
-  //login here???
+  // get settings here???
   /*
-  // Login with whatever credentials you have
-  const login = {
-    type: 'setLoggedIn',
-    wiki: $tw.wikiName
-  };
-  $tw.Bob.sendToServer(connectionIndex, login);
   $tw.Bob.wsClient.getSettings();
   */
 }
@@ -138,26 +165,25 @@ WebSocketClient.prototype.reconnect = function(session) {
   use a reconnect algorithm with exponential back-off and a maximum retry window.
 */
 WebSocketClient.prototype.closeSocket = function(event) {
-  // Determine which connection generated the event
-  let self = this;
-  let connectionIndex = $tw.Bob.sessions.findIndex(function(connection) {return connection.socket === self;});
-  console.log(`Closed socket ${connectionIndex} to ${$tw.Bob.sessions[connectionIndex].url}`, JSON.stringify(event));
-  // clear the ping timers
-  clearTimeout($tw.Bob.sessions[connectionIndex].pingTimeout);
-  clearTimeout($tw.Bob.sessions[connectionIndex].ping);
+  // Determine which session generated the event
+  let session = this.sessions.get(this.id);
+  console.log(`Closed socket to ${session.url}`, JSON.stringify(event));
+  // Clear the ping timers
+  clearTimeout(session.state.pingTimeout);
+  clearTimeout(session.state.ping);
   // log the disconnection time & handle the message queue
-  $tw.Bob.sessions[connectionIndex].disconnected = Date.now();
+  session.state.disconnected = Date.now();
 
   // Error code <= 1000 means that the connection was closed normally.
-  if(!event.wasClean && event.code > 1000 && $tw.Bob.settings.reconnect.auto &&
-      Date.now() - $tw.Bob.sessions[connectionIndex].reconnect.start < $tw.Bob.settings.reconnect.abort) {
+  if(!event.wasClean && event.code > 1000 && this.settings.reconnect.auto &&
+      Date.now() - session.state.reconnecting < this.settings.reconnect.abort) {
     // Display the socket warning after the 3rd reconnect attempt
-    if ($tw.Bob.sessions[connectionIndex].reconnect.count > 3) {
-      let text = `<div style='width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>''WARNING: You are no longer connected to the server on socket ${connectionIndex}. Reconnecting (attempt ${$tw.Bob.sessions[connectionIndex].reconnect.count})...''</div>`;
+    if (session.state.attempts > 3) {
+      let text = `<div style='width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>''WARNING: You are no longer connected to the websocket ${session.url}. Reconnecting (attempt ${session.state.attempts})...''</div>`;
       const tiddler = {
-        title: `$:/plugins/OokTech/Bob/Socket ${connectionIndex}/Warning`,
+        title: `$:/plugins/OokTech/Bob/Socket Warning/${this.id}`,
         text: text,
-        component: `$tw.Bob.sessions[${connectionIndex}]`,
+        component: `$tw.Bob.wsClient.sessions[${this.id}]`,
         tags: '$:/tags/Alert'
       };
       this.wiki.addTiddler(new $tw.Tiddler(
@@ -167,15 +193,15 @@ WebSocketClient.prototype.closeSocket = function(event) {
       ));
     }
     // Reconnect here
-    $tw.Bob.sessions[connectionIndex].reconnect.timeout = setTimeout(function(){
-        $tw.Bob.Reconnect(connectionIndex);
-      }, $tw.Bob.sessions[connectionIndex].reconnect.delay);
+    session.state.retryTimeout = setTimeout(function(){
+        this.reconnect(session);
+      }, session.state.delay);
   } else {
-    text = `<div style='width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>''WARNING: You are no longer connected to the server on socket ${connectionIndex}.''<$button style='color:black;'>Reconnect socket ${connectionIndex}<$action-reconnectwebsocket/><$action-navigate $to='$:/plugins/Bob/ConflictList'/></$button></div>`;
+    text = `<div style='width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>''WARNING: You are no longer connected to the websocket ${session.url}.''<$button style='color:black;'>Reconnect ${session.url}<$action-reconnectwebsocket/><$action-navigate $to='$:/plugins/Bob/ConflictList'/></$button></div>`;
     const tiddler = {
-      title: `$:/plugins/OokTech/Bob/Socket ${connectionIndex}/Warning`,
+      title: `$:/plugins/OokTech/Bob/Socket ${self.index}/Warning`,
       text: text,
-      component: `$tw.Bob.sessions[${connectionIndex}]`,
+      component: `$tw.Bob.wsClient.sessions ${self.index}`,
       tags: '$:/tags/Alert'
     };
     this.wiki.addTiddler(new $tw.Tiddler(
@@ -192,25 +218,16 @@ WebSocketClient.prototype.closeSocket = function(event) {
   then the data is passed to the handler function.
 */
 WebSocketClient.prototype.handleMessage = function(event) {
-  // Determine which connection generated the event
-  let self = this;
-  let connectionIndex = $tw.Bob.sessions.findIndex(function(connection) {return connection.socket === self;});
   try {
     let eventData = JSON.parse(event.data);
-    // Add the source to the eventData object so it can be used later.
-    eventData.source_connection = connectionIndex;
     if(eventData.type) {
       if(eventData.type !== "ping" && eventData.type !== "pong") {
         console.log(`Received websocket message ${eventData.id}:`, event.data);
       }
-      if(typeof $tw.Bob.browserMessageHandlers[eventData.type] === 'function') {
+      if(typeof this.messageHandlers[eventData.type] === 'function') {
         // Acknowledge the message, then call handler
         $tw.utils.sendMessageAck(eventData);
-        $tw.Bob.browserMessageHandlers[eventData.type](eventData);
-        //debugger;
-        this.handledMessages = this.handledMessages || {};
-        if(!this.handledMessages[eventData.id]) this.handledMessages[eventData.id] = 0;
-        this.handledMessages[eventData.id] = this.handledMessages[eventData.id]++;
+        this.messageHandlers[eventData.type](eventData);
       } else {
         console.log('No handler for message of type ', eventData.type);
       }
@@ -226,35 +243,49 @@ WebSocketClient.prototype.handleMessage = function(event) {
   the last heartbeat, terminate the given socket. Setup the next heartbeat.
 */
 WebSocketClient.prototype.heartbeat = function(data){
-  let connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
-  if (connectionIndex) {
+  if (data.clientId) {
+    console.log("heartbeat");
+    let session = this.sessions.get(data.clientId);
     // clear the ping timers
-    clearTimeout($tw.Bob.sessions[connectionIndex].pingTimeout);
-    clearTimeout($tw.Bob.sessions[connectionIndex].ping);
+    clearTimeout(session.state.pingTimeout);
+    clearTimeout(session.state.ping);
     // Delay should be equal to the interval at which your server
     // sends out pings plus a conservative assumption of the latency.  
-    $tw.Bob.sessions[connectionIndex].pingTimeout = setTimeout(function() {
+    session.state.pingTimeout = setTimeout(function() {
       // Use `WebSocket#terminate()`, which immediately destroys the connection,
       // instead of `WebSocket#close()`, which waits for the close timer.
-      $tw.Bob.sessions[connectionIndex].socket.terminate();
-    }, $tw.Bob.settings.heartbeat.timeout + $tw.Bob.settings.heartbeat.interval);
+      session.socket.terminate();
+    }, this.settings.heartbeat.timeout + this.settings.heartbeat.interval);
     // Send the next heartbeat ping after $tw.Bob.settings.heartbeat.interval ms
-    $tw.Bob.sessions[connectionIndex].ping = setTimeout(function() {
-      let token = $tw.utils.getMessageToken();//localStorage.getItem('ws-token')
-      $tw.Bob.sessions[connectionIndex].socket.send(JSON.stringify({
+    session.state.ping = setTimeout(function() {
+      session.socket.send(JSON.stringify({
         type: 'ping',
         id: 'heartbeat',
-        token: token,
+        clientId: data.clientId,
+        serverId: data.serverId,
         wiki: $tw.wikiName
       }));
-    }, $tw.Bob.settings.heartbeat.interval);
+    }, this.settings.heartbeat.interval);
   }
 }
 
 /*
   Send a message to the server id
 */
-WebSocketClient.prototype.sendToServer = function(connectionIndex, message, callback) {
+WebSocketClient.prototype.send = function(message) {
+  let response = JSON.stringify(message);
+  let session = this.sessions.get(message.clientId)
+  if(session.socket.readyState === WebSocket.OPEN) {
+    session.socket.send(response);
+  } else {
+    // Message Queue logic here?
+  }
+}
+
+/*
+  Send a message to the server id
+*/
+WebSocketClient.prototype.sendToServer = function(connectionIndex,message,callback) {
   connectionIndex = connectionIndex || 0;
   let messageData = {};
   // If the connection is open, send the message
@@ -518,4 +549,5 @@ WebSocketClient.prototype.getSettings = function() {
 }
 
 exports.WebSocketClient = WebSocketClient;
-});
+
+})();

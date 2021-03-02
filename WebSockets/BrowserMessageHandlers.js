@@ -37,21 +37,20 @@ it will overwrite this file.
       message[key] = data[key];
     })
     message.type = 'pong';
-    message.token = $tw.utils.getMessageToken();;
+    message.token = $tw.utils.getMessageToken();
     message.wiki = $tw.wikiName;
-    let response = JSON.stringify(message);
     // Send the response
-    $tw.Bob.sessions[data.source_connection].socket.send(response);
+    $tw.Bob.wsClient.send(message);
   }
     
   /* REQUIRED MESSAGE HANDLER
-    This handles the pong response of a client ping. It is used as the heartbeat
-    to ensure that the connection to the server is still live.
+    This handles the pong response of a client's ping. It is used as the 
+    heartbeat to ensure that the session to the server is still live.
   */
   exports.pong = function(data) {
     // If this pong is part of a heartbeat then send another heartbeat
     if(data.id == "heartbeat") {
-      $tw.Bob.heartbeat(data);
+      $tw.Bob.wsClient.heartbeat(data);
     }
   }
 

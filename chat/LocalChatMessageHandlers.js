@@ -1,7 +1,7 @@
 /*\
 title: $:/plugins/OokTech/Bob/ChatMessageHandlers.js
 type: application/javascript
-module-type: startup
+module-type: node-messagehandlers
 
 These are message handler functions for the federated chat server.
 This handles messages sent to the node process.
@@ -12,47 +12,41 @@ This handles messages sent to the node process.
 /*global $tw: false */
 "use strict";
 
-exports.platforms = ["node"];
-exports.after = ["BobStartup"];
-
-exports.startup = function() {
-  if($tw.node) {
-    /*
-      Receive a chat message from a browser, they are automatically sent to other connected browsers when the tiddlers are synced.
-    */
-    $tw.Bob.nodeMessageHandlers.chatMessage = function(data) {
-      const conversationTiddler = data.conversation || 'DefaultChat'
-      if(conversationTiddler && data.message) {
-        // Get the history tiddler
-        const historyTiddler = $tw.Bob.Wikis[data.wiki].wiki.getTiddler(`$:/chat/${conversationTiddler}`)
-        let history = {}
-        if(historyTiddler) {
-          // Make sure that the fields aren't read only
-          history = JSON.parse(JSON.stringify(historyTiddler.fields.text));
-        }
-        const theTime = $tw.utils.stringifyDate(new Date());
-        if(typeof history === 'string') {
-          history = JSON.parse(history);
-        }
-        // Add new message
-        history[theTime] = {
-          message:data.message,
-          from: data.from,
-          server: data.server,
-          conversation: data.conversation
-        }
-        // save the updated tiddler
-        $tw.syncadaptor.saveTiddler(new $tw.Tiddler({
-          text:JSON.stringify(history, null, 2),
-          title: `$:/chat/${conversationTiddler}`,
-          type: 'application/json'
-        }), data.wiki);
-        if($tw.Bob.settings.enableFederation === 'yes') {
-          // Send it to any connected servers
-          $tw.Bob.Federation.sendToRemoteServers(data);
-        }
-      }
+/*
+  Receive a chat message from a browser, they are automatically sent to other connected browsers when the tiddlers are synced.
+*/
+exports.chatMessage = function(data) {
+  const conversationTiddler = data.conversation || 'DefaultChat'
+  if(conversationTiddler && data.message) {
+    // Get the history tiddler
+    const historyTiddler = $tw.Bob.Wikis[data.wiki].wiki.getTiddler(`$:/chat/${conversationTiddler}`)
+    let history = {}
+    if(historyTiddler) {
+      // Make sure that the fields aren't read only
+      history = JSON.parse(JSON.stringify(historyTiddler.fields.text));
+    }
+    const theTime = $tw.utils.stringifyDate(new Date());
+    if(typeof history === 'string') {
+      history = JSON.parse(history);
+    }
+    // Add new message
+    history[theTime] = {
+      message:data.message,
+      from: data.from,
+      server: data.server,
+      conversation: data.conversation
+    }
+    // save the updated tiddler
+    $tw.syncadaptor.saveTiddler(new $tw.Tiddler({
+      text:JSON.stringify(history, null, 2),
+      title: `$:/chat/${conversationTiddler}`,
+      type: 'application/json'
+    }), data.wiki);
+    if($tw.Bob.settings.enableFederation === 'yes') {
+      // Send it to any connected servers
+      $tw.Bob.Federation.sendToRemoteServers(data);
     }
   }
 }
+
 })();

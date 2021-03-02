@@ -1,20 +1,17 @@
 title: $:/plugins/OokTech/Bob/DefaultSettings
 
 {
-  "editionsPath": "./Editions",
-  "pluginsPath": "./Plugins",
-  "themesPath": "./Themes",
   "wikisPath": "./Wikis",
   "wikiPathBase": "cwd",
   "includePluginList": [],
   "excludePluginList": [],
-  "autoUnloadWikis": "false",
+  "autoUnloadWikis": false,
   "disableBrowserAlerts": "no",
   "disableFileWatchers": "no",
   "fileURLPrefix": "files",
-  "namespacedWikis": "false",
+  "namespacedWikis": false,
   "saveMediaOnServer": "yes",
-  "suppressBrowser": "false",
+  "suppressBrowser": false,
   "enableFederation": "no",
   "enableFileServer": "no",
   "filePathRoot": "./files",
@@ -25,14 +22,30 @@ title: $:/plugins/OokTech/Bob/DefaultSettings
     "NewWiki": "tiddlywiki #wikiName --init #editionName"
   },
   "wikis": {
+    "RootWiki":{
+      "syncadaptor": "tiddlywiki/filesystem",
+      "admin": "(authenticated)",
+      "readers": "(anon)",
+      "writers": "(authenticated)"
+    }
   },
   "ws-server": {
+    "autoIncrementPort": false,
+    "servePlugin": true,
+    "servername": "Bob Server",
     "port": 8080,
     "host": "127.0.0.1",
-    "autoIncrementPort": "false",
-    "servePlugin": "yes",
-    "servePluginWithoutLogin": "yes",
-    "pathprefix": ""
+    "path-prefix": "",
+    "root-tiddler": "$:/core/save/all",
+    "root-render-type": "text/plain",
+    "root-serve-type": "text/html",
+    "debug-level": "none",
+    "gzip": "no",
+    "required-plugins": [
+      "tiddlywiki/filesystem",
+      "OokTech/Bob"
+    ],
+    "servePluginWithoutLogin": "yes"
   },
   "heartbeat": {
     "interval": 1000,

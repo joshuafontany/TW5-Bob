@@ -1,5 +1,5 @@
 /*\
-title: $:/plugins/OokTech/Bob/BrowserWSAdaptor.js
+title: $:/plugins/OokTech/Bob/WSAdaptor.js
 type: application/javascript
 module-type: syncadaptor
 
@@ -12,6 +12,10 @@ Bob's WSClient library instance: $tw.Bob.wsClient
 /*jslint node: true, browser: true */
 /*global $tw: false */
 "use strict";
+
+const CONFIG_HOST_TIDDLER = "$:/config/bob/host",
+  DEFAULT_HOST_TIDDLER = "$protocol$//$host$/",
+  uuid_NIL = require('$:/plugins/OokTech/Bob/External/uuid/src/nil.js').default;
 
 /*
   This adds actions for the different event hooks. Each hook sends a
@@ -95,9 +99,9 @@ let addHooks = function(connectionIndex) {
         try {
           // TODO make this work in different browsers
           if(e.lengthComputable) {
-            var percentComplete = e.loaded/e.total*100;
+            let percentComplete = e.loaded/e.total*100;
           } else {
-            var percentComplete = -1;
+            let percentComplete = -1;
           }
           console.log(percentComplete);
         } catch (e) {
@@ -203,45 +207,48 @@ let addHooks = function(connectionIndex) {
   });
 }
 
-function BrowserWSAdaptor(options) {
-  this.wiki = options.wiki;
-  this.hasStatus = false;
-	this.logger = new $tw.utils.Logger("BrowserWSAdaptor");
-	this.isLoggedIn = false;
-	this.isReadOnly = false;
-  if(options.url){
-    this.host = options.url;
-  } else {
+function WSAdaptor(options) {
+    this.logger = new $tw.utils.Logger("WSAdaptor");
+    this.wiki = options.wiki;
     this.host = this.getHost();
-  }
-  this.connectionIndex = options.connectionIndex || 0;
-  // Do all actions on startup.
-  //$tw.Bob.wsClient.connect(this.connectionIndex, this.host);
-  //addHooks(this.connectionIndex);
+    this.hasStatus = false;
+    this.isLoggedIn = false;
+    this.isReadOnly = false;
+    this.isAnonymous = true;
+    this.sessionId = null;
+  //addHooks(this.clientId);
 }
 
 // Syncadaptor properties
 
 // REQUIRED
 // The name of the syncadaptor
-BrowserWSAdaptor.prototype.name = "browserwsadaptor";
+WSAdaptor.prototype.name = "wsadaptor";
 
-BrowserWSAdaptor.prototype.supportsLazyLoading = true;
+WSAdaptor.prototype.supportsLazyLoading = true;
 
-BrowserWSAdaptor.prototype.isReady = function() {
-  return this.hasStatus;
+WSAdaptor.prototype.isReady = function() {
+  return this.hasStatus && $tw.Bob.wsClient.isReady(this.sessionId);
 }
 
-BrowserWSAdaptor.prototype.getHost = function() {
-  const WSDomain = window.location.hostname;
-  const WSSPort = window.location.port;
-  const regxName = new RegExp("\\/"+ $tw.wikiName + "\\/?$");
-  const WSPath = decodeURI(window.location.pathname).replace(regxName,'');
-  const text = "wss://" + WSDomain +":" + WSSPort + WSPath;
+WSAdaptor.prototype.getHost = function() {
+  let text = this.wiki.getTiddlerText(CONFIG_HOST_TIDDLER,DEFAULT_HOST_TIDDLER),
+    substitutions = [
+      {name: "protocol", value: document.location.protocol},
+      {name: "host", value: document.location.host}
+    ];
+  for(let t=0; t<substitutions.length; t++) {
+    let s = substitutions[t];
+    text = $tw.utils.replaceString(text,new RegExp("\\$" + s.name + "\\$","mg"),s.value);
+  }
+  if (!!$tw.wikiName && $tw.wikiName !== "RootWiki") {
+    let regxName = new RegExp($tw.wikiName + "\\/?$");
+    text = text.replace(regxName,'');
+  }
   return text;
 }
 
-BrowserWSAdaptor.prototype.getTiddlerInfo = function(tiddler, options) {
+WSAdaptor.prototype.getTiddlerInfo = function(tiddler, options) {
   /* Bag stuff here?
   options = options || {};
   return {
@@ -252,21 +259,26 @@ BrowserWSAdaptor.prototype.getTiddlerInfo = function(tiddler, options) {
 }
 
 /*
-Get the current status of the WS connection
+Get the current status of the user
 */
-BrowserWSAdaptor.prototype.getStatus = function(callback) {
+WSAdaptor.prototype.getStatus = function(callback) {
 	// Get status
-	var self = this;
+	let self = this,
+    params = "",
+    sessionId = window.sessionStorage.getItem("ws-adaptor-session") || uuid_NIL;
 	this.logger.log("Getting status");
+  if(!this.sessionId) {
+    params = "?session=" + sessionId
+  }
 	$tw.utils.httpRequest({
-		url: this.host + "status",
+		url: this.host + "api/status" + params,
 		callback: function(err,data) {
 			self.hasStatus = true;
 			if(err) {
 				return callback(err);
 			}
 			// Decode the status JSON
-			var json = null;
+			let json = null;
 			try {
 				json = JSON.parse(data);
 			} catch (e) {
@@ -278,25 +290,31 @@ BrowserWSAdaptor.prototype.getStatus = function(callback) {
 					self.recipe = json.space.recipe;
 				}
 				// Check if we're logged in
-				self.isLoggedIn = json.username !== "GUEST";
+				self.isLoggedIn = !!json.username && !!json.anonymous;
 				self.isReadOnly = !!json["read_only"];
 				self.isAnonymous = !!json.anonymous;
 
-				var isSseEnabled = !!json.sse_enabled;
-			}
-			// Invoke the callback if present
-			if(callback) {
-				callback(null,self.isLoggedIn,json.username,self.isReadOnly,self.isAnonymous,isSseEnabled);
-			}
-		}
+				let isSseEnabled = !!json.sse_enabled;
+
+                // Set the session id, setup the WS connection
+                if(!this.sessionId && !!json.session) {
+                    this.sessionId = $tw.Bob.wsClient.initSession(json.session);
+                    $tw.Bob.wsClient.connect(this.sessionId);
+                }
+            }
+            // Invoke the callback if present
+            if(callback) {
+                callback(null,self.isLoggedIn,json.username,self.isReadOnly,self.isAnonymous,isSseEnabled);
+            }
+        }
 	});
 };
 
 /*
 Attempt to login and invoke the callback(err)
 */
-BrowserWSAdaptor.prototype.login = function(username,password,callback) {
-	var options = {
+WSAdaptor.prototype.login = function(username,password,callback) {
+	let options = {
 		url: this.host + "challenge/tiddlywebplugins.tiddlyspace.cookie_form",
 		type: "POST",
 		data: {
@@ -314,8 +332,8 @@ BrowserWSAdaptor.prototype.login = function(username,password,callback) {
 
 /*
 */
-BrowserWSAdaptor.prototype.logout = function(callback) {
-	var options = {
+WSAdaptor.prototype.logout = function(callback) {
+	let options = {
 		url: this.host + "logout",
 		type: "POST",
 		data: {
@@ -333,8 +351,8 @@ BrowserWSAdaptor.prototype.logout = function(callback) {
 /*
 Retrieve the CSRF token from its cookie
 */
-BrowserWSAdaptor.prototype.getCsrfToken = function() {
-	var regex = /^(?:.*; )?csrf_token=([^(;|$)]*)(?:;|$)/,
+WSAdaptor.prototype.getCsrfToken = function() {
+	let regex = /^(?:.*; )?csrf_token=([^(;|$)]*)(?:;|$)/,
 		match = regex.exec(document.cookie),
 		csrf = null;
 	if (match && (match.length === 2)) {
@@ -343,23 +361,14 @@ BrowserWSAdaptor.prototype.getCsrfToken = function() {
 	return csrf;
 };
 
-/*
-  Get the current status of the Bob WS conection (called by the syncer)
-*/
-BrowserWSAdaptor.prototype.getStatus = function(callback) {
-  console.log('Getting status');
-
-  //callback(null,isLoggedIn,json.username,isReadOnly,isAnonymous,isPollingDisabled);
-}
-
 // REQUIRED
 // This does whatever is necessary to actually store a tiddler
-BrowserWSAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
+WSAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
   // Starting with 5.1.24, all syncadptor method signatures follow the node.js
 	// standard of callback as last argument. This catches the previous signature:
   options = options || {};
   if(!!callback && typeof callback !== "function"){
-    var optionsArg = callback;
+    let optionsArg = callback;
   }
   if(typeof options === "function"){
     callback = options;
@@ -402,12 +411,12 @@ BrowserWSAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
 // REQUIRED
 // This does whatever is necessary to load a tiddler.
 // Used for lazy loading
-BrowserWSAdaptor.prototype.loadTiddler = function(title, options, callback) {
+WSAdaptor.prototype.loadTiddler = function(title, options, callback) {
   // Starting with 5.1.24, all syncadptor method signatures follow the node.js
 	// standard of callback as last argument. This catches the previous signature:
   options = options || {};
   if(!!callback && typeof callback !== "function"){
-    var optionsArg = callback;
+    let optionsArg = callback;
   }
   if(typeof options === "function"){
     callback = options;
@@ -438,12 +447,12 @@ BrowserWSAdaptor.prototype.loadTiddler = function(title, options, callback) {
 
 // REQUIRED
 // This does whatever is necessary to delete a tiddler
-BrowserWSAdaptor.prototype.deleteTiddler = function(title, options, callback) {
+WSAdaptor.prototype.deleteTiddler = function(title, options, callback) {
   // Starting with 5.1.24, all syncadptor method signatures follow the node.js
 	// standard of callback as last argument. This catches the previous signature:
   options = options || {};
   if(!!callback && typeof callback !== "function"){
-    var optionsArg = callback;
+    let optionsArg = callback;
   }
   if(typeof options === "function"){
     callback = options;
@@ -479,7 +488,7 @@ BrowserWSAdaptor.prototype.deleteTiddler = function(title, options, callback) {
   }
 }
 
-BrowserWSAdaptor.prototype.shouldSync = function(tiddlerTitle) {
+WSAdaptor.prototype.shouldSync = function(tiddlerTitle) {
   // assume that we are never syncing state and temp tiddlers.
   // This may change later.
   if(tiddlerTitle.startsWith('$:/state/') || tiddlerTitle.startsWith('$:/temp/')) {
@@ -499,19 +508,10 @@ BrowserWSAdaptor.prototype.shouldSync = function(tiddlerTitle) {
 }
 
 /*
-BrowserWSAdaptor.prototype.getUpdatedTiddlers = function() {
+WSAdaptor.prototype.getUpdatedTiddlers = function() {
 
 }
 */
-
-/*
-// OPTIONAL
-// This checks the login state
-// it can be used to give an async way to check the status and update the
-// isReady state. The tiddlyweb adaptor does this.
-BrowserWSAdaptor.prototype.getStatus = function(callback) {
-
-}*/
 
 // OPTIONAL
 /*
@@ -526,7 +526,7 @@ function setupSkinnyTiddlerLoading() {
   } else {
     clearTimeout(thisTimerTemp)
     if(this.wiki.getTiddlerDataCached('$:/WikiSettings/split/ws-server').rootTiddler === '$:/core/save/lazy-all') {
-      BrowserWSAdaptor.prototype.getSkinnyTiddlers = function(callback) {
+      WSAdaptor.prototype.getSkinnyTiddlers = function(callback) {
         function handleSkinnyTiddlers(e) {
           callback(null, e)
         }
@@ -575,7 +575,7 @@ function setupSkinnyTiddlerLoading() {
 // Only set up the websockets if we aren't in an iframe or opened as a file.
 if($tw.browser && window.location === window.parent.location && window.location.hostname) {
   //setupSkinnyTiddlerLoading()
-  exports.adaptorClass = BrowserWSAdaptor
+  exports.adaptorClass = WSAdaptor
 }
 
 })();

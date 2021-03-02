@@ -14,31 +14,33 @@ Returns server status information
 /*global $tw: false */
 "use strict";
 
-const thePath = /^\/api\/status\/?$/;
 exports.method = "GET";
-exports.path = thePath;
-exports.handler = function(request,response,state) {
-  const token = $tw.utils.getCookie(request.headers.cookie, 'token');
-  const authorised = $tw.Bob.wsServer.AccessCheck('RootWiki', token, 'view', 'wiki');
 
-  // build the status object
-  const status = {
-    logged_in: (authorised && (authorised !== true)) ? 'yes' : 'no',
-    username: undefined,
-    authentication_level: undefined,
-    tiddlywiki_version: $tw.version,
-    bob_version: $tw.Bob.version,
-    read_only: false,
-    available_wikis: $tw.ServerSide.getViewableWikiList({decoded: authorised}),
-    available_themes: $tw.ServerSide.getViewableThemesList({decoded: authorised}),
-    available_plugins: $tw.ServerSide.getViewablePluginsList({decoded: authorised}),
-    available_languages: $tw.ServerSide.getViewableLanguagesList({decoded: authorised}),
-    available_editions: $tw.ServerSide.getViewableEditionsList({decoded: authorised}),
-    settings: $tw.ServerSide.getViewableSettings({decoded: authorised}),
-    profile: {}
+exports.path = /^\/api\/status\/?$/;
+
+exports.handler = function(request,response,state) {
+  // build the status objects
+  let data = {
+      username: state.authenticatedUsername || state.server.get("anon-username") || "",
+      anonymous: !state.authenticatedUsername,
+      read_only: !state.server.isAuthorized("writers",state.authenticatedUsername),
+      sse_enabled: state.server.get("sse-enabled") === "yes",
+      space: {
+        recipe: "default"
+      },
+      tiddlywiki_version: $tw.version
+    };
+  if(state.queryParameters && state.queryParameters["session"]) {
+    state.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
+    request.connection.remoteAddress;
+    state.username = data.username;
+    state.anonymous = data.anonymous;
+    state.read_only = data.read_only;
+    data.session = $tw.Bob.wsServer.manager.requestSession(state);
   }
+  let text = JSON.stringify(data);debugger;
   response.writeHead(200, {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Credentials": "true", "Access-Control-Allow-Headers": "*"});
-  response.end(JSON.stringify(status));
+  response.end(text,"utf8");
 }
 
 }());

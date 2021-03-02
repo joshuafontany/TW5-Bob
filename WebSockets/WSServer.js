@@ -11,16 +11,20 @@ module-type: library
 /*global $tw: false */
 "use strict";
 
-const Server = require('$:/plugins/OokTech/Bob/External/WS/ws.js').Server,
-SessionManager = require('$:/plugins/OokTech/Bob/SessionManager.js').SessionManager;
+if($tw.node) {
+  const Server = require('$:/plugins/OokTech/Bob/External/WS/ws.js').Server;
 
 /*
   A simple websocket server extending the `ws` library
   options: 
 */
 function WebSocketServer(options) {
-  Server.call(this, options);
-  this.manager = options.manager || new SessionManager();
+  Object.assign(this, new Server(options));
+  // Reserve a connecrtion to the session manager
+  this.manager = null;
+  // Load the node-messagehandlers modules
+  this.messageHandlers = {};
+  $tw.modules.applyMethods("node-messagehandlers",this.messageHandlers);
   // Set the event handlers
   this.on('listening',this.serverOpened);
   this.on('close',this.serverClosed);
@@ -33,6 +37,10 @@ WebSocketServer.prototype.constructor = WebSocketServer;
 WebSocketServer.prototype.defaultVariables = {
 
 };
+
+WebSocketServer.prototype.isAdmin = function(username) {
+  return this.manager.isAdmin(username);
+}
 
 WebSocketServer.prototype.serverOpened = function() {
 
@@ -58,12 +66,12 @@ WebSocketServer.prototype.serverClosed = function() {
     "wiki": the name for the wiki using this connection
   }
 */
-WebSocketServer.prototype.handleConnection = function(socket,request) {
+WebSocketServer.prototype.handleConnection = function(socket,request,state) {
   let ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
     request.connection.remoteAddress,
     id = null; //parse from request?
   $tw.Bob.logger.log(`New client session from ip: ${ip}, id: ${id}`, {level:2});
-  $tw.Bob.logger.log(`Request:`, JSON.stringify(request), {level:4});
+  $tw.Bob.logger.log(`State:`, JSON.stringify(state), {level:4});
   // Event handlers
   socket.on('message', this.handleMessage);
   socket.on('close', this.closeConnection);
@@ -131,7 +139,7 @@ WebSocketServer.prototype.handleMessage = function(event) {
     // TODO figure out if this is needed.
     if(eventData.wiki === $tw.Bob.sessions[connectionIndex].wiki) {
       // Make sure we have a handler for the message type
-      if(typeof $tw.Bob.nodeMessageHandlers[eventData.type] === 'function') {
+      if(typeof this.messageHandlers[eventData.type] === 'function') {
         // Check authorisation
         const authorised = this.authenticateMessage(eventData);
         if(authorised) {
@@ -141,7 +149,7 @@ WebSocketServer.prototype.handleMessage = function(event) {
           eventData.decoded = authorised;
           // Acknowledge the message, then call handler(s)
           $tw.utils.sendMessageAck(eventData);
-          $tw.Bob.nodeMessageHandlers[eventData.type](eventData);
+          this.messageHandlers[eventData.type](eventData);
           //debugger;
           this.handledMessages = this.handledMessages || {};
           if(!this.handledMessages[eventData.id]) this.handledMessages[eventData.id] = 0;
@@ -183,4 +191,6 @@ WebSocketServer.prototype.CheckQuotas = function(data) {
 }
 
 exports.WebSocketServer = WebSocketServer;
-});
+
+}
+})();

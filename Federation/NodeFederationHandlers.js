@@ -282,7 +282,7 @@ exports.startup = function() {
           const wikiData = {
             wikiName: localName
           }
-          $tw.Bob.nodeMessageHandlers.createNewWiki(wikiData, nextBit);
+          $tw.Bob.wsServer.messageHandlers.createNewWiki(wikiData, nextBit);
         } else {
           nextBit();
         }

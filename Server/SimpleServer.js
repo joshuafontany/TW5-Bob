@@ -11,7 +11,10 @@ module-type: library
 /*global $tw: false */
 "use strict";
 
-const Server = require("$:/core/modules/server/server.js").Server
+if($tw.node) {
+  const Server = require("$:/core/modules/server/server.js").Server,
+    querystring = require("querystring"),
+    url = require("url");
 
 /*
   A simple node server for Bob, extended from the core server module
@@ -19,14 +22,16 @@ const Server = require("$:/core/modules/server/server.js").Server
 */
 function SimpleServer(options) {
   Server.call(this, options);
+  // Reserve a connecrtion to the session manager
+  this.manager = null;
   this.addOtherRoutes();
 }
 
 SimpleServer.prototype = Object.create(Server.prototype);
 SimpleServer.prototype.constructor = SimpleServer;
 
-Server.prototype.defaultVariables = Server.defaultVariables;
-Server.prototype.defaultVariables["required-plugins"] = ["OokTech/Bob"];
+SimpleServer.prototype.defaultVariables = Server.prototype.defaultVariables;
+SimpleServer.prototype.defaultVariables["required-plugins"] = ["OokTech/Bob"];
 
 // Add methods to the Server prototype here.
 // Add route but make sure it isn't a duplicate. (Un-used?)
@@ -74,7 +79,7 @@ SimpleServer.prototype.findMatchingRoute = function(request,state) {
 };
 
 SimpleServer.prototype.requestHandler = function(request,response,options) {
-  debugger;
+  options = options || {};
   // Test for OPTIONS
   if(request.method === 'OPTIONS') {
     response.writeHead(200, {
@@ -86,7 +91,8 @@ SimpleServer.prototype.requestHandler = function(request,response,options) {
     return
   }
   // Compose the options object
-  options.wiki = "RootWiki"; // Set Wiki here
+  options.instance = $tw.Bob.Wikis.get(options.wikiName) || $tw;
+  options.wiki = options.instance.wiki;
   // Call the parent method
   Object.getPrototypeOf(SimpleServer.prototype).requestHandler.call(this,request,response,options);
 };
@@ -117,8 +123,8 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
 		}
 	}
 	if(missing.length > 0) {
-		var warning = "Warning: Plugin(s) required for client-server operation are missing from tiddlywiki.info file: \"" + missing.join("\", \"") + "\"";
-		$tw.utils.warning(warning);
+		var error = "Error: Plugin(s) required for client-server operation are missing from the command line or the tiddlywiki.info file: \"" + missing.join("\", \"") + "\"";
+		$tw.utils.error(error);
 	}
 	// Create the server
 	var server;
@@ -144,88 +150,116 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
       console.log(e);
     }
   });
-  server.on('upgrade', function(request,socket,head) {
-    if(self.wss && request.headers.upgrade === 'websocket') {
+  server.on('upgrade', function(request,socket,head) {debugger;
+    if(this.manager.wsServer && request.headers.upgrade === 'websocket') {
       if(request.url === '/') {
-        self.wss.handleUpgrade(request, socket, head, function(ws) {
-          self.wss.emit('connection', ws, request);
+        // Verify the client here
+        let state = self.verifyUpgrade(request);
+        if(!state){
+          socket.destroy();
+          return;
+        }
+        this.manager.wsServer.handleUpgrade(request,socket,head,function(ws) {
+          this.manager.wsServer.emit('connection',ws,request,state);
         });
-      } /*else if(request.url === '/api/federation/socket' && $tw.federationWss && $tw.Bob.settings.enableFederation === 'yes') {
-        $tw.federationWss.handleUpgrade(request, socket, head, function(ws) {
-          console.log('WSS federation upgrade')
-          $tw.federationWss.emit('connection', ws, request);
-        })
-      }*/
+      }
     }
   });
 	// Listen
 	return server.listen(port,host);
 };
 
+SimpleServer.prototype.verifyUpgrade = function(request) {
+	// Compose the state object
+	var state = {};
+	state.wikiName = request.headers.wikiName || $tw.wikiName;
+	state.urlInfo = url.parse(request.url);
+	state.queryParameters = querystring.parse(state.urlInfo.query);
+	state.pathPrefix = request.pathPrefix || this.get("path-prefix") || "";
+	// Get the principals authorized to access this resource
+	var authorizationType = "readers";
+	// Check whether anonymous access is granted
+	state.allowAnon = this.isAuthorized(authorizationType,null);
+	// Authenticate with the first active authenticator
+  let fakeResponse = {
+    writeHead: function(){},
+    end: function(){}
+  }
+	if(this.authenticators.length > 0) {
+		if(!this.authenticators[0].authenticateRequest(request,fakeResponse,state)) {
+			// Bail if we failed (the authenticator will have (not) sent the response)
+			return false;
+		}		
+	}
+	// Authorize with the authenticated username
+	if(!this.isAuthorized(authorizationType,state.authenticatedUsername)) {
+		return false;
+	}
+  state.username = state.authenticatedUsername || this.get("anon-username") || "";
+  state.anonymous = !state.authenticatedUsername;
+  state.readOnly = !this.isAuthorized("writers",state.authenticatedUsername);
+  state.loggedIn = state.username !== "GUEST" && state.username !== "";
+  return state;
+};
+
 /*
   Walk through the $tw.Bob.settings.wikis object and add a route for each listed wiki. The routes should make the wiki boot if it hasn't already.
 */
 SimpleServer.prototype.addOtherRoutes = function() {
+  let self = this;
   // Add route handlers
   $tw.modules.forEachModuleOfType("serverroute", function(title, routeDefinition) {
     if(typeof routeDefinition === 'function') {
-      $tw.Bob.httpServer.addRoute(routeDefinition());
+      self.addRoute(routeDefinition());
     } else {
-      $tw.Bob.httpServer.addRoute(routeDefinition);
+      self.addRoute(routeDefinition);
     }
   });
   $tw.modules.forEachModuleOfType("wikiroute", function(title, routeDefinition) {
     if(typeof routeDefinition === 'function') {
-      $tw.Bob.httpServer.addRoute(routeDefinition('RootWiki'));
+      self.addRoute(routeDefinition('RootWiki'));
     }
   });
   $tw.modules.forEachModuleOfType("fileroute", function(title, routeDefinition) {
     if(typeof routeDefinition === 'function') {
-      $tw.Bob.httpServer.addRoute(routeDefinition('RootWiki'));
-      $tw.Bob.httpServer.addRoute(routeDefinition(''));
+      self.addRoute(routeDefinition('RootWiki'));
+      self.addRoute(routeDefinition(''));
     } else {
-      $tw.Bob.httpServer.addRoute(routeDefinition);
+      self.addRoute(routeDefinition);
     }
   });
-  addRoutesThing($tw.Bob.settings.wikis, '');
-}
+  this.addRoutesThing($tw.Bob.settings.wikis, '');
+};
 
 SimpleServer.prototype.addRoutesThing = function(inputObject,prefix) {
   if(typeof inputObject === 'object') {
+    let self = this;
     Object.keys(inputObject).forEach(function(wikiName) {
-      if(typeof inputObject[wikiName] === 'string') {
-        let fullName = wikiName;
-        if(prefix !== '') {
-          if(wikiName !== '__path') {
-            fullName = prefix + '/' + wikiName;
-          } else {
-            fullName = prefix;
-          }
+      let fullName = (!!prefix)? prefix + '/' + wikiName: wikiName;
+      $tw.modules.forEachModuleOfType("wikiroute", function(title, routeDefinition) {
+        if(typeof routeDefinition === 'function') {
+          self.addRoute(routeDefinition(fullName));
         }
-
-        $tw.modules.forEachModuleOfType("wikiroute", function(title, routeDefinition) {
-          if(typeof routeDefinition === 'function') {
-            $tw.Bob.httpServer.addRoute(routeDefinition(fullName));
-          }
-        });
-        $tw.modules.forEachModuleOfType("fileroute", function(title, routeDefinition) {
-          if(typeof routeDefinition === 'function') {
-            $tw.Bob.httpServer.addRoute(routeDefinition(fullName));
-          }
-        });
-        //$tw.Bob.logger.log("Added route " + String(new RegExp('^\/' + fullName + '\/?$')), {level:1})
-        console.log("Added route " + String(new RegExp('^\/' + fullName + '\/?$')))
-      } else {
-        // recurse!
+      });
+      $tw.modules.forEachModuleOfType("fileroute", function(title, routeDefinition) {
+        if(typeof routeDefinition === 'function') {
+          self.addRoute(routeDefinition(fullName));
+        }
+      });
+      //$tw.Bob.logger.log("Added route " + String(new RegExp('^\/' + fullName + '\/?$')), {level:1})
+      console.log("Added route " + String(new RegExp('^\/' + fullName + '\/?$')))
+      // recurse!
+      if(!!inputObject.wikis) {
         // This needs to be a new variable or else the rest of the wikis at
         // this level will get the longer prefix as well.
-        const nextPrefix = prefix===''?wikiName:prefix + '/' + wikiName;
-        this.addRoutesThing(inputObject[wikiName], nextPrefix);
+        const nextPrefix = (!!prefix)? prefix + '/' + wikiName: wikiName;
+        self.addRoutesThing(inputObject.wikis, nextPrefix);
       }
     })
   }
-}
+};
 
 exports.SimpleServer = SimpleServer;
 
-});
+}
+})();

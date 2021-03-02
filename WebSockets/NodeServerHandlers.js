@@ -48,7 +48,7 @@ This handles messages sent to the node process.
   $tw.Bob.Federation = $tw.Bob.Federation || {};
   $tw.Bob.Federation.remoteConnections = $tw.Bob.Federation.remoteConnections || {};
 
-  $tw.Bob.nodeMessageHandlers.openRemoteConnection = function(data) {
+  $tw.Bob.wsServer.messageHandlers.openRemoteConnection = function(data) {
     $tw.Bob.logger.log('openRemoteConnection', data, {level: 3})
     if(data.url) {
       function authenticateMessage() {
@@ -114,7 +114,7 @@ This handles messages sent to the node process.
       otherThings: data to pass on to the other server as parameters of the message being sent.
     }
   */
-  $tw.Bob.nodeMessageHandlers.sendRemoteMessage = function(data) {
+  $tw.Bob.wsServer.messageHandlers.sendRemoteMessage = function(data) {
     if(data.$server && data.$message) {
       const newData = {
         type: data.$message
@@ -143,7 +143,7 @@ This handles messages sent to the node process.
     To do this the tiddler that has the information about the connection gets
     sent with the message and it is parsed here.
   */
-  $tw.Bob.nodeMessageHandlers.updateFederatedConnectionInfo = function(data) {
+  $tw.Bob.wsServer.messageHandlers.updateFederatedConnectionInfo = function(data) {
     if(data.tid_param) {
       $tw.Bob.Federation.connections[data.tid_param.server_name].available_wikis[data.tid_param.name] = $tw.Bob.Federation.connections[data.tid_param.server_name].available_wikis[data.tid_param.name] || {};
       // $tw.Bob.Federation.connections[data.tid_param.server_name].availableWikis[data.tid_param.name] = $tw.Bob.Federation.connections[data.tid_param.server_name].availableWikis[data.tid_param.name] || {};

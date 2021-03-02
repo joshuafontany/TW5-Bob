@@ -14,9 +14,10 @@ A sync adaptor module for synchronising multiple wikis
 
 exports.platforms = ["node"];
 
-// Get a reference to the util library for promise creation
-const util = require("util");
-
+if($tw.node){
+  // Get a reference to the util library for promise creation
+  const util = require("util");
+}
 /*
   TODO Create a message that lets us set excluded tiddlers from inside the wikis
   A per-wiki exclude list would be best but that is going to have annoying
