@@ -34,43 +34,47 @@ it will overwrite this file.
     It is called directly after logging in, and then once an hour to
     update the client access token.
   */
- exports.handshake = function(data) {
-   debugger;
-  console.log(JSON.stringify(this));
-  let session = $tw.Bob.sesionManager.getSession(data.sessionId);
-  // Update the session token and tokenEOL
-  session.token = data.token;
-  sesion.tokenEOL = data.tokenEOL;
-  // Update the wsClient settings
-  $tw.Bob.wsClient.updateSettings(data);
-  // Set the WS Session id to sessionStorage here
-  if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == session.id) {
-    window.sessionStorage.setItem("ws-adaptor-session",session.id)
+  exports.handshake = function(data) {
+    console.log(JSON.stringify(this));
+    let session = $tw.Bob.wsClient.getSession(data.sessionId);
+    if (data.wikiName == session.wikiName) {
+      // Update the session token and tokenEOL
+      session.token = data.token;
+      sesion.tokenEOL = data.tokenEOL;
+      // Update the settings
+      $tw.Bob.settings = data.settings;
+      $tw.Bob.wsClient.settings.heartbeat = $tw.Bob.settings.heartbeat;
+      $tw.Bob.wsClient.settings.reconnect = $tw.Bob.settings.reconnect;
+      // Set the WS Session id to sessionStorage here
+      if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == session.id) {
+        window.sessionStorage.setItem("ws-adaptor-session",session.id)
+      }
+      // Clear the server warning
+      if(this.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Socket Warning/${session.id}`)) {
+        this.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Socket Warning/${session.id}`);
+      }
+      // Start a heartbeat
+      this.heartbeat(session.id);
+      // Sync to the server
+      if(this.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Sockets/${session.id}/Unsent`)) {
+        this.syncToServer(session.id);
+      }
+      // This is an array of tiddler titles, each title is a string.
+      const response = $tw.wiki.allTitles();
+      // Send the response JSON as a string.
+      let message = {
+        type: 'browserTiddlerList',
+        titles: response,
+        token: token,
+        wiki: $tw.wiki.getTiddlerText('$:/WikiName')
+      };
+      console.log("handler-listTiddlers: should send list here")
+      //$tw.Bob.sendToServer(connectionIndex, message);
+    } else {
+      this.deleteSession(data.sessionId);
+      this.deleteSocket(data.sessionId);
+    }
   }
-  // Clear the server warning
-  if(this.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Socket Warning/${session.id}`)) {
-    this.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Socket Warning/${session.id}`);
-  }
-  // Start a heartbeat
-  $tw.Bob.wsClient.heartbeat(session.id);
-  // Sync to the server
-  if(this.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Sockets/${session.id}/Unsent`)) {
-    this.syncToServer(session.id);
-  }
-
-  // This is an array of tiddler titles, each title is a string.
-  const response = $tw.wiki.allTitles();
-  // Send the response JSON as a string.
-  const token = $tw.utils.getMessageToken();
-  let message = {
-    type: 'browserTiddlerList',
-    titles: response,
-    token: token,
-    wiki: $tw.wiki.getTiddlerText('$:/WikiName')
-  };
-  console.log("handler-listTiddlers: should send list here")
-  //$tw.Bob.sendToServer(connectionIndex, message);
-}
 
   /* REQUIRED MESSAGE HANDLER
     This handles a ping from the server. The server and browser make sure they

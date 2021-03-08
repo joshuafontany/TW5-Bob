@@ -279,13 +279,12 @@ WSAdaptor.prototype.getStatus = function(callback) {
 			} catch (e) {
 			}
 			if(json) {
-				self.logger.log("Status:",data);
 				// Record the recipe
 				if(json.space) {
 					self.recipe = json.space.recipe;
 				}
 				// Check if we're logged in
-				self.isLoggedIn = !!json.username && !!json.anonymous;
+				self.isLoggedIn = !!json.username && !json.anonymous;
 				self.isReadOnly = !!json["read_only"];
 				self.isAnonymous = !!json.anonymous;
 

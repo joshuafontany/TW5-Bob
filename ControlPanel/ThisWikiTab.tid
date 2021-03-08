@@ -12,17 +12,6 @@ caption: This Wiki
   />
 </$button> <<helpButton "$:/plugins/OokTech/Bob/AboutUnloadWiki">>
 
-<$checkbox
-  tiddler='$:/WikiSettings/split'
-  index='persistentUsernames'
-  actions="<$action-updatesetting persistentUsernames={{$:/WikiSettings/split##persistentUsernames}}/>"
-  checked="yes"
-  unchecked="no"
-  default="no"
->
-  Use Persistent Usernames
-</$checkbox> <<helpButton "$:/plugins/OokTech/Bob/AboutPersistentUsernames">>
-
 You can set which plugins and themes are installed on this wiki here.
 Installing plugins this way is not the same as dragging and dropping plugins
 into the wiki, this can not remove plugins you have added that way, you have to

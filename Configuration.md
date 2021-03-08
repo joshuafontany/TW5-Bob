@@ -20,7 +20,7 @@ marked in the explanations below.
   "includePluginList": [],
   "excludePluginList": [],
   "autoUnloadWikis": "false",
-  "disableBrowserAlerts": "false",
+  "disableBrowserAlerts": "no",
   "disableFileWatchers": "no",
   "fileURLPrefix": "files",
   "namespacedWikis": "false",
@@ -31,7 +31,6 @@ marked in the explanations below.
   "filePathRoot": "./files",
   "perWikiFiles": "no",
   "enableBobSaver": "yes",
-  "persistentUsernames": "no",
   "scripts": {
     "NewWiki": "tiddlywiki #wikiName --init #editionName"
   },
@@ -206,7 +205,7 @@ in windows replace `/home` with `C:\Users` and change the `/` into `\`.
 - `autoUnloadWikis` if this is set to `true` than wikis with no active
   connections will be automatically unloaded from memory. (experimental, may
   cause problems)
-- `disableBrowserAlerts` if this is set to `true` than no alerts are sent to
+- `disableBrowserAlerts` if this is set to `yes` than no alerts are sent to
   the browser wikis. This can also be set on a per-wiki basis in the control
   panel.
 - `disableFileWatchers` if this is set to `yes` than the file system monitor
@@ -238,10 +237,6 @@ in windows replace `/home` with `C:\Users` and change the `/` into `\`.
   folder) are only available in that wiki, so no hotlinking.
 - `enableBobSaver` setting this to `no` disables the Bob saver for single file
   wikis. By default this is enabled.
-- `persistentUsernames` setting this to `yes` stores the user name entered for
-  the wiki in a cookie so it is saved the next time you open the wiki using the
-  same browser. As long as cookies aren't cleared and the cookie doesn't expire
-  first.
 - `scripts` a list of scripts that you can call from inside the wiki using the
   `runScript` websocket message.
 - `wikis` a list of child wikis to serve. The path to the wikis is determined

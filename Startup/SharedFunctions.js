@@ -216,23 +216,21 @@ exports.sendMessageAck = function(data) {
   // The following messages do not need to be acknowledged
   let noAck = ['ack', 'ping', 'pong'];
   if(noAck.indexOf(data.type) == -1) {
-    let message = {
+    let socket = null,
+      message = {
       type: 'ack',
       id: 'ack' + data.id,
-      wiki: data.wiki
+      token: $tw.utils.getMessageToken(),
+      wikiName: data.wikiName
     }
     if($tw.browser) {
-      const token = $tw.utils.getMessageToken();
-      message.token = token;
-      console.log(`Sending ack ${message.id}`);
-      $tw.Bob.sessions[0].socket.send(JSON.stringify(message));
+      socket = $tw.Bob.wsClient.getSocket(data.sessionId);
     } else {
-      if(data.id) {
-        if(data.source_connection !== undefined && data.source_connection !== -1) {
-          $tw.Bob.logger.log(`Sending ack ${message.id}`);
-          $tw.Bob.sessions[data.source_connection].socket.send(JSON.stringify(message));
-        }
-      }
+      socket = $tw.Bob.sessionManager.getSocket(data.sessionId);
+    }
+    if (!!socket) {
+      console.log(`Sending ${message.id}`);
+      socket.send(JSON.stringify(message));
     }
   }
 }
@@ -273,18 +271,6 @@ exports.handleMessageAck = function(data) {
         $tw.Bob.MessageQueue[index].ctime = Date.now();
       }
     }
-  }
-}
-
-exports.getMessageToken = function(connectionIndex) {
-  if($tw.browser) {
-    // In the browser we check if the token is still valid and if so attach
-    // it to the message, otherwise don't send a token.
-    if(localStorage.getItem('token-eol') > Date.now()) {
-      return localStorage.getItem('ws-token');
-    }
-  } else if($tw.node) {
-    // Use the connection index to get the token
   }
 }
 

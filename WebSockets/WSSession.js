@@ -33,7 +33,7 @@ function WebSocketSession(options) {
   this.isReadOnly = options.isReadOnly;
   this.isAnonymous = options.isAnonymous;
   this.url = options.url;
-  this.socket = null;
+  this.messageId = 0;
   this.state = null;
   this.initState();
 }
@@ -58,6 +58,16 @@ WebSocketSession.prototype.initState = function() {
         state.retryTimeout = null
     }
     this.state = state;
+}
+
+WebSocketSession.prototype.getMessageId = function() {
+  let id;
+  if ($tw.node) {
+    id = "s"
+  } else {
+    id = "c"
+  }
+  id = id + this.messageId++
 }
 
 exports.WebSocketSession = WebSocketSession;

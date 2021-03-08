@@ -164,7 +164,7 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
     }
   });
   this.httpServer.on('upgrade', function(request,socket,head) {
-    if(self.manager.wsServer && request.headers.upgrade === 'websocket') {
+    if($tw.Bob.wsServer && request.headers.upgrade === 'websocket') {
       // Verify the client here
       let state = self.verifyUpgrade(request);
       if(!state){
@@ -172,12 +172,9 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
         socket.destroy();
         return;
       }
-      // Save the socket
-      socket.id = state.sessionId;
-      this.manager.setSocket(socket);
-      self.manager.wsServer.handleUpgrade(request,socket,head,function(ws) {
+      $tw.Bob.wsServer.handleUpgrade(request,socket,head,function(ws) {
         console.log("ws-server: upgrade request approved");
-        self.manager.wsServer.emit('connection',ws,request,state);
+        $tw.Bob.wsServer.emit('connection',ws,request,state);
       });
     } else {
       console.log("ws-server: upgrade request denied");

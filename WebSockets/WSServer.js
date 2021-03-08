@@ -20,7 +20,7 @@ if($tw.node) {
 */
 function WebSocketServer(options) {
   Object.assign(this, new Server(options));
-  // Reserve a connecrtion to the session manager
+  // Reserve a connection for the session manager
   this.manager = null;
   // Load the node-messagehandlers modules
   this.messageHandlers = {};
@@ -71,26 +71,37 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
   // Event handlers
   socket.on('message', this.handleMessage);
   socket.on('close', this.closeConnection);
+  // Save the socket
+  socket.id = state.sessionId;
+  this.manager.setSocket(socket);
   // Refresh the session token, detroying the login token if neccessary
-  let session = this.manager.refreshSession(state.sessionId);
+  this.manager.refreshSession(state.sessionId);
+  let session = this.manager.getSession(state.sessionId);
   // Respond to the initial connection with a "handshake" message to initialise everything.
   const message = {
-    type: 'handshake', 
+    id: session.getMessageId(),
+    type: 'handshake',
+    wikiName: session.wikiName,
     token: session.token, 
     tokenEOL: session.tokenEOL,
-    heartbeat: $tw.Bob.settings.heartbeat,
-    reconnect: $tw.Bob.settings.reconnect
+    settings: this.manager.getViewableSettings(state.sessionId)
   };
-  //$tw.Bob.SendToBrowser($tw.Bob.sessions[Object.keys($tw.Bob.sessions).length-1], message);
+  this.sendMessage(session.id,message);
   if(false && $tw.node && $tw.Bob.settings.enableFederation === 'yes') {
     $tw.Bob.Federation.updateConnections();
   }
 }
 
-WebSocketServer.prototype.closeConnection = function(event) {
-    let id = this.id;
-    $tw.Bob.logger.log(`Closed client session from ip: ${this.manager.getSession(id).url}, id: ${id}`, JSON.stringify(event), {level:2});
+WebSocketServer.prototype.sendMessage = function(sessionId,message) {
+  if (this.manager.hasSocket(sessionId)) {
+    let socket = this.manager.getSocket(sessionId);
+    socket.send(JSON.stringify(message));
+  }
 }
+
+WebSocketServer.prototype.closeConnection = function(event) {
+    $tw.Bob.logger.log(`Closed connection: ${this.id} `+JSON.stringify(this._peername, null, 4));
+  }
 
 /*
   This makes sure that the token sent allows the action on the wiki

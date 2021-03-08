@@ -17,7 +17,6 @@ title: $:/plugins/OokTech/Bob/DefaultSettings
   "filePathRoot": "./files",
   "perWikiFiles": "no",
   "enableBobSaver": "yes",
-  "persistentUsernames": "no",
   "scripts": {
     "NewWiki": "tiddlywiki #wikiName --init #editionName"
   },

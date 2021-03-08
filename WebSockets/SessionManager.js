@@ -164,7 +164,7 @@ SessionManager.prototype.setSocket = function(socket) {
 SessionManager.prototype.deleteSocket = function(sessionId) {
     if (this.hasSocket(sessionId)) {
         let socket = this.getSocket(sessionID);
-        socket.destroy();
+        socket.terminate();
         this.sockets.delete(sessionId);
     }
 }
@@ -229,6 +229,84 @@ SessionManager.prototype.getUsersWithAccess = function(type,wikiName) {
     }
     return usersWithAccess;
 }
+
+SessionManager.prototype.getViewableSettings = function(sessionId) {
+    const tempSettings = {};
+    if (this.hasSession(sessionId)) {
+        let session = this.getSession(sessionId);
+        // section visible to anyone
+        tempSettings.API = $tw.Bob.settings.API;
+        tempSettings.heartbeat = $tw.Bob.settings.heartbeat;
+        tempSettings.reconnect = $tw.Bob.settings.reconnect;
+        // Federation stuff is visible because you don't have to login to want to see
+        // if federation is possible with a server
+        tempSettings.enableFederation = $tw.Bob.settings.enableFederation;
+        if (tempSettings.enableFederation == "yes") {
+            tempSettings.federation = $tw.Bob.settings.federation;    
+        }
+        // Section visible by logged in people
+        if(session.isLoggedIn) {
+            tempSettings.backups = $tw.Bob.settings.backups;
+            tempSettings.disableBrowserAlerts = $tw.Bob.settings.disableBrowserAlerts;
+            tempSettings.editionLibrary = $tw.Bob.settings.editionLibrary;
+            tempSettings.enableFileServer = $tw.Bob.settings.enableFileServer;
+            tempSettings.excludePluginList = $tw.Bob.settings.excludePluginList;
+            tempSettings.fileURLPrefix = $tw.Bob.settings.fileURLPrefix;
+            tempSettings.includePluginList = $tw.Bob.settings.includePluginList;
+            tempSettings.mimeMap = $tw.Bob.settings.mimeMap;
+            tempSettings.namespacedWikis = $tw.Bob.settings.namespacedWikis;
+            tempSettings.perWikiFiles = $tw.Bob.settings.perWikiFiles;
+            tempSettings.pluginLibrary = $tw.Bob.settings.pluginLibrary;
+            tempSettings.profileOptions = $tw.Bob.settings.profileOptions;
+            tempSettings.saveMediaOnServer = $tw.Bob.settings.saveMediaOnServer;
+            tempSettings.themeLibrary = $tw.Bob.settings.themeLibrary;
+            tempSettings.tokenTTL = $tw.Bob.settings.tokenTTL;
+        }
+        // advanced section only visible to admins
+        if(session.isLoggedIn && session.access === 'admin') {
+            tempSettings.actions = $tw.Bob.settings.actions;
+            tempSettings.admin = $tw.Bob.settings.admin;
+            tempSettings.advanced = $tw.Bob.settings.advanced;
+            tempSettings.certPath = $tw.Bob.settings.certPath;
+            tempSettings.disableFileWatchers = $tw.Bob.settings.disableFileWatchers;
+            tempSettings.editions = $tw.Bob.settings.editions;
+            tempSettings.editionsPath = $tw.Bob.settings.editionsPath;
+            tempSettings.enableBobSaver = $tw.Bob.settings.enableBobSaver;
+            tempSettings.filePathRoot = $tw.Bob.settings.filePathRoot;
+            tempSettings['fed-wss'] = $tw.Bob.settings['fed-wss'];
+            tempSettings.httpsPort = $tw.Bob.settings.httpsPort;
+            tempSettings.languages = $tw.Bob.settings.languages;
+            tempSettings.languagesPath = $tw.Bob.settings.languagesPath;
+            tempSettings.logger = $tw.Bob.settings.logger;
+            tempSettings.plugins = $tw.Bob.settings.plugins;
+            tempSettings.pluginsPath = $tw.Bob.settings.pluginsPath;
+            tempSettings.profiles = $tw.Bob.settings.profiles;
+            tempSettings.reverseProxy = $tw.Bob.settings.reverseProxy;
+            tempSettings.rootWikiName = $tw.Bob.settings.rootWikiName;
+            tempSettings.saltRounds = $tw.Bob.settings.saltRounds;
+            tempSettings.saver = $tw.Bob.settings.saver;
+            tempSettings.scripts = $tw.Bob.settings.scripts;
+            tempSettings.servingFiles = $tw.Bob.settings.servingFiles;
+            tempSettings.server = $tw.Bob.settings.server;
+            tempSettings.serverInfo = $tw.Bob.settings.serverInfo;
+            tempSettings.serverKeyPath = $tw.Bob.settings.serverKeyPath;
+            tempSettings.serveWikiOnRoot = $tw.Bob.settings.serveWikiOnRoot;
+            tempSettings.suppressBrowser = $tw.Bob.settings.suppressBrowser;
+            tempSettings.themes = $tw.Bob.settings.themes;
+            tempSettings.themesPath = $tw.Bob.settings.themesPath;
+            tempSettings.tokenPrivateKeyPath = $tw.Bob.settings.tokenPrivateKeyPath;
+            tempSettings.useHTTPS = $tw.Bob.settings.useHTTPS;
+            tempSettings.wikiPathBase = $tw.Bob.settings.wikiPathBase;
+            tempSettings.wikiPermissionsPath = $tw.Bob.settings.wikiPermissionsPath;
+            tempSettings.wikisPath = $tw.Bob.settings.wikisPath;
+            tempSettings['ws-server'] = $tw.Bob.settings['ws-server'];
+        }
+        tempSettings.advanced = tempSettings.avanced || {};
+        tempSettings['ws-server'] = tempSettings['ws-server'] || {};
+        tempSettings['fed-wss'] = tempSettings['fed-wss'] || {};
+    }
+    return tempSettings;
+  }
 
     exports.SessionManager = SessionManager;
 }
