@@ -1,9 +1,9 @@
 {
   "title": "$:/plugins/OokTech/Bob",
   "description": "A plugin that real-time syncing between wiki and server, among other things",
-  "author": "inmysocks",
-  "version": "1.7.2",
-  "core-version": ">=5.1.21",
+  "author": "inmysocks,joshuafontany",
+  "version": "2.0.0",
+  "core-version": ">=5.1.23",
   "source": "",
   "plugin-type": "plugin",
   "list": "readme WebSocketMessages ActionWebSocketMessage OokTechInfo"

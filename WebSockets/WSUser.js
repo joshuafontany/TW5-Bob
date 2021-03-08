@@ -20,18 +20,14 @@ are called by the SessionManager and the WebSocketServer.
 */
 function WebSocketUser(options) {
     options = options || {};
-    this.id = options.userid || options.username;
-    this.username = options.username;
+    this.id = options.userid || options.authenticatedUsername;
+    this.displayUsername = options.displayUsername;
     this.isAnonymous = !!options.isAnonymous;
     // A set to store the session ids
-    this.sessions = new Set();
+    this.sessions = new Set(options.sessions);
     if (options.session) {
         this.sessions.add(options.session.id);
     }
-}
-
-WebSocketUser.prototype.isAdmin = function() {
-    return $tw.Bob.wsServer.iAdmin(this.username);
 }
 
 exports.WebSocketUser = WebSocketUser;

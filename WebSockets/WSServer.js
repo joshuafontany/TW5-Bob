@@ -67,27 +67,20 @@ WebSocketServer.prototype.serverClosed = function() {
   }
 */
 WebSocketServer.prototype.handleConnection = function(socket,request,state) {
-  let ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
-    request.connection.remoteAddress,
-    id = null; //parse from request?
-  $tw.Bob.logger.log(`New client session from ip: ${ip}, id: ${id}`, {level:2});
-  $tw.Bob.logger.log(`State:`, JSON.stringify(state), {level:4});
+  $tw.Bob.logger.log(`New client session from ip: ${state.ip}, id: ${state.sessionId}`, {level:2});
   // Event handlers
   socket.on('message', this.handleMessage);
   socket.on('close', this.closeConnection);
-  socket.id = id;
-  // Setup session object
-  this.manager.addSession({
-    "id": id,
-    'socket': socket, 
-    'url': ip, 
-    'wiki': undefined, 
-    'disconnected': null, 
-    'reconnect': null
-  });
-  // Respond to the initial connection with a request for the tiddlers the
-  // browser currently has to initialise everything.
-  const message = {type: 'listTiddlers'}
+  // Refresh the session token, detroying the login token if neccessary
+  let session = this.manager.refreshSession(state.sessionId);
+  // Respond to the initial connection with a "handshake" message to initialise everything.
+  const message = {
+    type: 'handshake', 
+    token: session.token, 
+    tokenEOL: session.tokenEOL,
+    heartbeat: $tw.Bob.settings.heartbeat,
+    reconnect: $tw.Bob.settings.reconnect
+  };
   //$tw.Bob.SendToBrowser($tw.Bob.sessions[Object.keys($tw.Bob.sessions).length-1], message);
   if(false && $tw.node && $tw.Bob.settings.enableFederation === 'yes') {
     $tw.Bob.Federation.updateConnections();
@@ -110,13 +103,9 @@ WebSocketServer.prototype.authenticateMessage = function(event) {
   The handle message function, split out so we can use it other places
 */
 WebSocketServer.prototype.handleMessage = function(event) {
-  // Determine which connection the message came from
-  let self = this;
-  const connectionIndex = $tw.Bob.sessions.findIndex(function(connection) {return connection.socket === self;});
   try {
     let eventData = JSON.parse(event);
-    // Add the source to the eventData object so it can be used later.
-    eventData.source_connection = connectionIndex;
+    eventData.sessionId = this.id;
     // If the wiki on this connection hasn't been determined yet, take it
     // from the first message that lists the wiki.
     // After that the wiki can't be changed. It isn't a good security

@@ -11,7 +11,10 @@ module-type: library
 /*global $tw: false */
 "use strict";
 
-const { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('$:/plugins/OokTech/Bob/External/uuid/src/index.js'),
+if ($tw.node) {
+
+const url = require('url'),
+{ v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('$:/plugins/OokTech/Bob/External/uuid/src/index.js'),
     WebSocketSession = require('$:/plugins/OokTech/Bob/WSSession.js').WebSocketSession,
     WebSocketUser = require('$:/plugins/OokTech/Bob/WSUser.js').WebSocketUser;
 
@@ -23,33 +26,26 @@ const { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('$:/plug
 */
 function SessionManager(options) {
     options = options || {};
-    this.admin = new Set(options.admin || []);
+    this.sockets = options.sockets || new Map();
     this.sessions = options.sessions || new Map();
     this.anonymousUsers = options.anonymousUsers || new Map();
     this.authorizedUsers = options.authorizedUsers || new Map();
 }
 
-SessionManager.prototype.getUserAccess = function(username,wikiName) {
-    wikiName = wikiName || 'RootWiki';
-    if(!!username) {
-        if (this.isAdmin(username)) {
-            return "admin";
-        } else {
-            let wikiSettings = $tw.ServerSide.getWikiSettings(wikiName);
-        }
-    }
-    return null;    //return $tw.Bob.getAccess(username,wikiName);
-}
-
 SessionManager.prototype.requestSession = function(state) {
-    let userSession, sessionId = state.queryParameters["session"];debugger;
+    let userSession, 
+        wikiName = state.queryParameters["wiki"],
+        sessionId = state.queryParameters["session"];
     if(sessionId == uuid_NIL || !this.hasSession(sessionId)  
-        || this.getSession(sessionId).username !== state.authenticatedUsername) {
+        || this.getSession(sessionId).displayUsername !== state.authenticatedUsername) {
+        // Anon users always have a new random userid created
         userSession = this.newSession({
-            wikiname: state.wikiName,
             ip: state.ip,
-            username: state.username,
-            access: this.getUserAccess(state.username,state.wikiName),
+            referer: state.referer,
+            wikiName: wikiName,
+            userid: !state.anonymous? state.authenticatedUsername: uuid_v4(),
+            displayUsername: state.username,
+            access: this.getUserAccess(state.authenticatedUsername,state.wikiName),
             isLoggedIn: !!state.authenticatedUsername,
             isReadOnly: !!state["read_only"],
             isAnonymous: !!state.anonymous
@@ -57,9 +53,10 @@ SessionManager.prototype.requestSession = function(state) {
     } else {
         userSession = this.getSession(sessionId);
     }
-    // Set a new token and tokenEOL
-    let now = new Date();
-    userSession.tokenEOL = now.setHours(now.getHours() + 1);
+    // Set a new login token and login tokenEOL. Only valid for 60 seconds.
+    // These will be replaced with a session token during the "handshake".
+    let eol = new Date();
+    userSession.tokenEOL = eol.setMinutes(eol.getMinutes() + 1);
     userSession.token = uuid_v4();
     // Log the session in this.authorizedUsers or this.anonymousUsers
     this.updateUser(userSession);
@@ -69,9 +66,41 @@ SessionManager.prototype.requestSession = function(state) {
 SessionManager.prototype.newSession = function(sessionData) {
     sessionData.id = uuid_v4();
     let session = new WebSocketSession(sessionData);
-    session.initState();
     this.setSession(session);
     return session;
+}
+
+SessionManager.prototype.verifyUpgrade = function(state) {
+    let userSession;
+    if (this.hasSession(state.sessionId)) {
+        userSession = this.getSession(state.sessionId);
+        // Test the token and tokenEOL
+        let now = new Date();
+        if (
+            state.username == userSession.displayUsername
+            && state.ip == userSession.ip
+            && state.wikiName == userSession.wikiName
+            && state.token == userSession.token
+            && now < userSession.tokenEOL
+        ) {
+            return state;
+        } else {
+            return false;
+        };
+    } else {
+        return false;
+    }
+}
+
+SessionManager.prototype.refreshSession = function(sessionId) {
+    let test = new Date(),
+        session = this.getSession(sessionId);
+    test.setMinutes(test.getMinutes() + 5);
+    if (session.tokenEOL <= test) {
+        let eol = new Date(session.tokenEOL);
+        session.tokenEOL = eol.setHours(eol.getHours() + 1);
+        session.token = uuid_v4();
+    }
 }
 
 SessionManager.prototype.hasSession = function(sessionId) {
@@ -116,19 +145,41 @@ SessionManager.prototype.getSessionsByWiki = function(wikiName) {
     return wikiSessions;
 }
 
+SessionManager.prototype.hasSocket = function(sessionId) {
+    return this.sockets.has(sessionId);
+}
+
+SessionManager.prototype.getSocket = function(sessionId) {
+    if (this.hasSocket(sessionId)) {
+       return this.sockets.get(sessionId);
+    }
+}
+
+SessionManager.prototype.setSocket = function(socket) {
+    if (socket.id) {
+        this.sockets.set(socket.id,socket);
+    }
+}
+
+SessionManager.prototype.deleteSocket = function(sessionId) {
+    if (this.hasSocket(sessionId)) {
+        let socket = this.getSocket(sessionID);
+        socket.destroy();
+        this.sockets.delete(sessionId);
+    }
+}
+
 /*
     User methods
 */
 SessionManager.prototype.updateUser = function(sessionData) {
     let user = null;
     if(!!sessionData.isAnonymous) {
-        // Anon users always have a new user object created with a random userid
-        sessionData.userid = uuid_v4();
-        user = this.newUser(sessionData);
+        user = this.anonymousUsers.get(sessionData.userid) || this.newUser(sessionData);
     } else {
-        user = this.authorizedUsers.get(sessionData.username) || this.newUser(sessionData);
+        user = this.authorizedUsers.get(sessionData.userid) || this.newUser(sessionData);
     }
-    user.sessions.set(sessionData.id,sessionData.wikiName)
+    user.sessions.add(sessionData.id)
 }
 
 SessionManager.prototype.newUser = function(sessionData) {
@@ -142,34 +193,43 @@ SessionManager.prototype.newUser = function(sessionData) {
 }
 
 SessionManager.prototype.isAdmin = function(username) {
-    if (this.authorizedUsers.has(username)) {
-        return this.admin.has("(authenticated)") || this.admin.has(username);
-    } else {
-        return null;
-    }
+    return $tw.Bob.server.isAuthorized("admin",username);
 }
 
-SessionManager.prototype.getUsersByAccessLevel = function(level) {
+SessionManager.prototype.getUserAccess = function(username,wikiName) {
+    wikiName = wikiName || 'RootWiki';
+    if(!!username) {
+        let type, accessPath = (wikiName == 'RootWiki')? "" : wikiName+'/';
+        type = ($tw.Bob.server.isAuthorized(accessPath+"readers",username))? "readers" : null;
+        type = ($tw.Bob.server.isAuthorized(accessPath+"writers",username))? "writers" : type;
+        type = ($tw.Bob.server.isAuthorized("admin",username))? "admin" : type;
+        return type;
+    }
+    return null;
+}
+
+SessionManager.prototype.getUsersByAccessType = function(type,wikiName) {
     var usersByAccess = new Map();
     for (let [id,user] of this.authorizedUsers.entries()) {
-        if (user.access === level) {
+        if (this.getUserAccess(user.userid,wikiName) == type) {
             usersByAccess.add(id,user);
         }
     }
     return usersByAccess;
 }
 
-SessionManager.prototype.getUsersWithAccess = function(level) {
-    var usersWithAccess = new Map();
+SessionManager.prototype.getUsersWithAccess = function(type,wikiName) {
+    let usersWithAccess = new Map(),
+        types = [null, "readers", "writers", "admin"];
     for (let [id,user] of this.authorizedUsers.entries()) {
-        if (user.access >= level) {
+        let access = this.getUserAccess(user.userid,wikiName);
+        if (types.indexOf(access) >= types.indexOf(type)) {
             usersWithAccess.add(id,user);
         }
     }
     return usersWithAccess;
 }
 
-if($tw.node) {
     exports.SessionManager = SessionManager;
 }
 

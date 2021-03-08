@@ -1,5 +1,5 @@
 /*\
-title: $:/plugins/OokTech/Bob/commands/wsserver.js
+title: $:/plugins/OokTech/Bob/commands/ws-server.js
 type: application/javascript
 module-type: command
 
@@ -13,7 +13,7 @@ Serve tiddlers using a two-way websocket server over http
 "use strict";
 
 exports.info = {
-  name: "wsserver",
+  name: "ws-server",
   synchronous: true,
 	namedParameterMode: true,
 	mandatoryParameters: []
@@ -21,10 +21,10 @@ exports.info = {
 
 exports.platforms = ["node"];
 
-  const SaverServer = require('$:/plugins/OokTech/Bob/SaverServer.js').SaverServer,
-    SimpleServer = require('$:/plugins/OokTech/Bob/SimpleServer.js').SimpleServer,
-    WebSocketServer = require('$:/plugins/OokTech/Bob/WSServer.js').WebSocketServer,
-    SessionManager = require('$:/plugins/OokTech/Bob/SessionManager.js').SessionManager;
+const SaverServer = require('$:/plugins/OokTech/Bob/SaverServer.js').SaverServer,
+  SimpleServer = require('$:/plugins/OokTech/Bob/SimpleServer.js').SimpleServer,
+  WebSocketServer = require('$:/plugins/OokTech/Bob/WSServer.js').WebSocketServer,
+  SessionManager = require('$:/plugins/OokTech/Bob/SessionManager.js').SessionManager;
 
 const Command = function(params,commander,callback) {
   this.params = params;
@@ -62,28 +62,25 @@ Command.prototype.execute = function() {
     $tw.saverServer = new SaverServer(options);
     $tw.saverServer.listen();
   }
-  // Set up http(s) server
-  $tw.Bob.settings['ws-server']['required-plugins'].push($tw.Bob.settings.wikis['RootWiki'].syncadaptor);
+  // Set up http(s) server as $tw.Bob.server.httpServer
+  $tw.Bob.settings['ws-server']['required-plugins'].push($tw.Bob.settings['ws-server'].syncadaptor);
   let variables = $tw.utils.extend(self.params,$tw.Bob.settings['ws-server']);
-	this.server = new SimpleServer({
+	$tw.Bob.server = new SimpleServer({
 		wiki: this.commander.wiki,
 		variables: variables
 	});
-	$tw.Bob.httpServer = this.server.listen();
+	let httpServer = $tw.Bob.server.listen();
   // Set up the the WebSocketServer
   $tw.Bob.wsServer = new WebSocketServer({
     clientTracking: false, 
     noServer: true // We roll our own Upgrade
   });
   // Setup the SessionManager and wire them all together.
-  $tw.Bob.sessionManager = new SessionManager({
-    admin: $tw.Bob.settings.wikis['RootWiki'].admin.split(','),
-    httperver: $tw.Bob.httpServer,
-    wsServer: $tw.Bob.wsServer
-  });
-  $tw.Bob.httpServer.manager = $tw.Bob.sessionManager;
+  let managerSerialized = JSON.parse("{}");
+  $tw.Bob.sessionManager = new SessionManager(managerSerialized);
+  $tw.Bob.server.manager = $tw.Bob.sessionManager;
   $tw.Bob.wsServer.manager = $tw.Bob.sessionManager;
-	$tw.hooks.invokeHook("th-server-command-post-start",this.server,$tw.Bob.httpServer,"tiddlywiki");
+	$tw.hooks.invokeHook("th-server-command-post-start",httpServer,$tw.Bob.server,"tiddlywiki");
   //$tw.Bob.logger.log('TiddlyWiki version', $tw.version, 'with Bob version', $tw.Bob.version, {level:0})
   console.log('TiddlyWiki version', $tw.version, 'with Bob version', $tw.Bob.version);
   return null;

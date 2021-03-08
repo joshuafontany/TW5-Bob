@@ -215,10 +215,10 @@ This handles messages sent to the node process.
   */
   exports.updateRoutes = function(data) {
     // Then clear all the routes to the non-root wiki
-    $tw.Bob.httpServer.clearRoutes();
+    $tw.Bob.server.clearRoutes();
     // The re-add all the routes from the settings
     // This reads the settings so we don't need to give it any arguments
-    $tw.Bob.httpServer.addOtherRoutes();
+    $tw.Bob.server.addAllRoutes();
   }
 
   /*

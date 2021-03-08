@@ -14,25 +14,28 @@ side they are called by the WebSocketClient.
 /*global $tw: false */
 "use strict";
 
-
 /*
   A simple websocket session model
   options: 
 */
 function WebSocketSession(options) {
-    this.wikiName = options.wikiName || $tw.wikiName;
-    this.ip = options.ip || null;
-    this.id = options.id || null;
-    this.token = options.token || null;
-    this.tokenEOL = options.tokenEOL || null;
-    this.userid = options.userid || null;
-    this.username = options.username || null;
-    this.access = options.access || this.accessLevels.Reader,
-    this.isLoggedIn = options.isLoggedIn || null;
-    this.isReadOnly = options.isReadOnly || null;
-    this.isAnonymous = options.isAnonymous || null;
-    this.state = options.state || null;
-    this.socket = options.socket || null;
+  options = options || {};
+  this.id = options.id;
+  this.token = options.token;
+  this.tokenEOL = options.tokenEOL;
+  this.ip = options.ip;
+  this.referer = options.referer;
+  this.wikiName = options.wikiName || $tw.wikiName;
+  this.userid = options.userid;
+  this.displayUsername = options.displayUsername;
+  this.access = options.access,
+  this.isLoggedIn = options.isLoggedIn;
+  this.isReadOnly = options.isReadOnly;
+  this.isAnonymous = options.isAnonymous;
+  this.url = options.url;
+  this.socket = null;
+  this.state = null;
+  this.initState();
 }
 
 WebSocketSession.prototype.accessLevels = {
@@ -50,7 +53,7 @@ WebSocketSession.prototype.initState = function() {
         state.ping = null;
         state.disconnected = null;
         state.reconnecting = null;
-        state.delay = $tw.Bob.settings.reconnect.initial || 100;
+        state.delay = 100;
         state.attempts = 0;
         state.retryTimeout = null
     }

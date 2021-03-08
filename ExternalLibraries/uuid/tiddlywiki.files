@@ -20,7 +20,7 @@
     "directories": [
     {
       "path": "./src",
-      "filesRegExp": ".+\\.js",
+      "filesRegExp": "^(?!(rng|md5|sha1)).+\\.js",
       "isTiddlerFile": false,
       "isEditableFile": false,
       "fields": {
@@ -33,6 +33,24 @@
         "text": {
           "prefix": "(function(){\n",
           "suffix": "})();"
+        }
+      }
+    },
+    {
+      "path": "./src",
+      "filesRegExp": "(rng|md5|sha1)\\.js",
+      "isTiddlerFile": false,
+      "isEditableFile": false,
+      "fields": {
+        "title": {
+          "source": "filename",
+          "prefix": "$:/plugins/OokTech/Bob/External/uuid/src/"
+        },
+        "module-type": "library",
+        "type": "application/javascript",
+        "text": {
+          "prefix": "(function(){\nif($tw.node){",
+          "suffix": "}\n})();"
         }
       }
     }

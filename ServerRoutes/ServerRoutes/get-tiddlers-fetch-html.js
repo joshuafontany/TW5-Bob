@@ -52,11 +52,11 @@ exports.handler = function(request,response,state) {
 				// Tiddler fields '_render_type' and '_render_template' overwrite
 				// system wide settings for render type and template
 				if($tw.Bob.Wikis[wikiName].wiki.isSystemTiddler(params['tiddler'])) {
-					renderType = renderType || $tw.Bob.httpServer.get("system-tiddler-render-type");
-					renderTemplate = renderTemplate || $tw.Bob.httpServer.get("system-tiddler-render-template");
+					renderType = renderType || $tw.Bob.server.get("system-tiddler-render-type");
+					renderTemplate = renderTemplate || $tw.Bob.server.get("system-tiddler-render-template");
 				} else {
-					renderType = renderType || $tw.Bob.httpServer.get("tiddler-render-type");
-					renderTemplate = renderTemplate || $tw.Bob.httpServer.get("tiddler-render-template");
+					renderType = renderType || $tw.Bob.server.get("tiddler-render-type");
+					renderTemplate = renderTemplate || $tw.Bob.server.get("tiddler-render-template");
 				}
 				let text = $tw.Bob.Wikis[wikiName].wiki.renderTiddler(renderType,renderTemplate,{parseAsInline: true, variables: {currentTiddler: params['tiddler']}});
 				// Naughty not to set a content-type, but it's the easiest way to ensure the browser will see HTML pages as HTML, and accept plain text tiddlers as CSS or JS

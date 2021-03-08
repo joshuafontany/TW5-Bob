@@ -98,28 +98,37 @@ ServerSide.getWikiPath = function(wikiName) {
 */
 ServerSide.getWikiSettings = function(wikiName) {
   let wikiSettings = undefined;
-  if(typeof $tw.Bob.settings.wikis[wikiName] === 'object') {
+  if (wikiName == 'RootWiki') {
+    wikiSettings = {
+      path: path.resolve($tw.boot.wikiPath),
+      admin: $tw.Bob.settings["ws-server"].admin,
+      readers: $tw.Bob.settings["ws-server"].readers,
+      writers: $tw.Bob.settings["ws-server"].writers,
+      syncadaptor: $tw.Bob.settings["ws-server"].syncadaptor
+    }
+  } else if(typeof $tw.Bob.settings.wikis[wikiName] === 'object') {
     wikiSettings = $tw.Bob.settings.wikis[wikiName];
   } else {
     const parts = wikiName.split('/');
-    let obj = $tw.Bob.settings.wikis;
+    let settings, obj = $tw.Bob.settings.wikis;
     for (let i = 0; i < parts.length; i++) {
       if(obj[parts[i]]) {
         if(i === parts.length - 1 && typeof obj[parts[i]] === 'object') {
-            wikiSettings = obj[parts[i]];
-        } else {
+            settings = obj[parts[i]];
+        } else if(!!obj[parts[i]].wikis) {
           obj = obj[parts[i]].wikis;
         }
       } else {
         break;
       }
     }
+    if (!!settings) {
+      wikiSettings = settings;
+    }
   }
-  if (wikiName === "RootWiki") {
-    wikiSettings.path = path.resolve($tw.boot.wikiPath);
-  } else if (!wikiSettings.syncadaptor) {
+  if(!wikiSettings.syncadaptor) {
     // Set the default syncadaptor
-    wikiSettings.syncadaptor = ServerSide.getWikiSettings("RootWiki").syncadaptor;
+    wikiSettings.syncadaptor = $tw.Bob.settings["ws-server"].syncadaptor;
   }
   return wikiSettings;
 }
@@ -156,11 +165,11 @@ ServerSide.existsListed = function(wikiName) {
   }
   let exists = false;
   // First make sure that the wiki is listed
-  const wikiPath = ServerSide.getWikiPath(wikiName);
+  const settings = ServerSide.getWikiSettings(wikiName);
   // Make sure that the wiki actually exists
-  exists = ServerSide.wikiExists(wikiPath);
+  exists = ServerSide.wikiExists(settings.path);
   if(exists) {
-    return wikiPath;
+    return settings.path;
   } else {
     return exists;
   }
@@ -170,14 +179,13 @@ ServerSide.existsListed = function(wikiName) {
   This function loads a wiki and calls any callback.
 */
 ServerSide.loadWiki = function(wikiName, cb) {
-  const wikiFolder = ServerSide.existsListed(wikiName);
+  const settings = ServerSide.getWikiSettings(wikiName);
   // Make sure it isn't loaded already
-  if(wikiFolder && !$tw.Bob.Wikis.has(wikiName)) {
+  if(settings && !$tw.Bob.Wikis.has(wikiName)) {
     try{
-      let instance = (wikiName == 'RootWiki')? $tw: require("./boot/boot.js").TiddlyWiki(),
-        settings = ServerSide.getWikiSettings(wikiName);
+      let instance = (wikiName == 'RootWiki')? $tw: require("./boot/boot.js").TiddlyWiki();
       if(wikiName == 'RootWiki') {
-        
+
       } else {
         // Pass the command line arguments to the boot kernel
         instance.boot.argv = ["+plugins/"+settings.syncadaptor,settings.path];
@@ -185,6 +193,7 @@ ServerSide.loadWiki = function(wikiName, cb) {
         instance.boot.boot();
       }
       // Name the wiki
+      instance.wikiName = wikiName;
       const fields = {
         title: '$:/WikiName',
         text: wikiName
@@ -219,7 +228,7 @@ ServerSide.loadWiki = function(wikiName, cb) {
   if(typeof cb === 'function') {
     cb(null, wikiName);
   } else {
-    return wikiFolder;
+    return ServerSide.getWikiPath(wikiName);
   }
 }
 

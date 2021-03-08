@@ -22,9 +22,13 @@ if($tw.node) {
 */
 function SimpleServer(options) {
   Server.call(this, options);
-  // Reserve a connecrtion to the session manager
+  // Reserve a connetion to the session manager & httpServer
   this.manager = null;
-  this.addOtherRoutes();
+  this.httpServer = null;
+  // Set the this.authorizationPrincipals['admin'] principles
+  this.authorizationPrincipals['admin'] = this.get("admin").split(',').map($tw.utils.trim);
+  // Add all the routes, this also adds authorization priciples for each wiki
+  this.addAllRoutes();
 }
 
 SimpleServer.prototype = Object.create(Server.prototype);
@@ -50,6 +54,15 @@ SimpleServer.prototype.clearRoutes = function() {
   this.routes = this.routes.filter(function(thisRoute) {
     return String(thisRoute.path) === String(/^\/$/) || String(thisRoute.path) === String(/^\/favicon.ico$/);
   });
+  // Remove any added authorizationPrinciples
+  let baseTypes = ["admin","readers","writers"]
+  let clearedPrinciples = {};
+  Object.keys(this.authorizationPrinciples).forEach(function(thisType) {
+    if (baseTypes.indexOf(thisType) !== -1) {
+      clearedPrinciples[thisType] == authorizatonPrinciples[thisTypes];
+    };
+  });
+  this.authorizationPrinciples = clearedPrinciples;
 }
 
 SimpleServer.prototype.findMatchingRoute = function(request,state) {
@@ -127,19 +140,19 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
 		$tw.utils.error(error);
 	}
 	// Create the server
-	var server;
+	this.httpServer;
 	if(this.listenOptions) {
-		server = this.transport.createServer(this.listenOptions,this.requestHandler.bind(this));
+		this.httpServer = this.transport.createServer(this.listenOptions,this.requestHandler.bind(this));
 	} else {
-		server = this.transport.createServer(this.requestHandler.bind(this));
+		this.httpServer = this.transport.createServer(this.requestHandler.bind(this));
 	}
 	// Display the port number after we've started listening (the port number might have been specified as zero, or incremented, in which case we will get an assigned port)
-	server.on("listening",function() {
-		var address = server.address();
+	this.httpServer.on("listening",function() {
+		var address = self.httpServer.address();
 		$tw.utils.log("Serving on " + self.protocol + "://" + address.address + ":" + address.port + prefix,"brown/orange");
 		$tw.utils.log("(press ctrl-C to exit)","red");
 	});
-  server.on('error', function(e) {
+  this.httpServer.on('error', function(e) {
     if($tw.Bob.settings['ws-server'].autoIncrementPort || typeof $tw.Bob.settings['ws-server'].autoIncrementPort === 'undefined') {
       if(e.code === 'EADDRINUSE') {
         console.log('Port ', port, ' in use, trying ', port+1);
@@ -150,62 +163,79 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
       console.log(e);
     }
   });
-  server.on('upgrade', function(request,socket,head) {debugger;
-    if(this.manager.wsServer && request.headers.upgrade === 'websocket') {
-      if(request.url === '/') {
-        // Verify the client here
-        let state = self.verifyUpgrade(request);
-        if(!state){
-          socket.destroy();
-          return;
-        }
-        this.manager.wsServer.handleUpgrade(request,socket,head,function(ws) {
-          this.manager.wsServer.emit('connection',ws,request,state);
-        });
+  this.httpServer.on('upgrade', function(request,socket,head) {
+    if(self.manager.wsServer && request.headers.upgrade === 'websocket') {
+      // Verify the client here
+      let state = self.verifyUpgrade(request);
+      if(!state){
+        console.log("ws-server: upgrade request failed");
+        socket.destroy();
+        return;
       }
+      // Save the socket
+      socket.id = state.sessionId;
+      this.manager.setSocket(socket);
+      self.manager.wsServer.handleUpgrade(request,socket,head,function(ws) {
+        console.log("ws-server: upgrade request approved");
+        self.manager.wsServer.emit('connection',ws,request,state);
+      });
+    } else {
+      console.log("ws-server: upgrade request denied");
+      socket.destroy();
+      return;
     }
   });
 	// Listen
-	return server.listen(port,host);
+	return this.httpServer.listen(port,host);
 };
 
 SimpleServer.prototype.verifyUpgrade = function(request) {
-	// Compose the state object
-	var state = {};
-	state.wikiName = request.headers.wikiName || $tw.wikiName;
-	state.urlInfo = url.parse(request.url);
-	state.queryParameters = querystring.parse(state.urlInfo.query);
-	state.pathPrefix = request.pathPrefix || this.get("path-prefix") || "";
-	// Get the principals authorized to access this resource
-	var authorizationType = "readers";
-	// Check whether anonymous access is granted
-	state.allowAnon = this.isAuthorized(authorizationType,null);
-	// Authenticate with the first active authenticator
-  let fakeResponse = {
-    writeHead: function(){},
-    end: function(){}
+  if(request.url.indexOf("wiki=") !== -1
+  && request.url.indexOf("session=") !== -1 
+  && request.url.indexOf("token=") !== -1) {
+    // Compose the state object
+    var state = {};
+    state.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
+      request.connection.remoteAddress;
+    state.urlInfo = url.parse(request.url);
+    state.queryParameters = querystring.parse(state.urlInfo.query);
+    state.pathPrefix = request.pathPrefix || this.get("path-prefix") || "";
+    // Get the principals authorized to access this resource
+    var authorizationType = "readers";
+    // Check whether anonymous access is granted
+    state.allowAnon = this.isAuthorized(authorizationType,null);
+    // Authenticate with the first active authenticator
+    let fakeResponse = {
+      writeHead: function(){},
+      end: function(){}
+    }
+    if(this.authenticators.length > 0) {
+      if(!this.authenticators[0].authenticateRequest(request,fakeResponse,state)) {
+        // Bail if we failed (the authenticator will have -not- sent the response)
+        return false;
+      }		
+    }
+    // Authorize with the authenticated username
+    if(!this.isAuthorized(authorizationType,state.authenticatedUsername)) {
+      return false;
+    }
+    state.username = state.authenticatedUsername || this.get("anon-username") || "";
+    state.anonymous = !state.authenticatedUsername;
+    state.readOnly = !this.isAuthorized("writers",state.authenticatedUsername);
+    state.loggedIn = !state.anonymous && state.username !== "";
+    state.wikiName = state.queryParameters['wiki'];
+    state.sessionId = state.queryParameters["session"];
+    state.token = state.queryParameters['token'];
+    return this.manager.verifyUpgrade(state);
+  } else {
+    return false;
   }
-	if(this.authenticators.length > 0) {
-		if(!this.authenticators[0].authenticateRequest(request,fakeResponse,state)) {
-			// Bail if we failed (the authenticator will have (not) sent the response)
-			return false;
-		}		
-	}
-	// Authorize with the authenticated username
-	if(!this.isAuthorized(authorizationType,state.authenticatedUsername)) {
-		return false;
-	}
-  state.username = state.authenticatedUsername || this.get("anon-username") || "";
-  state.anonymous = !state.authenticatedUsername;
-  state.readOnly = !this.isAuthorized("writers",state.authenticatedUsername);
-  state.loggedIn = state.username !== "GUEST" && state.username !== "";
-  return state;
 };
 
 /*
-  Walk through the $tw.Bob.settings.wikis object and add a route for each listed wiki. The routes should make the wiki boot if it hasn't already.
+  Load the server route modules of types: serverroute, wikiroute, fileroute
 */
-SimpleServer.prototype.addOtherRoutes = function() {
+SimpleServer.prototype.addAllRoutes = function() {
   let self = this;
   // Add route handlers
   $tw.modules.forEachModuleOfType("serverroute", function(title, routeDefinition) {
@@ -228,14 +258,32 @@ SimpleServer.prototype.addOtherRoutes = function() {
       self.addRoute(routeDefinition);
     }
   });
-  this.addRoutesThing($tw.Bob.settings.wikis, '');
+  this.addWikiRoutes($tw.Bob.settings.wikis, '');
 };
 
-SimpleServer.prototype.addRoutesThing = function(inputObject,prefix) {
+/*
+  Walk through the $tw.Bob.settings.wikis object and add a route for each listed wiki. 
+  Log each wiki's authorizationPrincipals as `${wikiName}\readers` & `${wikinName}\writers`.
+  The routes should make the wiki boot if it hasn't already.
+*/
+SimpleServer.prototype.addWikiRoutes = function(inputObject,prefix) {
   if(typeof inputObject === 'object') {
-    let self = this;
-    Object.keys(inputObject).forEach(function(wikiName) {
+    let self = this,
+      readers = this.authorizationPrincipals[(prefix)? prefix+"/readers": "readers"],
+      writers = this.authorizationPrincipals[(prefix)? prefix+"/writers": "writers"],
+      wikis = Object.keys(inputObject);
+    wikis.forEach(function(wikiName) {
       let fullName = (!!prefix)? prefix + '/' + wikiName: wikiName;
+      // Add the authorized principles
+      if (!!inputObject[wikiName].readers) {
+        readers = inputObject[wikiName].readers.split(',').map($tw.utils.trim);
+      }
+      if (!!inputObject[wikiName].writers) {
+        writers = inputObject[wikiName].writers.split(',').map($tw.utils.trim);
+      }
+      self.authorizationPrincipals[fullName+"/readers"] = readers;
+      self.authorizationPrincipals[fullName+"/writers"] = writers;
+      // Setup the routes
       $tw.modules.forEachModuleOfType("wikiroute", function(title, routeDefinition) {
         if(typeof routeDefinition === 'function') {
           self.addRoute(routeDefinition(fullName));
@@ -246,14 +294,15 @@ SimpleServer.prototype.addRoutesThing = function(inputObject,prefix) {
           self.addRoute(routeDefinition(fullName));
         }
       });
+      $tw.ServerSide.loadWiki(fullName);
       //$tw.Bob.logger.log("Added route " + String(new RegExp('^\/' + fullName + '\/?$')), {level:1})
       console.log("Added route " + String(new RegExp('^\/' + fullName + '\/?$')))
       // recurse!
-      if(!!inputObject.wikis) {
+      if(!!inputObject[wikiName].wikis) {
         // This needs to be a new variable or else the rest of the wikis at
         // this level will get the longer prefix as well.
         const nextPrefix = (!!prefix)? prefix + '/' + wikiName: wikiName;
-        self.addRoutesThing(inputObject.wikis, nextPrefix);
+        self.addWikiRoutes(inputObject[wikiName].wikis, nextPrefix);
       }
     })
   }

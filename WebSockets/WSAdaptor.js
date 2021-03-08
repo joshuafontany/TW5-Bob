@@ -26,9 +26,6 @@ const CONFIG_HOST_TIDDLER = "$:/config/bob/host",
 */
 let addHooks = function(connectionIndex) {
   connectionIndex = connectionIndex || 0;
-  if(!$tw.wikiName) {
-    $tw.wikiName = '';
-  }
   $tw.hooks.addHook("th-editing-tiddler", function(event) {
     // Special handling for unedited shadow tiddlers
     if(this.wiki.isShadowTiddler(event.tiddlerTitle) && !this.wiki.tiddlerExists(event.tiddlerTitle)) {
@@ -264,12 +261,10 @@ Get the current status of the user
 WSAdaptor.prototype.getStatus = function(callback) {
 	// Get status
 	let self = this,
-    params = "",
-    sessionId = window.sessionStorage.getItem("ws-adaptor-session") || uuid_NIL;
+        isSseEnabled = false,
+        sessionId = window.sessionStorage.getItem("ws-adaptor-session") || uuid_NIL,
+        params = "?wiki=" + $tw.wikiName + "&session=" + sessionId;
 	this.logger.log("Getting status");
-  if(!this.sessionId) {
-    params = "?session=" + sessionId
-  }
 	$tw.utils.httpRequest({
 		url: this.host + "api/status" + params,
 		callback: function(err,data) {
@@ -294,10 +289,16 @@ WSAdaptor.prototype.getStatus = function(callback) {
 				self.isReadOnly = !!json["read_only"];
 				self.isAnonymous = !!json.anonymous;
 
-				let isSseEnabled = !!json.sse_enabled;
+				isSseEnabled = !!json.sse_enabled;
 
                 // Set the session id, setup the WS connection
                 if(!this.sessionId && !!json.session) {
+                    // Setup the connection url
+                    let url = new URL($tw.Bob.wsClient.getHost(self.host));
+                    url.searchParams.append("wiki", $tw.wikiName);
+                    url.searchParams.append("session", json.session.id);
+                    url.searchParams.append("token", json.session.token);
+                    json.session.url = url;
                     this.sessionId = $tw.Bob.wsClient.initSession(json.session);
                     $tw.Bob.wsClient.connect(this.sessionId);
                 }

@@ -22,12 +22,7 @@ title: $:/plugins/OokTech/Bob/DefaultSettings
     "NewWiki": "tiddlywiki #wikiName --init #editionName"
   },
   "wikis": {
-    "RootWiki":{
-      "syncadaptor": "tiddlywiki/filesystem",
-      "admin": "(authenticated)",
-      "readers": "(anon)",
-      "writers": "(authenticated)"
-    }
+
   },
   "ws-server": {
     "autoIncrementPort": false,
@@ -42,10 +37,13 @@ title: $:/plugins/OokTech/Bob/DefaultSettings
     "debug-level": "none",
     "gzip": "no",
     "required-plugins": [
-      "tiddlywiki/filesystem",
       "OokTech/Bob"
     ],
-    "servePluginWithoutLogin": "yes"
+    "servePluginWithoutLogin": "yes",
+    "syncadaptor": "tiddlywiki/filesystem",
+    "admin": "(authenticated)",
+    "readers": "(anon)",
+    "writers": "(authenticated)"
   },
   "heartbeat": {
     "interval": 1000,
