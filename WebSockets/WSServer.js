@@ -51,51 +51,27 @@ WebSocketServer.prototype.serverClosed = function() {
 }
 
 /*
-  This function handles incomming connections from a client.
-  It currently only supports one client and if a new client connection is made
-  it will replace the current connection.
-  This function saves the connection and adds the message handler wrapper to
-  the client connection.
+  This function handles incomming connections from client sessions.
+  It can support multiple client sessions, each with a unique sessionId. 
+  This function adds the message handler wrapper and the sessionId to
+  the client socket.
   The message handler part is a generic wrapper that checks to see if we have a
   handler function for the message type and if so it passes the message to the
   handler, if not it prints an error to the console.
 
-  connection objects are:
-  {
-    "socket": socketObject,
-    "wiki": the name for the wiki using this connection
-  }
+  Session objects are defined in $:/plugins/OokTech/Bob/WSSession.js
 */
 WebSocketServer.prototype.handleConnection = function(socket,request,state) {
-  $tw.Bob.logger.log(`New client session from ip: ${state.ip}, id: ${state.sessionId}`, {level:2});
+  $tw.Bob.logger.log(`'${state.sessionId}': New client session from ip ${state.ip}`, {level:3});
   // Event handlers
   socket.on('message', this.handleMessage);
   socket.on('close', this.closeConnection);
   // Save the socket
   socket.id = state.sessionId;
   this.manager.setSocket(socket);
-  // Refresh the session token, detroying the login token if neccessary
-  this.manager.refreshSession(state.sessionId);
-  let session = this.manager.getSession(state.sessionId);
-  // Respond to the initial connection with a "handshake" message to initialise everything.
-  const message = {
-    id: session.getMessageId(),
-    type: 'handshake',
-    wikiName: session.wikiName,
-    token: session.token, 
-    tokenEOL: session.tokenEOL,
-    settings: this.manager.getViewableSettings(state.sessionId)
-  };
-  this.sendMessage(session.id,message);
+  // Federation here? Why?
   if(false && $tw.node && $tw.Bob.settings.enableFederation === 'yes') {
     $tw.Bob.Federation.updateConnections();
-  }
-}
-
-WebSocketServer.prototype.sendMessage = function(sessionId,message) {
-  if (this.manager.hasSocket(sessionId)) {
-    let socket = this.manager.getSocket(sessionId);
-    socket.send(JSON.stringify(message));
   }
 }
 
@@ -106,80 +82,45 @@ WebSocketServer.prototype.closeConnection = function(event) {
 /*
   This makes sure that the token sent allows the action on the wiki
 */
-WebSocketServer.prototype.authenticateMessage = function(event) {
-  return this.AccessCheck(event.wiki, event.token, event.type);
+WebSocketServer.prototype.authenticateMessage = function(eventData) {
+  let session = this.manager.getSession(eventData.sessionId);
+  let now = new Date();
+  return (
+    eventData.wikiName == session.wikiName && eventData.userid == session.userid  
+    && eventData.token == session.token && now <= session.tokenEOL
+  );
 }
 
 /*
-  The handle message function, split out so we can use it other places
+  The handle message function
 */
 WebSocketServer.prototype.handleMessage = function(event) {
   try {
     let eventData = JSON.parse(event);
-    eventData.sessionId = this.id;
-    // If the wiki on this connection hasn't been determined yet, take it
-    // from the first message that lists the wiki.
-    // After that the wiki can't be changed. It isn't a good security
-    // measure but this part doesn't have real security anyway.
-    // TODO figure out if this is actually a security problem.
-    // We may have to add a check to the token before sending outgoing
-    // messages.
-    // This is really only a concern for the secure server, in that case
-    // you authenticate the token and it only works if the wiki matches
-    // and the token has access to that wiki.
-    if(eventData.wiki && eventData.wiki !== $tw.Bob.sessions[connectionIndex].wiki && !$tw.Bob.sessions[connectionIndex].wiki) {
-      $tw.Bob.sessions[connectionIndex].wiki = eventData.wiki;
-      // Make sure that the new connection has the correct list of tiddlers
-      // being edited.
-      $tw.ServerSide.UpdateEditingTiddlers(false, eventData.wiki);
-    }
-    // Make sure that the connection is from the wiki the message is for.
-    // This may not be a necessary security measure.
-    // I don't think that not having this would open up any exploits but I am not sure.
-    // TODO figure out if this is needed.
-    if(eventData.wiki === $tw.Bob.sessions[connectionIndex].wiki) {
+    if (eventData.sessionId == this.id) {
+      // Check authentication
+      const authenticated = $tw.Bob.wsServer.authenticateMessage(eventData);
       // Make sure we have a handler for the message type
-      if(typeof this.messageHandlers[eventData.type] === 'function') {
-        // Check authorisation
-        const authorised = this.authenticateMessage(eventData);
-        if(authorised) {
-          if (eventData.type !== "ping" && eventData.type !== "pong") {
-            $tw.Bob.logger.log(`Received websocket message ${eventData.id}:`, event, {level:4});
-          }
-          eventData.decoded = authorised;
-          // Acknowledge the message, then call handler(s)
-          $tw.utils.sendMessageAck(eventData);
-          this.messageHandlers[eventData.type](eventData);
-          //debugger;
-          this.handledMessages = this.handledMessages || {};
-          if(!this.handledMessages[eventData.id]) this.handledMessages[eventData.id] = 0;
-          this.handledMessages[eventData.id] = this.handledMessages[eventData.id]++;
+      if(!!authenticated && typeof $tw.Bob.wsServer.messageHandlers[eventData.type] === 'function') {
+        if (eventData.type !== "ping" && eventData.type !== "pong") {
+          $tw.Bob.logger.log(`Received websocket message ${eventData.id}:`, event, {level:4});
         }
+        // Acknowledge the message
+        $tw.utils.sendMessageAck(eventData);
+        // Determine the wiki instance
+        data.instance = (eventData.wikiname == "RootWiki")? $tw: $tw.Bob.ServerSide.getInstance(eventData.wikiName);
+        // Call the handler(s)
+        $tw.Bob.wsServer.messageHandlers[eventData.type](eventData);
       } else {
-        $tw.Bob.logger.error('No handler for message of type ', eventData.type, {level:3});
+        $tw.Bob.logger.error('WS handleMessage error: No handler for message of type ', eventData.type, {level:3});
       }
-    } else {
-      $tw.Bob.logger.log('Target wiki and connected wiki don\'t match', {level:3});
+      $tw.Bob.logger.error('WS handleMessage error: Invalid or missing sessionId', eventData.type, {level:3});
     }
   } catch (e) {
     $tw.Bob.logger.error("WS handleMessage error: ", e, {level:1});
   }
 }
 
-  /*
-  This function checks to see if the current action is allowed with the
-  access level given by the supplied token
-
-  If access controls are not enabled than this just returns true and
-  everything is allowed.
-
-  If access controls are enabled than this needs to check the token to get
-  the list of wikis and actions that are allowed to it and if the action is
-  allowed for the wiki return true, otherwise false.
-*/
-WebSocketServer.prototype.AccessCheck = function(fullName, token, action, category) {
-  return true;
-}
 /*
   This function checks to see if creating a wiki or uploading a file is
   allowed based on server quotas.

@@ -69,7 +69,7 @@ This handles messages sent to the node process.
         }
       })
       // If there are external tiddlers to add try and add them
-      GatherTiddlers (tempWiki, data.externalTiddlers, data.transformFilters, data.transformFilter, data.decoded)
+      GatherTiddlers (tempWiki, data.externalTiddlers, data.transformFilters, data.transformFilter, data.authenticated)
       // Prepare the wiki
       tempWiki.registerPluginTiddlers("plugin",["$:/core"]);
       // Unpack plugin tiddlers
@@ -164,7 +164,7 @@ This handles messages sent to the node process.
           "edition": "empty",
           "path": wikiName,
           "wikiName": wikiName,
-          "decoded": data.decoded,
+          "authenticated": data.authenticated,
           "fromServer": true
         };
         $tw.ServerSide.createWiki(params, nextPart);
@@ -196,7 +196,7 @@ This handles messages sent to the node process.
         });
         // If there are external tiddlers to add try and add them
         let tempWiki = new $tw.Wiki();
-        GatherTiddlers(tempWiki, data.externalTiddlers, data.transformFilters, data.transformFilter, data.decoded);
+        GatherTiddlers(tempWiki, data.externalTiddlers, data.transformFilters, data.transformFilter, data.authenticated);
         tempWiki.allTitles().forEach(function(tidTitle) {
           $tw.syncadaptor.saveTiddler(tempWiki.getTiddler(tidTitle), wikiName);
           count++;
@@ -246,7 +246,7 @@ This handles messages sent to the node process.
           transformFilters = JSON.parse(transformFilters);
         }
         Object.keys(externalData).forEach(function(wikiTitle) {
-          const allowed = $tw.Bob.wsServer.AccessCheck(wikiTitle, {"decoded": decodedToken}, 'view', 'wiki');
+          const allowed = $tw.Bob.wsServer.AccessCheck(wikiTitle, {"authenticated": decodedToken}, 'view', 'wiki');
           if(allowed) {
             const exists = $tw.ServerSide.loadWiki(wikiTitle);
             if(exists) {
@@ -377,7 +377,7 @@ This handles messages sent to the node process.
   exports.downloadHTMLFile = function(data) {
     if(data.wiki) {
       const downloadWiki = data.forWiki || data.wiki;
-      const allowed = $tw.Bob.wsServer.AccessCheck(downloadWiki, {"decoded":data.decoded}, 'view', 'wiki');
+      const allowed = $tw.Bob.wsServer.AccessCheck(downloadWiki, {"authenticated":data.authenticated}, 'view', 'wiki');
       if(allowed) {
         const path = require('path');
         const fs = require('fs');
@@ -412,7 +412,7 @@ This handles messages sent to the node process.
   */
   exports.internalFetch = function(data) {
     // Make sure that the person has access to the wiki
-    const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'view', 'wiki');
+    const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"authenticated":data.authenticated}, 'view', 'wiki');
     if(authorised) {
       let externalTiddlers = {};
       if(data.externalTiddlers) {
@@ -424,7 +424,7 @@ This handles messages sent to the node process.
       }
       externalTiddlers[data.fromWiki] = data.filter
       let tempWiki = new $tw.Wiki();
-      GatherTiddlers(tempWiki, externalTiddlers, data.transformFilters, data.transformFilter, data.decoded);
+      GatherTiddlers(tempWiki, externalTiddlers, data.transformFilters, data.transformFilter, data.authenticated);
 
       // Add the results to the current wiki
       // Each tiddler gets added to the requesting wiki
@@ -512,7 +512,7 @@ This handles messages sent to the node process.
     const fs = require('fs');
     // Make sure that the wiki to duplicate exists and that the target wiki
     // name isn't in use
-    const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'duplicate', 'wiki');
+    const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"authenticated":data.authenticated}, 'duplicate', 'wiki');
     if($tw.ServerSide.existsListed(data.fromWiki) && authorised) {
       const wikiName = GetWikiName(data.newWiki);
       // Get the paths for the source and destination

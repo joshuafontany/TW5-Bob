@@ -15,6 +15,36 @@ This handles messages sent to the node process.
 "use strict";
 
   /* REQUIRED
+    When the websocket is approved the client will send a handshake to
+    update the access token. The server responds by confirmin the handshake.
+    Once confirmed, the client will start a heartbeat.
+  */
+  exports.handshake = function(data) {debugger;
+    let session = $tw.Bob.wsServer.manager.getSession(data.sessionId);
+    let now = new Date();
+    if (now <= session.tokenEOL) {
+      session.state.isAlive = true;
+      // Get the list of tiddlers being edited from the instance wiki
+      let editingTiddlers = data.instance.wiki.getTiddlerText("$:/Bob/EditingTiddlers", "")
+      // Refresh the session token, detroying the login token if neccessary
+      $tw.Bob.wsServer.manager.refreshSession(state.sessionId);
+      // Respond to the initial "handshake" message to initialise everything.
+      let message = {
+        type: 'handshake',        
+        token: data.token, // Use the old token one last time
+        tokenRefresh: session.token, // Send the new token
+        tokenEOL: session.tokenEOL, // and the new tokenEOL
+        editingTiddlers: [], // send the current list of tiddlers being edited
+        settings: this.manager.getViewableSettings(state.sessionId),
+      };
+      $tw.Bob.wsServer.manager.sendMessage(session.id,message);
+    } else {
+      // Invalid login token, kill the socket
+      $tw.Bob.wsServer.manager.deleteSocket(session.id);
+    }    
+  }
+
+  /* REQUIRED
     This responds to a ping from the browser. This is used to check and make sure
     that the browser and server are connected.
     It also echos back any data that was sent. This is used by the heartbeat to
@@ -848,7 +878,7 @@ This handles messages sent to the node process.
 
   */
   exports.makeImagesExternal = function(data) {
-    const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'makeImagesExternal', 'server');
+    const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"authenticated":data.authenticated}, 'makeImagesExternal', 'server');
     if(authorised) {
       $tw.Bob.settings.fileURLPrefix = $tw.Bob.settings.fileURLPrefix || 'files'
       const path = require('path');
@@ -1052,7 +1082,7 @@ This handles messages sent to the node process.
     data.prefix = data.prefix || 'prefix';
     const path = require('path');
     const fs = require('fs');
-    const authorised = $tw.Bob.wsServer.AccessCheck(data.wiki, {"decoded":data.decoded}, 'serverAdmin');
+    const authorised = $tw.Bob.wsServer.AccessCheck(data.wiki, {"authenticated":data.authenticated}, 'serverAdmin');
     const filePathRoot = $tw.ServerSide.getFilePathRoot();
     $tw.Bob.settings.fileURLPrefix = $tw.Bob.settings.fileURLPrefix || 'files';
     if(authorised) {

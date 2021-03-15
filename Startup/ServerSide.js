@@ -176,14 +176,14 @@ ServerSide.existsListed = function(wikiName) {
 }
 
 /*
-  This function loads a wiki and calls any callback.
+  This function loads a tiddlywiki instance, starts the given wiki and calls any callback.
 */
 ServerSide.loadWiki = function(wikiName, cb) {
   const settings = ServerSide.getWikiSettings(wikiName);
   // Make sure it isn't loaded already
   if(settings && !$tw.Bob.Wikis.has(wikiName)) {
     try{
-      let instance = (wikiName == 'RootWiki')? $tw: require("./boot/boot.js").TiddlyWiki();
+      let instance = (wikiName == 'RootWiki')? $tw: require("./boot.js").TiddlyWiki();
       if(wikiName == 'RootWiki') {
 
       } else {
@@ -215,7 +215,7 @@ ServerSide.loadWiki = function(wikiName, cb) {
       }
       */
       // Set the wiki as loaded
-      $tw.Bob.Wikis.set(wikiName,instance);
+      $tw.Bob.Wikis.set(wikiName,(wikiName == 'RootWiki')? true : instance);
       $tw.hooks.invokeHook('wiki-loaded', wikiName);
     } catch(err) {
       if(typeof cb === 'function') {
@@ -744,7 +744,7 @@ ServerSide.getViewableWikiList = function(data) {
   const wikiList = getList($tw.Bob.settings.wikis, '');
   const viewableWikis = [];
   wikiList.forEach(function(wikiName) {
-    if($tw.Bob.wsServer.AccessCheck(wikiName, {"decoded": data.decoded}, 'view', 'wiki')) {
+    if($tw.Bob.wsServer.AccessCheck(wikiName, {"authenticated": data.authenticated}, 'view', 'wiki')) {
       viewableWikis.push(wikiName);
     }
   });
@@ -752,7 +752,7 @@ ServerSide.getViewableWikiList = function(data) {
   for (let i = 0; i < viewableWikis.length; i++) {
     tempObj[viewableWikis[i]] = ['view'];
     // Check if you can edit it
-    if($tw.Bob.wsServer.AccessCheck(viewableWikis[i], {"decoded": data.decoded}, 'edit', 'wiki')) {
+    if($tw.Bob.wsServer.AccessCheck(viewableWikis[i], {"authenticated": data.authenticated}, 'edit', 'wiki')) {
       tempObj[viewableWikis[i]].push('edit');
     }
   }
@@ -767,7 +767,7 @@ ServerSide.getViewablePluginsList = function(data) {
     return pluginList;
   }
   Object.keys(pluginList).forEach(function(pluginName) {
-    if($tw.Bob.wsServer.AccessCheck(pluginName, {"decoded": data.decoded}, 'view', 'plugin')) {
+    if($tw.Bob.wsServer.AccessCheck(pluginName, {"authenticated": data.authenticated}, 'view', 'plugin')) {
       viewablePlugins[pluginName] = pluginList[pluginName];
     }
   })
@@ -782,7 +782,7 @@ ServerSide.getViewableThemesList = function(data) {
     return themeList;
   }
   Object.keys(themeList).forEach(function(themeName) {
-    if($tw.Bob.wsServer.AccessCheck(themeName, {"decoded": data.decoded}, 'view', 'theme')) {
+    if($tw.Bob.wsServer.AccessCheck(themeName, {"authenticated": data.authenticated}, 'view', 'theme')) {
       viewableThemes[themeName] = themeList[themeName];
     }
   })
@@ -808,7 +808,7 @@ ServerSide.getViewableEditionsList = function(data) {
     return editionList;
   }
   Object.keys(editionList).forEach(function(editionName) {
-    if($tw.Bob.wsServer.AccessCheck(editionName, {"decoded": data.decoded}, 'view', 'edition')) {
+    if($tw.Bob.wsServer.AccessCheck(editionName, {"authenticated": data.authenticated}, 'view', 'edition')) {
       Object.keys(editionList).forEach(function(index) {
         viewableEditions[index] = editionList[index].description;
       });
@@ -822,7 +822,7 @@ ServerSide.getViewableLanguagesList = function(data) {
   const viewableLanguages = {};
   const languageList =  $tw.utils.getLanguageInfo();
   Object.keys(languageList).forEach(function(languageName) {
-    if($tw.Bob.wsServer.AccessCheck(languageName, {"decoded": data.decoded}, 'view', 'edition')) {
+    if($tw.Bob.wsServer.AccessCheck(languageName, {"authenticated": data.authenticated}, 'view', 'edition')) {
       Object.keys(languageList).forEach(function(index) {
         viewableLanguages[index] = languageList[index].description;
       });
@@ -835,7 +835,7 @@ ServerSide.getViewableLanguagesList = function(data) {
 
 ServerSide.getProfileInfo = function(data) {
   $tw.Bob.settings.profiles = $tw.Bob.settings.profiles || {};
-  if ($tw.Bob.wsServer.AccessCheck(data.profileName, {"decoded": data.decoded}, 'view', 'profile')) {
+  if ($tw.Bob.wsServer.AccessCheck(data.profileName, {"authenticated": data.authenticated}, 'view', 'profile')) {
     return $tw.Bob.settings.profiles[data.profileName] || {};
   } else {
     return {};
@@ -886,7 +886,7 @@ ServerSide.getOwnedWikis = function(data) {
   const wikiList = getList($tw.Bob.settings.wikis, '');
   const ownedWikis = {};
   wikiList.forEach(function(wikiName) {
-    if($tw.Bob.wsServer.AccessCheck(wikiName, {"decoded": data.decoded}, 'owner', 'wiki')) {
+    if($tw.Bob.wsServer.AccessCheck(wikiName, {"authenticated": data.authenticated}, 'owner', 'wiki')) {
       ownedWikis[wikiName] = wikiInfo(wikiName);
     }
   });
@@ -923,7 +923,7 @@ ServerSide.findName = function(url) {
 ServerSide.listFiles = function(data, cb) {
   const path = require('path');
   const fs = require('fs');
-  const authorised = $tw.Bob.wsServer.AccessCheck(data.wiki, {"decoded":data.decoded}, 'listFiles', 'wiki');
+  const authorised = $tw.Bob.wsServer.AccessCheck(data.wiki, {"authenticated":data.authenticated}, 'listFiles', 'wiki');
 
   if(authorised) {
     $tw.Bob.settings.fileURLPrefix = $tw.Bob.settings.fileURLPrefix || 'files';
@@ -1107,7 +1107,7 @@ function deleteFile(dir, file) {
 ServerSide.deleteWiki = function(data, cb) {
   const path = require('path')
   const fs = require('fs')
-  const authorised = $tw.Bob.wsServer.AccessCheck(data.deleteWiki, {"decoded":data.decoded}, 'delete', 'wiki');
+  const authorised = $tw.Bob.wsServer.AccessCheck(data.deleteWiki, {"authenticated":data.authenticated}, 'delete', 'wiki');
   // Make sure that the wiki exists and is listed
   if($tw.ServerSide.existsListed(data.deleteWiki) && authorised) {
     $tw.Bob.unloadWiki(data.deleteWiki);
@@ -1312,7 +1312,7 @@ $tw.stopFileWatchers = function(wikiName) {
 ServerSide.renameWiki = function(data, cb) {
   const path = require('path')
   const fs = require('fs')
-  const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"decoded":data.decoded}, 'rename', 'wiki');
+  const authorised = $tw.Bob.wsServer.AccessCheck(data.fromWiki, {"authenticated":data.authenticated}, 'rename', 'wiki');
   if($tw.ServerSide.existsListed(data.oldWiki) && !$tw.ServerSide.existsListed(data.newWiki) && authorised) {
     // Unload the old wiki
     $tw.Bob.unloadWiki(data.oldWiki);
@@ -1389,7 +1389,7 @@ function GetWikiName (wikiName, count, wikiObj, fullName) {
 }
 
 ServerSide.createWiki = function(data, cb) {
-  const authorised = $tw.Bob.wsServer.AccessCheck('create/wiki', {"decoded": data.decoded}, 'create/wiki', 'server');
+  const authorised = $tw.Bob.wsServer.AccessCheck('create/wiki', {"authenticated": data.authenticated}, 'create/wiki', 'server');
   const quotasOk = $tw.Bob.wsServer.CheckQuotas(data, 'wiki');
   if(authorised && quotasOk) {
     const fs = require("fs"),
@@ -1397,7 +1397,7 @@ ServerSide.createWiki = function(data, cb) {
     $tw.Bob.settings.wikisPath = $tw.Bob.settings.wikisPath || 'Wikis';
     // if we are using namespaced wikis prepend the logged in profiles name to
     // the wiki name.
-    const name = ($tw.Bob.settings.namespacedWikis === 'yes') ? GetWikiName((data.decoded.name || 'imaginaryPerson') + '/' + (data.wikiName || data.newWiki || 'NewWiki')) : GetWikiName(data.wikiName || data.newWiki);
+    const name = ($tw.Bob.settings.namespacedWikis === 'yes') ? GetWikiName((data.authenticated.name || 'imaginaryPerson') + '/' + (data.wikiName || data.newWiki || 'NewWiki')) : GetWikiName(data.wikiName || data.newWiki);
     const basePath = data.basePath || $tw.ServerSide.getBasePath();
     const destination = path.resolve(basePath, $tw.Bob.settings.wikisPath, name);
     $tw.utils.createDirectory(path.join(basePath, $tw.Bob.settings.wikisPath));

@@ -59,7 +59,7 @@ exports.startup = function() {
       const wikiList = getList($tw.Bob.settings.wikis, '')
       const viewableWikis = []
       wikiList.forEach(function(wikiName) {
-        if($tw.Bob.wsServer.AccessCheck(wikiName, {"decoded": data.decoded}, 'view', 'wiki')) {
+        if($tw.Bob.wsServer.AccessCheck(wikiName, {"authenticated": data.authenticated}, 'view', 'wiki')) {
           viewableWikis.push(wikiName);
         }
       })

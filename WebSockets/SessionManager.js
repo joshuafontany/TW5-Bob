@@ -74,14 +74,11 @@ SessionManager.prototype.verifyUpgrade = function(state) {
     let userSession;
     if (this.hasSession(state.sessionId)) {
         userSession = this.getSession(state.sessionId);
-        // Test the token and tokenEOL
-        let now = new Date();
+        // username, ip, & wikiName must match (token is tested in the 'handshake')
         if (
             state.username == userSession.displayUsername
             && state.ip == userSession.ip
             && state.wikiName == userSession.wikiName
-            && state.token == userSession.token
-            && now < userSession.tokenEOL
         ) {
             return state;
         } else {
@@ -110,6 +107,8 @@ SessionManager.prototype.hasSession = function(sessionId) {
 SessionManager.prototype.getSession = function(sessionId) {
     if (this.hasSession(sessionId)) {
        return this.sessions.get(sessionId);
+    } else {
+        return null;
     }
 }
 
@@ -152,6 +151,8 @@ SessionManager.prototype.hasSocket = function(sessionId) {
 SessionManager.prototype.getSocket = function(sessionId) {
     if (this.hasSocket(sessionId)) {
        return this.sockets.get(sessionId);
+    } else {
+        return null;
     }
 }
 
@@ -306,9 +307,28 @@ SessionManager.prototype.getViewableSettings = function(sessionId) {
         tempSettings['fed-wss'] = tempSettings['fed-wss'] || {};
     }
     return tempSettings;
+}
+
+/*
+    Message methods
+*/
+SessionManager.prototype.sendMessage = function(sessionId,message,callback) {
+    if (this.hasSession(sessionId)) {
+      message = this.getSession(sessionId).prepareMessage(message);
+      if (this.hasSocket(sessionId) && this.getSocket(sessionId).readyState === WebSocket.OPEN) {
+        this.getSocket(sessionId).send(JSON.stringify(message));
+      }
+      if(!!callback && typeof callback === "function") {
+        callback(null, {session: sessionId, message: message.id})
+      } else {
+        return message.id;
+      }
+    }  else {
+      callback(`Error: no session found for id ${sessionId}`, {session: sessionId, message: null})
+    }
   }
 
-    exports.SessionManager = SessionManager;
+exports.SessionManager = SessionManager;
 }
 
 })();

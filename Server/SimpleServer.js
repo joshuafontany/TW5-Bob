@@ -188,8 +188,7 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
 
 SimpleServer.prototype.verifyUpgrade = function(request) {
   if(request.url.indexOf("wiki=") !== -1
-  && request.url.indexOf("session=") !== -1 
-  && request.url.indexOf("token=") !== -1) {
+  && request.url.indexOf("session=") !== -1) {
     // Compose the state object
     var state = {};
     state.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
@@ -222,7 +221,6 @@ SimpleServer.prototype.verifyUpgrade = function(request) {
     state.loggedIn = !state.anonymous && state.username !== "";
     state.wikiName = state.queryParameters['wiki'];
     state.sessionId = state.queryParameters["session"];
-    state.token = state.queryParameters['token'];
     return this.manager.verifyUpgrade(state);
   } else {
     return false;

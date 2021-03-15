@@ -9,11 +9,12 @@ description: get server status information
 Get server status information
 
 ```
-GET /status
+GET /api/status
 ```
 
 Parameters:
 
+* ''wiki'' - the current $tw.wikiName
 * ''id'' - the current user session UUID
 
 Response:
@@ -27,13 +28,13 @@ The JSON data returned comprises the following properties:
 * ''username'' - the username of the currently authenticated user. If undefined, the [[WebServer Parameter: anon-username]] is returned instead
 * ''anonymous'' - true if the current user is anonymous
 * ''read_only'' - true if the current user is restricted to read only access to the server
-* ''session'' - the sesion object for the current user-sesion (see below)
+* ''session'' - the session object for the current user-session (see below)
 ** ''wikiName'' - the $tw.wikiName for the session
 ** ''url'' - the server endpoint URL of the session
 ** ''id'' - the UUID the session
 ** ''token'' - the current auth token for the session
-** ''expires'' - when the current auth token expires
-** ''user'' - the UUID of the currently authenticated user
+** ''tokenEOL'' - when the current auth token expires
+** ''userid'' - the UUID of the currently authenticated user
 ** ''username'' - the username of the currently authenticated user
 ** ''access'' - the access level of the currently authenticated user
 ** ''isLoggedIn'' - the logged in status of the currently authenticated user

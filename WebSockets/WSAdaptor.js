@@ -225,7 +225,7 @@ WSAdaptor.prototype.name = "wsadaptor";
 WSAdaptor.prototype.supportsLazyLoading = true;
 
 WSAdaptor.prototype.isReady = function() {
-  return this.hasStatus && $tw.Bob.wsClient.isReady(this.sessionId);
+  return this.hasStatus && this.sessionId && $tw.Bob.wsClient.isReady(this.sessionId);
 }
 
 WSAdaptor.prototype.getHost = function() {
@@ -291,15 +291,14 @@ WSAdaptor.prototype.getStatus = function(callback) {
 				isSseEnabled = !!json.sse_enabled;
 
                 // Set the session id, setup the WS connection
-                if(!this.sessionId && !!json.session) {
+                if(!self.sessionId && !!json.session) {
                     // Setup the connection url
                     let url = new URL($tw.Bob.wsClient.getHost(self.host));
                     url.searchParams.append("wiki", $tw.wikiName);
                     url.searchParams.append("session", json.session.id);
-                    url.searchParams.append("token", json.session.token);
                     json.session.url = url;
-                    this.sessionId = $tw.Bob.wsClient.initSession(json.session);
-                    $tw.Bob.wsClient.connect(this.sessionId);
+                    self.sessionId = $tw.Bob.wsClient.initSession(json.session);
+                    $tw.Bob.wsClient.connect(self.sessionId);
                 }
             }
             // Invoke the callback if present

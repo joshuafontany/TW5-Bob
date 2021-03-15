@@ -212,25 +212,28 @@ exports.normalizeTiddler = function(tiddler) {
   This acknowledges that a message has been received.
 */
 exports.sendMessageAck = function(data) {
-  data = data || {type:'ack'};
-  // The following messages do not need to be acknowledged
-  let noAck = ['ack', 'ping', 'pong'];
-  if(noAck.indexOf(data.type) == -1) {
-    let socket = null,
-      message = {
-      type: 'ack',
-      id: 'ack' + data.id,
-      token: $tw.utils.getMessageToken(),
-      wikiName: data.wikiName
-    }
-    if($tw.browser) {
-      socket = $tw.Bob.wsClient.getSocket(data.sessionId);
-    } else {
-      socket = $tw.Bob.sessionManager.getSocket(data.sessionId);
-    }
-    if (!!socket) {
-      console.log(`Sending ${message.id}`);
-      socket.send(JSON.stringify(message));
+  if (data) {
+    // The following messages do not need to be acknowledged
+    let noAck = ['ack', 'ping', 'pong'];
+    if(noAck.indexOf(data.type) == -1) {
+      let socket = null,
+        message = {
+        id: 'ack' + data.id,
+        type: 'ack',
+        sessionId: data.sessionId,
+        token: data.token,
+        userid: data.userid,
+        wikiName: data.wikiName,
+      }
+      if($tw.browser) {
+        socket = $tw.Bob.wsClient.getSocket(data.sessionId);
+      } else {
+        socket = $tw.Bob.sessionManager.getSocket(data.sessionId);
+      }
+      if (!!socket) {
+        console.log(`Sending ${message.id}`);
+        socket.send(JSON.stringify(message));
+      }
     }
   }
 }
@@ -242,7 +245,7 @@ exports.sendMessageAck = function(data) {
 
   It takes a messageData object as input and checks it against the message
   queue. If the queue contains a message with the same id as node input
-  messageData than the ack state for the connection the ack came from is set
+  messageData than the ack state for the session the ack came from is set
   to true.
 
   If all acks for the messageData in the queue are set to true than the ctime
@@ -251,15 +254,10 @@ exports.sendMessageAck = function(data) {
 */
 exports.handleMessageAck = function(data) {
   if(data.id) {
-    // a quick hack to make this work
-    if($tw.browser) {
-      // The source connection is always 0 in the browser
-      data.source_connection = 0;
-    }
     const index = $tw.Bob.MessageQueue.findIndex(function(messageData) {
-      return messageData.id === data.id;
+      return "ack" + messageData.id === data.id;
     })
-    if($tw.Bob.MessageQueue[index]) {
+    if(index !== -1) {
       // Set the message as acknowledged.
       $tw.Bob.MessageQueue[index].ack[data.source_connection] = true;
       // Check if all the expected acks have been received
@@ -298,8 +296,6 @@ exports.handleMessageAck = function(data) {
   title - for messages that refer to a tiddler this is the tiddler title,
     otherwise it is undefined.
   type - the message type
-
-  // Add token stuff here const token = localStorage.getItem('ws-token');s
 
   for the ackObject the index is the connection index and ackReceived is a
   boolean indicating if the ack has been received yet or not.
@@ -412,17 +408,6 @@ function _sendMessage(connection, messageData) {
       }
     }
   }
-}
-
-/*
-  This returns a new id for a message.
-  Messages from the browser have ids that start with b, messages from the
-  server have an id that starts with s.
-*/
-exports.makeMessageId = function() {
-  $tw.Bob.idNumber = ($tw.Bob.idNumber || 0) + 1;
-  const newId = ($tw.browser?'b':'s') + $tw.Bob.idNumber;
-  return newId;
 }
 
 /*

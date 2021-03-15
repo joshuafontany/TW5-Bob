@@ -145,7 +145,7 @@ exports.startup = function() {
             // TODO fix this dirty hack. We need a better way to list which
             // messages don't require a nonce.
             if(authorised && (messageData.wiki || nonNonce.indexOf(messageData.type) !== -1)) {
-              messageData.decoded = authorised;
+              messageData.authenticated = authorised;
               $tw.Bob.Federation.messageHandlers[messageData.type](messageData);
             }
           } else {

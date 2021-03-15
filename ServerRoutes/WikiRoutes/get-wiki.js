@@ -36,7 +36,7 @@ module.exports = function(fullName) {
           // This allows you to only serve the plugin to logged in people if
           // you have a secure server, so everyone else gets read-only versions
           // of public wikis.
-          const loggedIn = (!$tw.ExternalServer || request.decoded || ($tw.ExternalServer && $tw.Bob.settings.wsserver.servePluginWithoutLogin !== 'no'))
+          const loggedIn = (!$tw.ExternalServer || request.authenticated || ($tw.ExternalServer && $tw.Bob.settings.wsserver.servePluginWithoutLogin !== 'no'))
           // If servePlugin is not false than we strip out the filesystem
           // and tiddlyweb plugins if they are there and add in the
           // Bob plugin.

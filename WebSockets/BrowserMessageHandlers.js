@@ -26,54 +26,50 @@ it will overwrite this file.
   /*global $tw: false */
   "use strict";
 
-  /* REQUIRED MESSAGE HANDLER
+  /* REQUIRED
     When the handshake is confirmed the heartbeat timer starts. This tells us
     if the connection to the server gets interrupted. The state is reset, 
     and any unacknowledged messages are sent by "syncing" to the server.
-    This message updates the session token and client settings.
+    This message handler updates the session token and client settings.
     It is called directly after logging in, and then once an hour to
     update the client access token.
   */
-  exports.handshake = function(data) {
-    console.log(JSON.stringify(this));
+  exports.handshake = function(data) {debugger;
+    console.log(JSON.stringify(data, null, 4));
     let session = $tw.Bob.wsClient.getSession(data.sessionId);
-    if (data.wikiName == session.wikiName) {
-      // Update the session token and tokenEOL
-      session.token = data.token;
-      sesion.tokenEOL = data.tokenEOL;
-      // Update the settings
-      $tw.Bob.settings = data.settings;
-      $tw.Bob.wsClient.settings.heartbeat = $tw.Bob.settings.heartbeat;
-      $tw.Bob.wsClient.settings.reconnect = $tw.Bob.settings.reconnect;
-      // Set the WS Session id to sessionStorage here
-      if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == session.id) {
-        window.sessionStorage.setItem("ws-adaptor-session",session.id)
-      }
+    // Update the session token and tokenEOL
+    session.token = data.tokenRefresh;
+    session.tokenEOL = data.tokenEOL;
+    // Update the settings
+    $tw.Bob.settings = data.settings;
+    $tw.Bob.wsClient.settings.heartbeat = $tw.Bob.settings.heartbeat;
+    $tw.Bob.wsClient.settings.reconnect = $tw.Bob.settings.reconnect;
+    // Set the WS Session id to sessionStorage here
+    if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == session.id) {
+      window.sessionStorage.setItem("ws-adaptor-session",session.id);
       // Clear the server warning
-      if(this.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Socket Warning/${session.id}`)) {
-        this.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Socket Warning/${session.id}`);
+      if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Server Warning`)) {
+        $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Server Warning`);
       }
-      // Start a heartbeat
-      this.heartbeat(session.id);
-      // Sync to the server
-      if(this.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Sockets/${session.id}/Unsent`)) {
-        this.syncToServer(session.id);
-      }
-      // This is an array of tiddler titles, each title is a string.
-      const response = $tw.wiki.allTitles();
-      // Send the response JSON as a string.
-      let message = {
-        type: 'browserTiddlerList',
-        titles: response,
-        token: token,
-        wiki: $tw.wiki.getTiddlerText('$:/WikiName')
-      };
-      console.log("handler-listTiddlers: should send list here")
-      //$tw.Bob.sendToServer(connectionIndex, message);
-    } else {
-      this.deleteSession(data.sessionId);
-      this.deleteSocket(data.sessionId);
     }
+    if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Session Warning/${session.id}`)) {
+      $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Session Warning/${session.id}`);
+    }
+    // Start a heartbeat
+    $tw.Bob.wsClient.heartbeat(session.id);
+    // Sync to the server
+    if(session.messages.entries().length > 0) {
+      $tw.Bob.wsClient.syncToServer(session.id);
+    }
+    // This is an array of tiddler titles, each title is a string.
+    const response = $tw.wiki.allTitles();
+    // Send the response JSON as a string.
+    let message = {
+      type: 'browserTiddlerList',
+      titles: response
+    };
+    console.log("handler-listTiddlers: should send list here")
+    $tw.Bob.wsClient.sendMessage(session.id,message);
   }
 
   /* REQUIRED MESSAGE HANDLER
