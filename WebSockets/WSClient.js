@@ -4,7 +4,7 @@ type: application/javascript
 module-type: library
 
 A simple websocket client. On the server-side, these methods
-are split among the SessionManager and the WebSocketServer.
+are split among the WebSocketManager and the WebSocketServer.
 
 \*/
 (function(){
@@ -13,46 +13,47 @@ are split among the SessionManager and the WebSocketServer.
 /*global $tw: false */
 "use strict";
 
+if ($tw.node) {
+  const  { URL } = require('url')
+}
 const CONFIG_HOST_TIDDLER = "$:/config/bob/host",
-  DEFAULT_HOST_TIDDLER = "$protocol$//$host$/",
-  WebSocketSession = require('$:/plugins/OokTech/Bob/WSSession.js').WebSocketSession;
+  DEFAULT_HOST_TIDDLER = "$protocol$//$host$/";
 
 /*
-  A simple websocket client
-  options: 
+  A simple websocket client to run in the browser or on node
+  options:
+    wiki: the wiki bound to this client, always $tw.wiki in the browser.
+    wikiName: the name of the current wiki
+    sessions: a serialized set of sessions (reserved for later)
+    sockets:
 */
 function WebSocketClient(options) {
   options = options || {};
   this.wiki = options.wiki || $tw.wiki;
   this.wikiName = options.wikiName || $tw.wikiName;
-  this.sockets = options.sockets || new Map();
-  this.sessions = options.sessions || new Map();
-  // Load the browser-messagehandlers modules
-  this.messageHandlers = {};
-  $tw.modules.applyMethods("browser-messagehandlers",this.messageHandlers);
   // Setup the heartbeat settings placeholders (filled in by the 'handshake')
-  this.settings = options.settings || {};
-  this.settings.heartbeat = {
-    "interval":1000, // default 1 sec heartbeats
-    "timeout":5000 // default 5 second heartbeat timeout
+  this.settings = options.settings || {
+    "heartbeat": {
+      "interval":1000, // default 1 sec heartbeats
+      "timeout":5000 // default 5 second heartbeat timeout
+    },
+    "reconnect": {
+      "auto": true,
+      "initial": 100, // small initial increment
+      "decay": 1.5, // exponential decay d^n (number-of-retries)
+      "max": 10000, // maximum retry increment
+      "abort": 60000 // failure after this long
+    }
   };
-  this.settings.reconnect = {
-    "auto": true,
-    "initial": 100, // small initial increment
-    "decay": 1.5, // exponential decay d^n (number-of-retries)
-    "max": 10000, // maximum retry increment
-    "abort": 60000 // failure after this long
-  }
-
 }
 
 WebSocketClient.prototype.getHost = function(host) {
   let url = (!!host)? new URL(host): new URL(document.location.href);
   // Websocket host
   let protocol = null;
-  if (url.protocol == "http:") {
+  if(url.protocol == "http:") {
     protocol = "ws:";
-  } else if (url.protocol == "https:") {
+  } else if(url.protocol == "https:") {
     protocol = "wss:";
   }
   url.protocol = protocol
@@ -60,94 +61,24 @@ WebSocketClient.prototype.getHost = function(host) {
 }
 
 /*
-  Session methods
-*/
-// Tests a session's socket connection
-WebSocketClient.prototype.isReady = function(sessionId) {
-  let socket = this.getSocket(sessionId);
-  return !!socket && socket.readyState === WebSocket.OPEN;
-}
-
-// Session exists
-WebSocketClient.prototype.hasSession = function(sessionId) {
-  return this.sessions.has(sessionId);
-}
-
-// Get a session
-WebSocketClient.prototype.getSession = function(sessionId){
-  if (this.hasSession(sessionId)) {
-    return this.sessions.get(sessionId); 
-  } else {
-    return null;
-  }
-}
-
-// Set a session
-WebSocketClient.prototype.setSession = function(session){
-  if (session.id) {
-    this.sessions.set(session.id,session)
-  }
-}
-
-// Delete a session
-WebSocketClient.prototype.deleteSession = function(sessionId) {
-  if (this.hasSession(sessionId)) {
-      this.sessions.delete(sessionId);
-  }
-}
-
-/*
-  Socket methods
-*/
-// Socket exists
-WebSocketClient.prototype.hasSocket = function(sessionId) {
-  return this.sockets.has(sessionId);
-}
-
-// Get a socket
-WebSocketClient.prototype.getSocket = function(sessionId){
-  if (this.hasSocket(sessionId)) {
-    return this.sockets.get(sessionId); 
-  } else {
-    return null;
-  }
-}
-
-// Set a socket
-WebSocketClient.prototype.setSocket = function(socket){
-  if (socket.id) {
-    this.sockets.set(socket.id,socket)
-  }
-}
-
-// Delete a socket
-WebSocketClient.prototype.deleteSocket = function(sessionId) {
-  if (this.hasSocket(sessionId)) {
-      let socket = this.getSocket(sessionID);
-      socket.terminate();
-      this.sockets.delete(sessionId);
-  }
-}
-
-/*
   Connection methods
 */
 // This handles the WSAdaptor's getSession() call and refreshes 
-// the given session data from the wsserver (or the passed url). Even anon & 
+// the given session data from the wsServer (or the passed url). Even anon & 
 // write-only clients get a session - to start a heartbeat, recieve alerts, etc.
 WebSocketClient.prototype.initSession = function(options){
-  if (!options.url || !options.id || !options.token) {
+  if(!options.url || !options.id || !options.token) {
     // Invalid session settings
     return null;
   }
   options.client = true;
-  let session = new WebSocketSession(options);
-  this.setSession(session);
+  let session = $tw.Bob.wsManager.newSession(options);
+  this.connect(session);
   return session.id;
 }
 
-WebSocketClient.prototype.connect = function(sessionId) {
-  let session = this.getSession(sessionId);
+WebSocketClient.prototype.connect = function(session) {
+  let self = this;
   if(!session || !session.url || !session.url.href) {
     console.error(`WebSocketClient.connect error: no session data`)
     return false;
@@ -155,11 +86,86 @@ WebSocketClient.prototype.connect = function(sessionId) {
   // Create the socket
   try{
     let socket = new WebSocket(session.url.href);
-    socket.onopen = this.openSocket;
-    socket.onclose = this.closeSocket;
-    socket.onmessage = this.handleMessage;
     socket.binaryType = "arraybuffer";
     socket.id = sessionId;
+    // On Open
+    socket.onopen = function(event) {
+      // Reset the state object
+      session.initState();
+      console.log(`Opened socket to ${session.url.href}, id: ${this.id}`);
+      // Request a "handshake" message to confirm the login token and initialise everything.
+      const message = {
+        type: 'handshake'
+      };
+      session.queueMessage(message);
+    };
+    // On Close
+    socket.onclose = function(event) {
+      /*
+      The heartbeat process will terminate the socket if it fails. This lets us know when to
+      use a reconnect algorithm with exponential back-off and a maximum retry window.
+      */
+      let text, tiddler;
+      console.log(`Closed socket to ${session.url}`, JSON.stringify(event, null, 4));
+      // Clear the ping timers
+      clearTimeout(session.state.pingTimeout);
+      clearTimeout(session.state.ping);
+      // log the disconnection time & handle the message queue
+      session.state.disconnected = Date.now();
+    
+      // Error code <= 1000 means that the connection was closed normally.
+      if(!event.wasClean && event.code > 1000 && self.settings.reconnect.auto &&
+        session.state.disconnected - session.state.reconnecting < self.settings.reconnect.abort) {
+        text = `''WARNING: You are no longer connected to the server (${session.url}).</br> Reconnecting (attempt ${session.state.attempts})...''`;
+        // Reconnect here
+        session.state.retryTimeout = setTimeout(function(){
+          self.reconnect(session.id);
+          }, session.state.delay);
+      } else {
+        text = `''WARNING: You are no longer connected to the server (${session.url}).</br>''<$button style='color:black;'>Reconnect <$action-reconnectwebsocket/><$action-navigate $to='$:/plugins/Bob/ConflictList'/></$button>`;
+      }
+      if(session.id == $tw.syncadaptor.sessionId) {
+        text = `<div style='position:fixed;top:0px;width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>` + text + `</div>`;
+        tiddler = {
+          title: `$:/plugins/OokTech/Bob/Server Warning/`,
+          text: text,
+          component: `$tw.Bob.wsClient`,
+          session: session.id,
+          tags: '$:/tags/PageTemplate'
+        };
+      } else {
+        text = `<div style='width:100%;height:100%;background-color:red;max-height:200px;color:white;'>` + text + `</div>`;
+        tiddler = {
+          title: `$:/plugins/OokTech/Bob/Session Warning/${session.id}`,
+          text: text,
+          component: `$tw.Bob.wsClient`,
+          session: session.id,
+          tags: '$:/tags/Alert'
+        };
+      }
+      // Display the socket warning after the 3rd reconnect attempt or if not auto-reconnecting
+      if(!self.settings.reconnect.auto || session.state.attempts > 3) {
+        self.wiki.addTiddler(new $tw.Tiddler(
+          self.wiki.getCreationFields(),
+          tiddler,
+          self.wiki.getModificationFields()
+        ));
+      }
+    };
+    // On Message
+    socket.onmessage = function(event) {
+      try {
+        let eventData = JSON.parse(event);
+        if(eventData.sessionId == this.id) {
+          // The wsClient handles messages
+          self.handleMesage(eventData);
+        } else {
+          console.error('WS handleMessage error: Invalid or missing sessionId', eventData);
+        }
+      } catch (e) {
+        console.error("WS handleMessage parse error: ", e);
+      }
+    }
     this.setSocket(socket)
   } catch (e) {
     //console.error(e)
@@ -188,110 +194,23 @@ WebSocketClient.prototype.reconnect = function(sessionId) {
   this.connect(sessionId);
 }
 
-// on 'open' handler
-WebSocketClient.prototype.openSocket = function(event) {
-  // Reset the state object
-  let session = $tw.Bob.wsClient.getSession(this.id);
-  session.initState();
-  console.log(`Opened socket to ${session.url.href}, id: ${this.id}`);
-   // Request a "handshake" message to confirm the login token and initialise everything.
-   const message = {
-    type: 'handshake'
-  };
-  $tw.Bob.wsClient.sendMessage(message);
-}
-
-/*
-  The heartbeat process will terminate the socket if it fails. This lets us know when to
-  use a reconnect algorithm with exponential back-off and a maximum retry window.
-*/
-WebSocketClient.prototype.closeSocket = function(event) {
-  // Determine which session generated the event
-  let text, tiddler, session = $tw.Bob.wsClient.getSession(this.id);
-  console.log(`Closed socket to ${session.url}`, JSON.stringify(event, null, 4));
-  // Clear the ping timers
-  clearTimeout(session.state.pingTimeout);
-  clearTimeout(session.state.ping);
-  // log the disconnection time & handle the message queue
-  session.state.disconnected = Date.now();
-
-  // Error code <= 1000 means that the connection was closed normally.
-  if(!event.wasClean && event.code > 1000 && $tw.Bob.wsClient.settings.reconnect.auto &&
-    session.state.disconnected - session.state.reconnecting < $tw.Bob.wsClient.settings.reconnect.abort) {
-    text = `''WARNING: You are no longer connected to the server (${session.url}).</br> Reconnecting (attempt ${session.state.attempts})...''`;
-    // Reconnect here
-    session.state.retryTimeout = setTimeout(function(){
-      $tw.Bob.wsClient.reconnect(session.id);
-      }, session.state.delay);
-  } else {
-    text = `''WARNING: You are no longer connected to the server (${session.url}).</br>''<$button style='color:black;'>Reconnect <$action-reconnectwebsocket/><$action-navigate $to='$:/plugins/Bob/ConflictList'/></$button>`;
-  }
-  if (session.id == $tw.syncadaptor.sessionId) {
-    text = `<div style='position:fixed;top:0px;width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>` + text + `</div>`;
-    tiddler = {
-      title: `$:/plugins/OokTech/Bob/Server Warning/`,
-      text: text,
-      component: `$tw.Bob.wsClient`,
-      session: session.id,
-      tags: '$:/tags/PageTemplate'
-    };
-  } else {
-    text = `<div style='width:100%;height:100%;background-color:red;max-height:200px;color:white;'>` + text + `</div>`;
-    tiddler = {
-      title: `$:/plugins/OokTech/Bob/Session Warning/${session.id}`,
-      text: text,
-      component: `$tw.Bob.wsClient`,
-      session: session.id,
-      tags: '$:/tags/Alert'
-    };
-  }
-  // Display the socket warning after the 3rd reconnect attempt or if not auto-reconnecting
-  if (!$tw.Bob.wsClient.settings.reconnect.auto || session.state.attempts > 3) {
-    $tw.wiki.addTiddler(new $tw.Tiddler(
-      $tw.wiki.getCreationFields(),
-      tiddler,
-      $tw.wiki.getModificationFields()
-    ));
-  }
-}
-
-
-/*
-  Message methods
-*/
-// This makes sure that the token sent allows the action on the wiki.
-WebSocketClient.prototype.authenticateMessage = function(eventData) {
-  let session = this.getSession(eventData.sessionId);
-  let now = new Date();
-  return (
-    eventData.wikiName == session.wikiName && eventData.userid == session.userid  
-    && eventData.token == session.token && now <= session.tokenEOL
-  );
-}
-
-// The handle message function
-WebSocketClient.prototype.handleMessage = function(event) {
-  try {
-    let eventData = JSON.parse(event.data);
-    if (eventData.sessionId == this.id) {
-      // Check authentication
-      const authenticated = $tw.Bob.wsClient.authenticateMessage(eventData);
-      // Make sure we have a handler for the message type
-      if(!!authenticated && typeof $tw.Bob.wsClient.messageHandlers[eventData.type] === 'function') {
-        if (eventData.type !== "ping" && eventData.type !== "pong") {
-         console.log(`Received websocket message ${eventData.id}:`, JSON.stringify(eventdata, null, 4));
-        }
-        // Acknowledge the message
-        $tw.utils.sendMessageAck(eventData);
-        // Call the handler(s)
-        $tw.Bob.wsClient.messageHandlers[eventData.type](eventData);
-      } else {
-       console.error('WS handleMessage error: No handler for message of type ', eventData.type);
+WebSocketClient.prototype.handleMessage = function(eventData) {
+  // Check authentication
+  const authenticated = this.sessions.get(eventData.sessionId).authenticateMessage(eventData);
+  // Make sure we have a handler for the message type
+  if(!!authenticated && typeof this.messageHandlers[eventData.type] === 'function') {
+      // Acknowledge the message
+      $tw.utils.sendMessageAck(eventData);
+      // Determine the wiki instance
+      if(eventData.wikiname == $tw.wikiName) {
+          eventData.instance = $tw;
+      } else if($tw.Bob.Wikis.has(eventData.wikiName)) {
+          eventData.instance = $tw.Bob.Wikis.get(eventData.wikiName);
       }
-      console.error('WS handleMessage error: Invalid or missing sessionId', eventData.type);
-    }
-  } catch (e) {
-   console.error("WS handleMessage error: ", e);
+      // Call the handler(s)
+      this.messageHandlers[eventData.type](eventData);
+  } else {
+      console.error('WS handleMessage error: No handler for message of type ', eventData.type);
   }
 }
  
@@ -300,7 +219,7 @@ WebSocketClient.prototype.handleMessage = function(event) {
   the last heartbeat, terminate the given socket. Setup the next heartbeat.
 */
 WebSocketClient.prototype.heartbeat = function(data){
-  if (data.sessionId) {
+  if(data.sessionId) {
     console.log("heartbeat");
     let session = this.getSession(data.sessionId),
       socket = this.getSocket(data.sessionId);
@@ -326,24 +245,6 @@ WebSocketClient.prototype.heartbeat = function(data){
   }
 }
 
-/*
-  Send a message for the session id
-*/
-WebSocketClient.prototype.sendMessage = function(sessionId,message,callback) {
-  if (this.hasSession(sessionId)) {
-    message = this.getSession(sessionId).prepareMessage(message);
-    if (this.hasSocket(sessionId) && this.getSocket(sessionId).readyState === WebSocket.OPEN) {
-      this.getSocket(sessionId).send(JSON.stringify(message));
-    }
-    if(!!callback && typeof callback === "function") {
-      callback(null, {session: sessionId, message: message.id})
-    } else {
-      return message.id;
-    }
-  }  else {
-    callback(`Error: no session found for id ${sessionId}`, {session: sessionId, message: null})
-  }
-}
 
 /*
   Send a message to the server id

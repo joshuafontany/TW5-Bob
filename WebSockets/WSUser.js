@@ -4,7 +4,7 @@ type: application/javascript
 module-type: library
 
 A simple websocket user prototype. On the server-side, these methods
-are called by the SessionManager and the WebSocketServer.
+are called by the WebSocketManager and the WebSocketServer.
 
 \*/
 (function(){
@@ -21,11 +21,11 @@ are called by the SessionManager and the WebSocketServer.
 function WebSocketUser(options) {
     options = options || {};
     this.id = options.userid || options.authenticatedUsername;
-    this.displayUsername = options.displayUsername;
+    this.username = options.username;
     this.isAnonymous = !!options.isAnonymous;
     // A set to store the session ids
     this.sessions = new Set(options.sessions);
-    if (options.session) {
+    if(options.session) {
         this.sessions.add(options.session.id);
     }
 }

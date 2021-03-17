@@ -1,7 +1,7 @@
 /*\
 title: $:/plugins/OokTech/Bob/NodeScriptHandlers.js
 type: application/javascript
-module-type: node-messagehandlers
+module-type: server-messagehandlers
 
 These are message handler functions for the web socket servers. Use this file
 as a template for extending the web socket funcitons.

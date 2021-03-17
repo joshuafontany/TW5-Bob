@@ -1,7 +1,7 @@
 /*\
 title: $:/plugins/OokTech/Bob/ChatMessageHandlers.js
 type: application/javascript
-module-type: node-messagehandlers
+module-type: server-messagehandlers
 
 These are message handler functions for the federated chat server.
 This handles messages sent to the node process.

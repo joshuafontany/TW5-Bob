@@ -22,8 +22,7 @@ if($tw.node) {
 */
 function SimpleServer(options) {
   Server.call(this, options);
-  // Reserve a connetion to the session manager & httpServer
-  this.manager = null;
+  // Reserve a connetion to the httpServer
   this.httpServer = null;
   // Set the this.authorizationPrincipals['admin'] principles
   this.authorizationPrincipals['admin'] = this.get("admin").split(',').map($tw.utils.trim);
@@ -58,7 +57,7 @@ SimpleServer.prototype.clearRoutes = function() {
   let baseTypes = ["admin","readers","writers"]
   let clearedPrinciples = {};
   Object.keys(this.authorizationPrinciples).forEach(function(thisType) {
-    if (baseTypes.indexOf(thisType) !== -1) {
+    if(baseTypes.indexOf(thisType) !== -1) {
       clearedPrinciples[thisType] == authorizatonPrinciples[thisTypes];
     };
   });
@@ -131,7 +130,7 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
 	var missing = [];
 	for (let index = 0; index < this.variables["required-plugins"].length; index++) {
 		const r = this.variables["required-plugins"][index];
-		if (!this.wiki.getTiddler("$:/plugins/"+r)) {
+		if(!this.wiki.getTiddler("$:/plugins/"+r)) {
 			missing.push(r);
 		}
 	}
@@ -221,7 +220,7 @@ SimpleServer.prototype.verifyUpgrade = function(request) {
     state.loggedIn = !state.anonymous && state.username !== "";
     state.wikiName = state.queryParameters['wiki'];
     state.sessionId = state.queryParameters["session"];
-    return this.manager.verifyUpgrade(state);
+    return $tw.Bob.wsManager.verifyUpgrade(state);
   } else {
     return false;
   }
@@ -270,10 +269,10 @@ SimpleServer.prototype.addWikiRoutes = function(inputObject,prefix) {
     wikis.forEach(function(wikiName) {
       let fullName = (!!prefix)? prefix + '/' + wikiName: wikiName;
       // Add the authorized principles
-      if (!!inputObject[wikiName].readers) {
+      if(!!inputObject[wikiName].readers) {
         readers = inputObject[wikiName].readers.split(',').map($tw.utils.trim);
       }
-      if (!!inputObject[wikiName].writers) {
+      if(!!inputObject[wikiName].writers) {
         writers = inputObject[wikiName].writers.split(',').map($tw.utils.trim);
       }
       self.authorizationPrincipals[fullName+"/readers"] = readers;

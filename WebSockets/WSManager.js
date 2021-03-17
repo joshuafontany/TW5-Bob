@@ -1,7 +1,7 @@
 /*\
-title: $:/plugins/OokTech/Bob/SessionManager.js
+title: $:/plugins/OokTech/Bob/WSManager.js
 type: application/javascript
-module-type: library
+module-type: library TEST
 
 
 \*/
@@ -12,10 +12,9 @@ module-type: library
 "use strict";
 
 if ($tw.node) {
-
-const url = require('url'),
-{ v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('$:/plugins/OokTech/Bob/External/uuid/src/index.js'),
-    WebSocketSession = require('$:/plugins/OokTech/Bob/WSSession.js').WebSocketSession,
+    const  { URL } = require('url');
+}
+const WebSocketSession = require('$:/plugins/OokTech/Bob/WSSession.js').WebSocketSession,
     WebSocketUser = require('$:/plugins/OokTech/Bob/WSUser.js').WebSocketUser;
 
 /*
@@ -24,146 +23,101 @@ const url = require('url'),
     but we'll use a Map() for now.
     options: 
 */
-function SessionManager(options) {
+function WebSocketManager(options) {
     options = options || {};
     this.sockets = options.sockets || new Map();
     this.sessions = options.sessions || new Map();
     this.anonymousUsers = options.anonymousUsers || new Map();
     this.authorizedUsers = options.authorizedUsers || new Map();
-}
-
-SessionManager.prototype.requestSession = function(state) {
-    let userSession, 
-        wikiName = state.queryParameters["wiki"],
-        sessionId = state.queryParameters["session"];
-    if(sessionId == uuid_NIL || !this.hasSession(sessionId)  
-        || this.getSession(sessionId).displayUsername !== state.authenticatedUsername) {
-        // Anon users always have a new random userid created
-        userSession = this.newSession({
-            ip: state.ip,
-            referer: state.referer,
-            wikiName: wikiName,
-            userid: !state.anonymous? state.authenticatedUsername: uuid_v4(),
-            displayUsername: state.username,
-            access: this.getUserAccess(state.authenticatedUsername,state.wikiName),
-            isLoggedIn: !!state.authenticatedUsername,
-            isReadOnly: !!state["read_only"],
-            isAnonymous: !!state.anonymous
-        });
-    } else {
-        userSession = this.getSession(sessionId);
+    // Setup a Message Queue
+    this.messageId = 0; // The current message id
+    this.tickets = new Map(options.tickets || []); // The message ticket queue
+    // Load the client-messagehandlers modules
+    this.clientHandlers = {};
+    $tw.modules.applyMethods("client-messagehandlers",this.clientHandlers);
+    if($tw.node) {
+        // Load the server-messagehandlers modules
+        this.serverHandlers = {};
+        $tw.modules.applyMethods("server-messagehandlers",this.serverHandlers);
     }
-    // Set a new login token and login tokenEOL. Only valid for 60 seconds.
-    // These will be replaced with a session token during the "handshake".
-    let eol = new Date();
-    userSession.tokenEOL = eol.setMinutes(eol.getMinutes() + 1);
-    userSession.token = uuid_v4();
-    // Log the session in this.authorizedUsers or this.anonymousUsers
-    this.updateUser(userSession);
-    return userSession;
 }
 
-SessionManager.prototype.newSession = function(sessionData) {
-    sessionData.id = uuid_v4();
+// Tests a session's socket connection
+WebSocketManager.prototype.isReady = function(sessionId) {
+    return this.hasSocket(sessionId) && this.getSocket(sessionId).readyState === WebSocket.OPEN;
+}
+
+// Create a new session (serverside)
+WebSocketManager.prototype.newSession = function(sessionData) {
     let session = new WebSocketSession(sessionData);
     this.setSession(session);
     return session;
 }
 
-SessionManager.prototype.verifyUpgrade = function(state) {
-    let userSession;
-    if (this.hasSession(state.sessionId)) {
-        userSession = this.getSession(state.sessionId);
-        // username, ip, & wikiName must match (token is tested in the 'handshake')
-        if (
-            state.username == userSession.displayUsername
-            && state.ip == userSession.ip
-            && state.wikiName == userSession.wikiName
-        ) {
-            return state;
-        } else {
-            return false;
-        };
-    } else {
-        return false;
-    }
-}
-
-SessionManager.prototype.refreshSession = function(sessionId) {
-    let test = new Date(),
-        session = this.getSession(sessionId);
-    test.setMinutes(test.getMinutes() + 5);
-    if (session.tokenEOL <= test) {
-        let eol = new Date(session.tokenEOL);
-        session.tokenEOL = eol.setHours(eol.getHours() + 1);
-        session.token = uuid_v4();
-    }
-}
-
-SessionManager.prototype.hasSession = function(sessionId) {
+WebSocketManager.prototype.hasSession = function(sessionId) {
     return this.sessions.has(sessionId);
 }
 
-SessionManager.prototype.getSession = function(sessionId) {
-    if (this.hasSession(sessionId)) {
+WebSocketManager.prototype.getSession = function(sessionId) {
+    if(this.hasSession(sessionId)) {
        return this.sessions.get(sessionId);
     } else {
         return null;
     }
 }
 
-SessionManager.prototype.setSession = function(sessionData) {
-    if (sessionData.id) {
+WebSocketManager.prototype.setSession = function(sessionData) {
+    if(sessionData.id) {
         this.sessions.set(sessionData.id,sessionData);
     }
 }
 
-SessionManager.prototype.deleteSession = function(sessionId) {
-    if (this.hasSession(sessionId)) {
+WebSocketManager.prototype.deleteSession = function(sessionId) {
+    if(this.hasSession(sessionId)) {
         this.sessions.delete(sessionId);
     }
 }
 
-SessionManager.prototype.getSessionsByUserId = function(userid) {
+WebSocketManager.prototype.getSessionsByUserId = function(userid) {
     var usersSessions = new Map();
     for (let [id,session] of this.sessions.entries()) {
-        if (session.userid === userid) {
+        if(session.userid === userid) {
             usersSessions.add(id,session);
         }
     }
     return usersSessions;
 }
 
-SessionManager.prototype.getSessionsByWiki = function(wikiName) {
+WebSocketManager.prototype.getSessionsByWiki = function(wikiName) {
     var wikiSessions = new Map();
     for (let [id,session] of this.sessions.entries()) {
-        if (session.wikiName === wikiName) {
+        if(session.wikiName === wikiName) {
             wikiSessions.add(id,session);
         }
     }
     return wikiSessions;
 }
 
-SessionManager.prototype.hasSocket = function(sessionId) {
+WebSocketManager.prototype.hasSocket = function(sessionId) {
     return this.sockets.has(sessionId);
 }
 
-SessionManager.prototype.getSocket = function(sessionId) {
-    if (this.hasSocket(sessionId)) {
+WebSocketManager.prototype.getSocket = function(sessionId) {
+    if(this.hasSocket(sessionId)) {
        return this.sockets.get(sessionId);
     } else {
         return null;
     }
 }
 
-SessionManager.prototype.setSocket = function(socket) {
-    if (socket.id) {
+WebSocketManager.prototype.setSocket = function(socket) {
+    if(socket.id) {
         this.sockets.set(socket.id,socket);
     }
 }
 
-SessionManager.prototype.deleteSocket = function(sessionId) {
-    if (this.hasSocket(sessionId)) {
+WebSocketManager.prototype.deleteSocket = function(sessionId) {
+    if(this.hasSocket(sessionId)) {
         let socket = this.getSocket(sessionID);
         socket.terminate();
         this.sockets.delete(sessionId);
@@ -171,9 +125,36 @@ SessionManager.prototype.deleteSocket = function(sessionId) {
 }
 
 /*
+    Ticket methods
+*/
+WebSocketManager.prototype.hasTicket = function(messageId) {
+    return this.tickets.has(messageId);
+}
+
+WebSocketManager.prototype.getTicket = function(messageId) {
+    if(this.hasTicket(messageId)) {
+       return this.tickets.get(messageId);
+    } else {
+        return null;
+    }
+}
+
+WebSocketManager.prototype.setTicket = function(ticketData) {
+    if(ticketData.message.id) {
+        this.tcikets.set(ticketData.message.id,ticketData);
+    }
+}
+
+WebSocketManager.prototype.deleteTicket = function(messageId) {
+    if(this.hasTicket(messageId)) {
+        this.tickets.delete(messageId);
+    }
+}
+
+/*
     User methods
 */
-SessionManager.prototype.updateUser = function(sessionData) {
+WebSocketManager.prototype.updateUser = function(sessionData) {
     let user = null;
     if(!!sessionData.isAnonymous) {
         user = this.anonymousUsers.get(sessionData.userid) || this.newUser(sessionData);
@@ -183,9 +164,9 @@ SessionManager.prototype.updateUser = function(sessionData) {
     user.sessions.add(sessionData.id)
 }
 
-SessionManager.prototype.newUser = function(sessionData) {
+WebSocketManager.prototype.newUser = function(sessionData) {
     let user = new WebSocketUser(sessionData);
-    if (user.isAnonymous) {
+    if(user.isAnonymous) {
         this.anonymousUsers.set(user.id,user);
     } else {
         this.authorizedUsers.set(user.id,user);
@@ -193,47 +174,31 @@ SessionManager.prototype.newUser = function(sessionData) {
     return user;
 }
 
-SessionManager.prototype.isAdmin = function(username) {
-    return $tw.Bob.server.isAuthorized("admin",username);
-}
-
-SessionManager.prototype.getUserAccess = function(username,wikiName) {
-    wikiName = wikiName || 'RootWiki';
-    if(!!username) {
-        let type, accessPath = (wikiName == 'RootWiki')? "" : wikiName+'/';
-        type = ($tw.Bob.server.isAuthorized(accessPath+"readers",username))? "readers" : null;
-        type = ($tw.Bob.server.isAuthorized(accessPath+"writers",username))? "writers" : type;
-        type = ($tw.Bob.server.isAuthorized("admin",username))? "admin" : type;
-        return type;
-    }
-    return null;
-}
-
-SessionManager.prototype.getUsersByAccessType = function(type,wikiName) {
+WebSocketManager.prototype.getUsersByAccessType = function(type,wikiName) {
     var usersByAccess = new Map();
     for (let [id,user] of this.authorizedUsers.entries()) {
-        if (this.getUserAccess(user.userid,wikiName) == type) {
+        if(this.getUserAccess(user.userid,wikiName) == type) {
             usersByAccess.add(id,user);
         }
     }
     return usersByAccess;
 }
 
-SessionManager.prototype.getUsersWithAccess = function(type,wikiName) {
+WebSocketManager.prototype.getUsersWithAccess = function(type,wikiName) {
     let usersWithAccess = new Map(),
         types = [null, "readers", "writers", "admin"];
     for (let [id,user] of this.authorizedUsers.entries()) {
         let access = this.getUserAccess(user.userid,wikiName);
-        if (types.indexOf(access) >= types.indexOf(type)) {
+        if(types.indexOf(access) >= types.indexOf(type)) {
             usersWithAccess.add(id,user);
         }
     }
     return usersWithAccess;
 }
 
-SessionManager.prototype.getViewableSettings = function(sessionId) {
+WebSocketManager.prototype.getViewableSettings = function(sessionId) {
     const tempSettings = {};
-    if (this.hasSession(sessionId)) {
+    if(this.hasSession(sessionId)) {
         let session = this.getSession(sessionId);
         // section visible to anyone
         tempSettings.API = $tw.Bob.settings.API;
@@ -242,7 +207,7 @@ SessionManager.prototype.getViewableSettings = function(sessionId) {
         // Federation stuff is visible because you don't have to login to want to see
         // if federation is possible with a server
         tempSettings.enableFederation = $tw.Bob.settings.enableFederation;
-        if (tempSettings.enableFederation == "yes") {
+        if(tempSettings.enableFederation == "yes") {
             tempSettings.federation = $tw.Bob.settings.federation;    
         }
         // Section visible by logged in people
@@ -311,24 +276,28 @@ SessionManager.prototype.getViewableSettings = function(sessionId) {
 
 /*
     Message methods
-*/
-SessionManager.prototype.sendMessage = function(sessionId,message,callback) {
-    if (this.hasSession(sessionId)) {
-      message = this.getSession(sessionId).prepareMessage(message);
-      if (this.hasSocket(sessionId) && this.getSocket(sessionId).readyState === WebSocket.OPEN) {
-        this.getSocket(sessionId).send(JSON.stringify(message));
+*/ 
+// The handle message function
+WebSocketManager.prototype.handleMessage = function(eventData) {
+  // Check authentication
+  const authenticated = this.sessions.get(eventData.sessionId).authenticateMessage(eventData);
+  // Make sure we have a handler for the message type
+  if(!!authenticated && typeof this.messageHandlers[eventData.type] === 'function') {
+      // Acknowledge the message
+      $tw.utils.sendMessageAck(eventData);
+      // Determine the wiki instance
+      if(eventData.wikiname == "RootWiki") {
+          eventData.instance = $tw;
+      } else if($tw.Bob.Wikis.has(eventData.eventName)) {
+          eventData.instance = $tw.Bob.Wikis.get(eventData.wikiName);
       }
-      if(!!callback && typeof callback === "function") {
-        callback(null, {session: sessionId, message: message.id})
-      } else {
-        return message.id;
-      }
-    }  else {
-      callback(`Error: no session found for id ${sessionId}`, {session: sessionId, message: null})
-    }
+      // Call the handler(s)
+      $tw.Bob.wsServer.messageHandlers[eventData.type](eventData);
+  } else {
+      $tw.Bob.logger.error('WS handleMessage error: No handler for message of type ', eventData.type, {level:3});
   }
-
-exports.SessionManager = SessionManager;
 }
+
+exports.WebSocketManager = WebSocketManager;
 
 })();

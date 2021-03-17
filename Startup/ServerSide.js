@@ -98,7 +98,7 @@ ServerSide.getWikiPath = function(wikiName) {
 */
 ServerSide.getWikiSettings = function(wikiName) {
   let wikiSettings = undefined;
-  if (wikiName == 'RootWiki') {
+  if(wikiName == 'RootWiki') {
     wikiSettings = {
       path: path.resolve($tw.boot.wikiPath),
       admin: $tw.Bob.settings["ws-server"].admin,
@@ -122,7 +122,7 @@ ServerSide.getWikiSettings = function(wikiName) {
         break;
       }
     }
-    if (!!settings) {
+    if(!!settings) {
       wikiSettings = settings;
     }
   }
@@ -325,7 +325,7 @@ function loadWikiTiddlers(wikiPath,options) {
       $tw.Bob.Wikis[wikiName].wiki.addTiddlers(tiddlerFile.tiddlers);
     }
   );
-  if ($tw.Bob.Wikis[wikiName].wikiPath == wikiPath) {
+  if($tw.Bob.Wikis[wikiName].wikiPath == wikiPath) {
     // Save the original tiddler file locations if requested
     var output = {}, relativePath, fileInfo;
     for(let title in $tw.Bob.Files[wikiName]) {
@@ -735,7 +735,7 @@ ServerSide.getViewableWikiList = function(data) {
         output = output.concat(getList(obj[item], prefix + item + '/'));
       }
     })
-    if (prefix === '') {
+    if(prefix === '') {
       output.push('RootWiki')
     }
     return output;
@@ -835,7 +835,7 @@ ServerSide.getViewableLanguagesList = function(data) {
 
 ServerSide.getProfileInfo = function(data) {
   $tw.Bob.settings.profiles = $tw.Bob.settings.profiles || {};
-  if ($tw.Bob.wsServer.AccessCheck(data.profileName, {"authenticated": data.authenticated}, 'view', 'profile')) {
+  if($tw.Bob.wsServer.AccessCheck(data.profileName, {"authenticated": data.authenticated}, 'view', 'profile')) {
     return $tw.Bob.settings.profiles[data.profileName] || {};
   } else {
     return {};
@@ -846,7 +846,7 @@ ServerSide.listProfiles = function(data) {
   $tw.Bob.settings.profiles = $tw.Bob.settings.profiles || {};
   const result = {};
   Object.keys($tw.Bob.settings.profiles).forEach(function(profileName) {
-    if ($tw.Bob.wsServer.AccessCheck(profileName, data, 'view', 'profile') || $tw.Bob.wsServer.AccessCheck(profileName, data, 'view/anyProfile', 'server')) {
+    if($tw.Bob.wsServer.AccessCheck(profileName, data, 'view', 'profile') || $tw.Bob.wsServer.AccessCheck(profileName, data, 'view/anyProfile', 'server')) {
       result[profileName] = $tw.Bob.settings.profiles[profileName]
     }
   })

@@ -185,7 +185,7 @@ MultiWikiAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
         $tw.Bob.logger.error(`[${prefix}] Save Error:`, tiddler.fields.title, err, {level:1});
         if(err) {
           // If there's an error, exit without changing any internal wiki state
-          if ((err.code == "EPERM" || err.code == "EACCES") && err.syscall == "open") {
+          if((err.code == "EPERM" || err.code == "EACCES") && err.syscall == "open") {
             tw.Bob.logger.log(`Sync failed for '${tiddler.fields.title}' and will be retried with encoded filepath`, encodeURIComponent(bootInfo.filepath), {level:2});
             fileInfo = fileInfo || $tw.Bob.Files[prefix][tiddler.fields.title];
             fileInfo.writeError = true;
@@ -269,7 +269,7 @@ MultiWikiAdaptor.prototype.deleteTiddler = function(title, options, callback) {
     })
     .catch(err => {
       $tw.Bob.logger.error(`[${prefix}] Delete Error:`, tiddler.fields.title, err, {level:1});
-      if ((err.code == "EPERM" || err.code == "EACCES") && err.syscall == "unlink") {
+      if((err.code == "EPERM" || err.code == "EACCES") && err.syscall == "unlink") {
         // Error deleting the file on disk, should fail gracefully
         $tw.Bob.logger.log('Server desynchronized. Error deleting file for deleted tiddler:'+title, {level:2});
         return callback(null, {})

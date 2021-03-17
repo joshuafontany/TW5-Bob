@@ -1,11 +1,11 @@
 /*\
-title: $:/plugins/OokTech/Bob/BrowserMessageHandlers.js
+title: $:/plugins/OokTech/Bob/ClientMessageHandlers.js
 type: application/javascript
-module-type: browser-messagehandlers
+module-type: client-messagehandlers
 
-This handles messages sent to the browser.
+This handles messages sent to the wsClient (mostly in the browser).
 
-These are message handlers for messages sent to the browser. If you want to
+These are message handlers for messages sent to the client. If you want to
 add more functions the easiest way is to use this file as a template and make a
 new file that adds the files you want. To do this you need should copy
 everything until the line

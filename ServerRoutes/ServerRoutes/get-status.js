@@ -37,7 +37,7 @@ exports.handler = function(request,response,state) {
     state.username = data.username;
     state.anonymous = data.anonymous;
     state.read_only = data.read_only;
-    data.session = $tw.Bob.sessionManager.requestSession(state);
+    data.session = $tw.Bob.wsServer.requestSession(state);
   }
   let text = JSON.stringify(data);
   response.writeHead(200, {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Credentials": "true", "Access-Control-Allow-Headers": "*"});

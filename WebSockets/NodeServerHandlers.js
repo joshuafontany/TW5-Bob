@@ -1,7 +1,7 @@
 /*\
 title: $:/plugins/OokTech/Bob/NodeServerHandlers.js
 type: application/javascript
-module-type: node-messagehandlers
+module-type: server-messagehandlers
 
 These are message handler functions for the web socket servers. Use this file
 as a template for extending the web socket funcitons.
@@ -20,14 +20,14 @@ This handles messages sent to the node process.
     Once confirmed, the client will start a heartbeat.
   */
   exports.handshake = function(data) {debugger;
-    let session = $tw.Bob.wsServer.manager.getSession(data.sessionId);
+    let session = $tw.Bob.wsManager.getSession(data.sessionId);
     let now = new Date();
-    if (now <= session.tokenEOL) {
+    if(now <= session.tokenEOL) {
       session.state.isAlive = true;
       // Get the list of tiddlers being edited from the instance wiki
       let editingTiddlers = data.instance.wiki.getTiddlerText("$:/Bob/EditingTiddlers", "")
       // Refresh the session token, detroying the login token if neccessary
-      $tw.Bob.wsServer.manager.refreshSession(state.sessionId);
+      $tw.Bob.wsManager.refreshSession(state.sessionId);
       // Respond to the initial "handshake" message to initialise everything.
       let message = {
         type: 'handshake',        
@@ -35,12 +35,12 @@ This handles messages sent to the node process.
         tokenRefresh: session.token, // Send the new token
         tokenEOL: session.tokenEOL, // and the new tokenEOL
         editingTiddlers: [], // send the current list of tiddlers being edited
-        settings: this.manager.getViewableSettings(state.sessionId),
+        settings: $tw.Bob.wsManager.getViewableSettings(state.sessionId),
       };
-      $tw.Bob.wsServer.manager.sendMessage(session.id,message);
+      $tw.Bob.wsManager.sendMessage(session.id,message);
     } else {
       // Invalid login token, kill the socket
-      $tw.Bob.wsServer.manager.deleteSocket(session.id);
+      $tw.Bob.wsManager.deleteSocket(session.id);
     }    
   }
 
@@ -60,7 +60,7 @@ This handles messages sent to the node process.
     // When the server receives a ping it sends back a pong.
     const response = JSON.stringify(message);
     const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
-    if (connectionIndex) {
+    if(connectionIndex) {
       $tw.Bob.sessions[connectionIndex].socket.send(response);
     }
   }

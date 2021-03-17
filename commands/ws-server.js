@@ -23,8 +23,7 @@ exports.platforms = ["node"];
 
 const SaverServer = require('$:/plugins/OokTech/Bob/SaverServer.js').SaverServer,
   SimpleServer = require('$:/plugins/OokTech/Bob/SimpleServer.js').SimpleServer,
-  WebSocketServer = require('$:/plugins/OokTech/Bob/WSServer.js').WebSocketServer,
-  SessionManager = require('$:/plugins/OokTech/Bob/SessionManager.js').SessionManager;
+  WebSocketServer = require('$:/plugins/OokTech/Bob/WSServer.js').WebSocketServer;
 
 const Command = function(params,commander,callback) {
   this.params = params;
@@ -75,11 +74,6 @@ Command.prototype.execute = function() {
     clientTracking: false, 
     noServer: true // We roll our own Upgrade
   });
-  // Setup the SessionManager and wire them all together.
-  let managerSerialized = JSON.parse("{}");
-  $tw.Bob.sessionManager = new SessionManager(managerSerialized);
-  $tw.Bob.server.manager = $tw.Bob.sessionManager;
-  $tw.Bob.wsServer.manager = $tw.Bob.sessionManager;
 	$tw.hooks.invokeHook("th-server-command-post-start",httpServer,$tw.Bob.server,"tiddlywiki");
   //$tw.Bob.logger.log('TiddlyWiki version', $tw.version, 'with Bob version', $tw.Bob.version, {level:0})
   console.log('TiddlyWiki version', $tw.version, 'with Bob version', $tw.Bob.version);

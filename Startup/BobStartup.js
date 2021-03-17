@@ -17,6 +17,9 @@ exports.name = "BobStartup";
 exports.before = ["startup"];
 exports.synchronous = true;
 
+const WebSocketManager = require('$:/plugins/OokTech/Bob/WSManager.js').WebSocketManager,
+WebSocketClient = require('$:/plugins/OokTech/Bob/WSClient.js').WebSocketClient;
+
 exports.startup = function() {
   // Initialise objects
   $tw.Bob = $tw.Bob || {};
@@ -25,16 +28,15 @@ exports.startup = function() {
   $tw.Bob.ExcludeFilter = $tw.wiki.getTiddlerText('$:/plugins/OokTech/Bob/ExcludeSync');
   // Get the name for this wiki for websocket messages
   $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", "");
-  if($tw.browser) {     
-    // Polyfill because IE uses old javascript
-    if(!String.prototype.startsWith) {
-      String.prototype.startsWith = function(search, pos) {
-        return this.substr(!pos || pos < 0 ? 0 : +pos, search.length) === search;
-      };
-    }
-    // Set up the the WebSocketClient
-    const WebSocketClient = require('$:/plugins/OokTech/Bob/WSClient.js').WebSocketClient
-    $tw.Bob.wsClient = new WebSocketClient();
+  // Always setup the WebSocketManager & the WebSocketClient
+  let managerSerialized = JSON.parse("{}");
+  $tw.Bob.wsManager = new WebSocketManager(managerSerialized);
+  $tw.Bob.wsClient = new WebSocketClient();   
+  // Polyfill because IE uses old javascript
+  if(!String.prototype.startsWith) {
+    String.prototype.startsWith = function(search, pos) {
+      return this.substr(!pos || pos < 0 ? 0 : +pos, search.length) === search;
+    };
   }
 }
 

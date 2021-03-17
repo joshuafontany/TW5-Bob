@@ -24,7 +24,7 @@ exports.handler = function(request,response,state) {
   const buffer = require('buffer')
   $tw.Bob.settings.API = $tw.Bob.settings.API || {};
   const authorised = $tw.Bob.wsServer.AccessCheck(request.headers['x-wiki-name'], response, 'upload', 'wiki');
-  if (authorised) {
+  if(authorised) {
     let body = ''
     request.on('data', function(chunk){
       body += chunk;

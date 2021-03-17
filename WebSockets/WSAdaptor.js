@@ -225,7 +225,7 @@ WSAdaptor.prototype.name = "wsadaptor";
 WSAdaptor.prototype.supportsLazyLoading = true;
 
 WSAdaptor.prototype.isReady = function() {
-  return this.hasStatus && this.sessionId && $tw.Bob.wsClient.isReady(this.sessionId);
+  return this.hasStatus && this.sessionId && $tw.Bob.wsManager.isReady(this.sessionId);
 }
 
 WSAdaptor.prototype.getHost = function() {
@@ -238,7 +238,7 @@ WSAdaptor.prototype.getHost = function() {
     let s = substitutions[t];
     text = $tw.utils.replaceString(text,new RegExp("\\$" + s.name + "\\$","mg"),s.value);
   }
-  if (!!$tw.wikiName && $tw.wikiName !== "RootWiki") {
+  if(!!$tw.wikiName && $tw.wikiName !== "RootWiki") {
     let regxName = new RegExp($tw.wikiName + "\\/?$");
     text = text.replace(regxName,'');
   }
@@ -298,7 +298,6 @@ WSAdaptor.prototype.getStatus = function(callback) {
                     url.searchParams.append("session", json.session.id);
                     json.session.url = url;
                     self.sessionId = $tw.Bob.wsClient.initSession(json.session);
-                    $tw.Bob.wsClient.connect(self.sessionId);
                 }
             }
             // Invoke the callback if present
@@ -354,7 +353,7 @@ WSAdaptor.prototype.getCsrfToken = function() {
 	let regex = /^(?:.*; )?csrf_token=([^(;|$)]*)(?:;|$)/,
 		match = regex.exec(document.cookie),
 		csrf = null;
-	if (match && (match.length === 2)) {
+	if(match && (match.length === 2)) {
 		csrf = match[1];
 	}
 	return csrf;
