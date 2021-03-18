@@ -13,10 +13,7 @@ are split among the WebSocketManager and the WebSocketServer.
 /*global $tw: false */
 "use strict";
 
-if ($tw.node) {
-  const  { URL } = require('url')
-}
-const CONFIG_HOST_TIDDLER = "$:/config/bob/host",
+let CONFIG_HOST_TIDDLER = "$:/config/bob/host",
   DEFAULT_HOST_TIDDLER = "$protocol$//$host$/";
 
 /*
@@ -87,7 +84,7 @@ WebSocketClient.prototype.connect = function(session) {
   try{
     let socket = new WebSocket(session.url.href);
     socket.binaryType = "arraybuffer";
-    socket.id = sessionId;
+    socket.id = session.id;
     // On Open
     socket.onopen = function(event) {
       // Reset the state object
@@ -97,7 +94,7 @@ WebSocketClient.prototype.connect = function(session) {
       const message = {
         type: 'handshake'
       };
-      session.queueMessage(message);
+      session.queueMessage(message, function(){ console.log("Handshake ack recieved from", session.url.href)});
     };
     // On Close
     socket.onclose = function(event) {
@@ -154,19 +151,21 @@ WebSocketClient.prototype.connect = function(session) {
     };
     // On Message
     socket.onmessage = function(event) {
+      let eventData
       try {
-        let eventData = JSON.parse(event);
-        if(eventData.sessionId == this.id) {
-          // The wsClient handles messages
-          self.handleMesage(eventData);
-        } else {
-          console.error('WS handleMessage error: Invalid or missing sessionId', eventData);
-        }
+        eventData = JSON.parse(event);
       } catch (e) {
         console.error("WS handleMessage parse error: ", e);
       }
+      let session = $tw.Bob.wsManager.getSession(eventData.sessionId);
+      if(session && session.id == this.id) {
+        // The Session Manager handles messages
+        session.handleMessage(eventData);
+      } else {
+        console.error('WS handleMessage error: Invalid or missing session', eventData);
+      }
     }
-    this.setSocket(socket)
+    $tw.Bob.wsManager.setSocket(socket)
   } catch (e) {
     //console.error(e)
     debugger;
@@ -191,27 +190,7 @@ WebSocketClient.prototype.reconnect = function(sessionId) {
   // Use the delay or the $tw.Bob.settings.reconnect.max value
   session.state.delay = Math.min(delay, this.settings.reconnect.max);
   // Recreate the socket
-  this.connect(sessionId);
-}
-
-WebSocketClient.prototype.handleMessage = function(eventData) {
-  // Check authentication
-  const authenticated = this.sessions.get(eventData.sessionId).authenticateMessage(eventData);
-  // Make sure we have a handler for the message type
-  if(!!authenticated && typeof this.messageHandlers[eventData.type] === 'function') {
-      // Acknowledge the message
-      $tw.utils.sendMessageAck(eventData);
-      // Determine the wiki instance
-      if(eventData.wikiname == $tw.wikiName) {
-          eventData.instance = $tw;
-      } else if($tw.Bob.Wikis.has(eventData.wikiName)) {
-          eventData.instance = $tw.Bob.Wikis.get(eventData.wikiName);
-      }
-      // Call the handler(s)
-      this.messageHandlers[eventData.type](eventData);
-  } else {
-      console.error('WS handleMessage error: No handler for message of type ', eventData.type);
-  }
+  this.connect(session);
 }
  
 /*
@@ -505,6 +484,12 @@ WebSocketClient.prototype.getSettings = function() {
   });
 }
 
-exports.WebSocketClient = WebSocketClient;
+if($tw.node) {
+  let URL = require('url'),
+  WebSocket = require('$:/plugins/OokTech/Bob/External/WS/ws.js');
+  exports.WebSocketClient = WebSocketClient;
+} else {
+  exports.WebSocketClient = WebSocketClient;
+}
 
 })();

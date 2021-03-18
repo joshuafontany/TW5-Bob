@@ -22,84 +22,93 @@ it will overwrite this file.
 \*/
 (function() {
 
-  /*jslint node: true, browser: true */
-  /*global $tw: false */
-  "use strict";
+/*jslint node: true, browser: true */
+/*global $tw: false */
+"use strict";
 
-  /* REQUIRED
-    When the handshake is confirmed the heartbeat timer starts. This tells us
-    if the connection to the server gets interrupted. The state is reset, 
-    and any unacknowledged messages are sent by "syncing" to the server.
-    This message handler updates the session token and client settings.
-    It is called directly after logging in, and then once an hour to
-    update the client access token.
-  */
-  exports.handshake = function(data) {debugger;
-    console.log(JSON.stringify(data, null, 4));
-    let session = $tw.Bob.wsClient.getSession(data.sessionId);
-    // Update the session token and tokenEOL
-    session.token = data.tokenRefresh;
-    session.tokenEOL = data.tokenEOL;
-    // Update the settings
-    $tw.Bob.settings = data.settings;
-    $tw.Bob.wsClient.settings.heartbeat = $tw.Bob.settings.heartbeat;
-    $tw.Bob.wsClient.settings.reconnect = $tw.Bob.settings.reconnect;
-    // Set the WS Session id to sessionStorage here
-    if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == session.id) {
-      window.sessionStorage.setItem("ws-adaptor-session",session.id);
-      // Clear the server warning
-      if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Server Warning`)) {
-        $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Server Warning`);
-      }
-    }
-    if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Session Warning/${session.id}`)) {
-      $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Session Warning/${session.id}`);
-    }
-    // Start a heartbeat
-    $tw.Bob.wsClient.heartbeat(session.id);
-    // Sync to the server
-    if(session.messages.entries().length > 0) {
-      $tw.Bob.wsClient.syncToServer(session.id);
-    }
-    // This is an array of tiddler titles, each title is a string.
-    const response = $tw.wiki.allTitles();
-    // Send the response JSON as a string.
-    let message = {
-      type: 'browserTiddlerList',
-      titles: response
-    };
-    console.log("handler-listTiddlers: should send list here")
-    $tw.Bob.wsClient.sendMessage(session.id,message);
+/* REQUIRED
+  The session handles incoming acks
+*/
+exports.ack = function(data) {
+  let session = $tw.Bob.wsManager.getSession(data.sessionId);
+  if(session) {
+    session.handleMesageAck(data);
   }
+}
 
-  /* REQUIRED MESSAGE HANDLER
-    This handles a ping from the server. The server and browser make sure they
-    are connected by sending pings periodically. Pings from servers are not
-    used in the heartbeat. The pong response echos back whatever was sent.
-  */
-  exports.ping = function(data) {
-    let message = {};
-    Object.keys(data).forEach(function(key) {
-      message[key] = data[key];
-    })
-    message.type = 'pong';
-    message.token = $tw.utils.getMessageToken();
-    message.wiki = $tw.wikiName;
-    // Send the response
-    $tw.Bob.wsClient.send(message);
+/* REQUIRED MESSAGE HANDLER
+  This handles a ping from the server. The server and browser make sure they
+  are connected by sending pings periodically. Pings from servers are not
+  used in the heartbeat. The pong response echos back whatever was sent.
+*/
+exports.ping = function(data) {
+  let message = {};
+  Object.keys(data).forEach(function(key) {
+    message[key] = data[key];
+  })
+  message.type = 'pong';
+  message.token = $tw.utils.getMessageToken();
+  message.wiki = $tw.wikiName;
+  // Send the response
+  $tw.Bob.wsClient.send(message);
+}
+  
+/* REQUIRED MESSAGE HANDLER
+  This handles the pong response of a client's ping. It is used as the 
+  heartbeat to ensure that the session to the server is still live.
+*/
+exports.pong = function(data) {
+  // If this pong is part of a heartbeat then send another heartbeat
+  if(data.id == "heartbeat") {
+    $tw.Bob.wsClient.heartbeat(data);
   }
-    
-  /* REQUIRED MESSAGE HANDLER
-    This handles the pong response of a client's ping. It is used as the 
-    heartbeat to ensure that the session to the server is still live.
-  */
-  exports.pong = function(data) {
-    // If this pong is part of a heartbeat then send another heartbeat
-    if(data.id == "heartbeat") {
-      $tw.Bob.wsClient.heartbeat(data);
+}
+
+/* REQUIRED
+  When the handshake is confirmed the heartbeat timer starts. This tells us
+  if the connection to the server gets interrupted. The state is reset, 
+  and any unacknowledged messages are sent by "syncing" to the server.
+  This message handler updates the session token and client settings.
+  It is called directly after logging in, and then once an hour to
+  update the client access token.
+*/
+exports.handshake = function(data) {
+  console.log(JSON.stringify(data, null, 2));
+  let session = $tw.Bob.wsManager.getSession(data.sessionId);
+  // Update the session token and tokenEOL
+  session.token = data.tokenRefresh;
+  session.tokenEOL = data.tokenEOL;
+  // Update the settings
+  $tw.Bob.settings = data.settings;
+  $tw.Bob.wsClient.settings.heartbeat = $tw.Bob.settings.heartbeat;
+  $tw.Bob.wsClient.settings.reconnect = $tw.Bob.settings.reconnect;
+  // Set the WS Session id to sessionStorage here
+  if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == session.id) {
+    window.sessionStorage.setItem("ws-adaptor-session",session.id);
+    // Clear the server warning
+    if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Server Warning`)) {
+      $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Server Warning`);
     }
   }
-
+  if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Session Warning/${session.id}`)) {
+    $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Session Warning/${session.id}`);
+  }
+  // Start a heartbeat
+  $tw.Bob.wsClient.heartbeat(session.id);
+  // Sync to the server
+  if(session.messages.entries().length > 0) {
+    $tw.Bob.wsClient.syncToServer(session.id);
+  }
+  // This is an array of tiddler titles, each title is a string.
+  const response = $tw.wiki.allTitles();
+  // Send the response JSON as a string.
+  let message = {
+    type: 'browserTiddlerList',
+    titles: response
+  };
+  console.log("handler-listTiddlers: should send list here")
+  session.sendMessage(message);
+}
   /*
     TODO - determine if we should sanitise the tiddler titles and field names
 

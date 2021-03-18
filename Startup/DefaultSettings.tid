@@ -46,15 +46,15 @@ title: $:/plugins/OokTech/Bob/DefaultSettings
   },
   "ws-client": {
     "heartbeat": {
-      "interval":1000, // default 1 sec heartbeats
-      "timeout":5000 // default 5 second heartbeat timeout
+      "interval":1000,
+      "timeout":5000
     },
     "reconnect": {
       "auto": true,
-      "initial": 100, // small initial increment
-      "decay": 1.5, // exponential decay d^n (number-of-retries)
-      "max": 10000, // maximum retry increment
-      "abort": 60000 // failure after this long
+      "initial": 100,
+      "decay": 1.5,
+      "max": 10000,
+      "abort": 60000
     }
   },
   "mimeMap": {

@@ -12,7 +12,7 @@ module-type: library
 "use strict";
 
 if($tw.node) {
-  const Server = require('$:/plugins/OokTech/Bob/External/WS/ws.js').Server,
+  const WebSocket = require('$:/plugins/OokTech/Bob/External/WS/ws.js'),
   { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('$:/plugins/OokTech/Bob/External/uuid/src/index.js');
 
 /*
@@ -20,14 +20,14 @@ if($tw.node) {
   options: 
 */
 function WebSocketServer(options) {
-  Object.assign(this, new Server(options));
+  Object.assign(this, new WebSocket.Server(options));
   // Set the event handlers
   this.on('listening',this.serverOpened);
   this.on('close',this.serverClosed);
   this.on('connection',this.handleConnection);
 }
 
-WebSocketServer.prototype = Object.create(Server.prototype);
+WebSocketServer.prototype = Object.create(WebSocket.Server.prototype);
 WebSocketServer.prototype.constructor = WebSocketServer;
 
 WebSocketServer.prototype.defaultVariables = {
@@ -60,16 +60,18 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
   $tw.Bob.wsManager.setSocket(socket);
   // Event handlers
   socket.on('message', function(event) {
+    let eventData
     try {
-      let eventData = JSON.parse(event);
-      if(eventData.sessionId == socket.id) {
-        // The Session Manager handles messages
-        $tw.Bob.wsManager.handleMesage(eventData);
-      } else {
-        $tw.Bob.logger.error('WS handleMessage error: Invalid or missing sessionId', eventData, {level:3});
-      }
+      eventData = JSON.parse(event);
     } catch (e) {
-        $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
+      $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
+    }
+    let session = $tw.Bob.wsManager.getSession(eventData.sessionId);
+    if(session && session.id == this.id) {
+      // The Session Manager handles messages
+      session.handleMessage(eventData);
+    } else {
+      $tw.Bob.logger.error('WS handleMessage error: Invalid or missing session', eventData, {level:3});
     }
   });
   socket.on('close', function(event) {
@@ -81,7 +83,7 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
   }
 }
 
-WebSocketManager.prototype.isAdmin = function(username) {
+WebSocketServer.prototype.isAdmin = function(username) {
   if(!!username && !!$tw.Bob.server) {
     return $tw.Bob.server.isAuthorized("admin",username);
   } else {
@@ -129,38 +131,20 @@ WebSocketServer.prototype.requestSession = function(state) {
   userSession.tokenEOL = eol.setMinutes(eol.getMinutes() + 1);
   userSession.token = uuid_v4();
   // Log the session in this.authorizedUsers or this.anonymousUsers
-  this.updateUser(userSession);
+  $tw.Bob.wsManager.updateUser(userSession);
   return userSession;
 }
 
-WebSocketServer.prototype.verifyUpgrade = function(state) {
-  let userSession;
-  if(this.hasSession(state.sessionId)) {
-      userSession = this.getSession(state.sessionId);
-      // username, ip, & wikiName must match (token is tested in the 'handshake')
-      if(
-          state.username == userSession.username
-          && state.ip == userSession.ip
-          && state.wikiName == userSession.wikiName
-      ) {
-          return state;
-      } else {
-          return false;
-      };
-  } else {
-      return false;
-  }
-}
-
-WebSocketServer.prototype.refreshSession = function(sessionId) {
-  let test = new Date(),
-      session = this.getSession(sessionId);
+WebSocketServer.prototype.refreshSession = function(session) {
+  let test = new Date();
   test.setMinutes(test.getMinutes() + 5);
   if(session.tokenEOL <= test) {
       let eol = new Date(session.tokenEOL);
       session.tokenEOL = eol.setHours(eol.getHours() + 1);
       session.token = uuid_v4();
   }
+  session.state.isAlive = true;
+  return session;
 }
 
 /*

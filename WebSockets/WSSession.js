@@ -69,29 +69,30 @@ WebSocketSession.prototype.initState = function() {
   This enqueues a message, then checks a session's socket readyState
   and attempts to send the message. The minimum message is:
   {
-    type: "message-type",
-    wikiName: "target-wiki"
+    type: "message-type"
   }
 */
 WebSocketSession.prototype.queueMessage = function(message,callback) {
   let ticket;
-  if(message.id && $tw.Bob.wsManager.hasTicket(message.id)) {
+  if($tw.Bob.wsManager.hasTicket(message.id)) {
     ticket = $tw.Bob.wsManager.getTicket(message.id);
   } else {
     message.id = this.getMessageId();
     ticket = {
-      message: message,
+      message: JSON.stringify(message),
       ctime: null,
-      ack: {},
-      callback: {}
+      ack: {}
     };
     $tw.Bob.wsManager.setTicket(ticket)
   }
-  ticket.ack[this.id] = false;
   if(!!callback && typeof callback == "function"){
-    ticket.callback[this.id] = callback;
+    ticket.ack[this.id] = function() {
+      return callback.bind(this);
+    };
+  } else {
+    ticket.ack[this.id] = false;
   }
-  this.sendMesage(message);
+  this.sendMessage(message);
 }
 
 /*
@@ -118,6 +119,7 @@ WebSocketSession.prototype.sendMessage = function(message) {
       token: this.token,
       userid: this.userid
     },message);
+    console.log(`'${message.sessionId}' ${message.id}:`, message.type);
     $tw.Bob.wsManager.getSocket(this.id).send(JSON.stringify(message));
   }
 }
@@ -135,7 +137,7 @@ WebSocketSession.prototype.handleMessage = function(eventData) {
     // Check authentication
     const authenticated = this.authenticateMessage(eventData),
       handler = (this.client)? $tw.Bob.wsManager.clientHandlers[eventData.type]: $tw.Bob.wsManager.serverHandlers[eventData.type];
-    console.log(`Received websocket message ${eventData.id}:`, eventData.type);
+    console.log(`'${eventData.sessionId}' ${eventData.id}:`, eventData.type);
     // Make sure we have a handler for the message type
     if(!!authenticated && typeof handler === 'function') {
         // The following messages do not need to be acknowledged
@@ -153,7 +155,7 @@ WebSocketSession.prototype.handleMessage = function(eventData) {
         // Call the handler
         handler(eventData);
     } else {
-        $tw.Bob.logger.error('WS handleMessage error: Unauthorized, or no handler for message of type ', eventData.type, {level:3});
+        console.error('WS handleMessage error: Unauthorized, or no handler for message of type ', eventData.type, {level:3});
     }
 }
 
@@ -165,7 +167,6 @@ WebSocketSession.prototype.sendMessageAck = function(id) {
     id: 'ack' + id,
     type: 'ack'
   }
-  console.log(`Sending ${message.id}`);
   this.sendMessage(ack);
 }
 
@@ -173,30 +174,36 @@ WebSocketSession.prototype.sendMessageAck = function(id) {
   This is the function for handling ack messages on both the server and
   client.
 
-  It takes an ack object as input and checks it against the message
+  It takes an ack message object as input and checks it against the message
   queue. If the queue contains a message with the same id as the ack
-  then the ack state for the session the ack came from is set
-  to true, and any associated callback function is called.
+  then the ack state for the session then any associated callback function is 
+  called and the ack for the session id is set to true.
 
   If all acks for the message in the queue are set to true than the ctime
   for that message is set to the current time so it can be properly
   removed later.
 */
-WebSocketSession.prototype.handleMessageAck = function(ack) {
-  let messageId = ack.id.slice(3),
+WebSocketSession.prototype.handleMessageAck = function(message) {
+  let messageId = message.id.slice(3),
     ticket = $tw.Bob.wsManager.getTicket(messageId);
   if(ticket) {
+    // Get a reference to the ack state
+    let ack = ticket.ack[this.id];
+    // If there is a callback, call it
+    if(!!ack && typeof ack == "function") {
+      debugger;
+      ack.call();
+    }
     // Set the message as acknowledged.
     ticket.ack[this.id] = true;
     // Check if all the expected acks have been received
-    const complete = Object.values(ticket.ack).indexOf(false) == -1;
+    const keys = Object.keys(ticket.ack),
+      complete = keys.filter(function(id) {
+      return ticket.ack[id] === true;
+    });
     // If acks have been received from all connections than set the ctime.
-    if(complete && !ticket.ctime) {
+    if(complete.length == keys.length && !ticket.ctime) {
       ticket.ctime = Date.now();
-    }
-    // If there is a callback, call it
-    if(!!ticket.callback[this.id]) {
-      ticket.calback[this.id](null, messageId)
     }
   } else {
     console.log("WS handleMessageAck error: no message found for id:", messageId);
