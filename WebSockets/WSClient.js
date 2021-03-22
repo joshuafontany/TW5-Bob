@@ -29,7 +29,7 @@ function WebSocketClient(options) {
   this.wiki = options.wiki || $tw.wiki;
   this.wikiName = options.wikiName || $tw.wikiName;
   // Setup the heartbeat settings placeholders (filled in by the 'handshake')
-  this.settings = options.settings || {
+  this.settings = {
     "heartbeat": {
       "interval":1000, // default 1 sec heartbeats
       "timeout":5000 // default 5 second heartbeat timeout
@@ -89,7 +89,7 @@ WebSocketClient.prototype.connect = function(session) {
     socket.onopen = function(event) {
       // Reset the state object
       session.initState();
-      console.log(`Opened socket to ${session.url.href}, id: ${this.id}`);
+      console.log(`Opened socket to ${session.url.href}`);
       // Request a "handshake" message to confirm the login token and initialise everything.
       const message = {
         type: 'handshake'
@@ -103,23 +103,35 @@ WebSocketClient.prototype.connect = function(session) {
       use a reconnect algorithm with exponential back-off and a maximum retry window.
       */
       let text, tiddler;
-      console.log(`Closed socket to ${session.url}`, JSON.stringify(event, null, 4));
+      console.log(`Closed socket to ${session.url.href}`);
       // Clear the ping timers
       clearTimeout(session.state.pingTimeout);
       clearTimeout(session.state.ping);
       // log the disconnection time & handle the message queue
-      session.state.disconnected = Date.now();
-    
+      session.state.disconnected = new Date().getTime();
+      if (!session.state.reconnecting) {
+        session.state.reconnecting = session.state.disconnected;
+      }
       // Error code <= 1000 means that the connection was closed normally.
-      if(!event.wasClean && event.code > 1000 && self.settings.reconnect.auto &&
+      if(event.code > 1000 && self.settings.reconnect.auto &&
         session.state.disconnected - session.state.reconnecting < self.settings.reconnect.abort) {
-        text = `''WARNING: You are no longer connected to the server (${session.url}).</br> Reconnecting (attempt ${session.state.attempts})...''`;
+        text = `''WARNING: You are no longer connected to the server (${session.url}).` + 
+        `Reconnecting (attempt ${session.state.attempts})...''`;
         // Reconnect here
         session.state.retryTimeout = setTimeout(function(){
-          self.reconnect(session.id);
+            // Log the attempt
+            session.state.reconnecting = new Date().getTime();
+            session.state.attempts++;
+            // Calculate the next exponential backoff delay
+            let delay = (Math.random()+0.5) * self.settings.reconnect.initial * Math.pow(self.settings.reconnect.decay, session.state.attempts);
+            // Use the delay or the $tw.Bob.settings.reconnect.max value
+            session.state.delay = Math.min(delay, self.settings.reconnect.max);
+            // Recreate the socket
+            self.connect(session);
           }, session.state.delay);
       } else {
-        text = `''WARNING: You are no longer connected to the server (${session.url}).</br>''<$button style='color:black;'>Reconnect <$action-reconnectwebsocket/><$action-navigate $to='$:/plugins/Bob/ConflictList'/></$button>`;
+        text = `''WARNING: You are no longer connected (${session.url}).` + 
+        `''<$button style='color:black;'>Reconnect <$action-reconnectwebsocket/><$action-navigate $to='$:/plugins/Bob/ConflictList'/></$button>`;
       }
       if(session.id == $tw.syncadaptor.sessionId) {
         text = `<div style='position:fixed;top:0px;width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>` + text + `</div>`;
@@ -153,13 +165,16 @@ WebSocketClient.prototype.connect = function(session) {
     socket.onmessage = function(event) {
       let eventData
       try {
-        eventData = JSON.parse(event);
+        if (typeof event == "string") {
+          eventData = JSON.parse(event);
+        } else if (!!event.data && typeof event.data == "string") {
+          eventData = JSON.parse(event.data);
+        }        
       } catch (e) {
         console.error("WS handleMessage parse error: ", e);
       }
       let session = $tw.Bob.wsManager.getSession(eventData.sessionId);
-      if(session && session.id == this.id) {
-        // The Session Manager handles messages
+      if(session && session.id == socket.id) {
         session.handleMessage(eventData);
       } else {
         console.error('WS handleMessage error: Invalid or missing session', eventData);
@@ -172,26 +187,6 @@ WebSocketClient.prototype.connect = function(session) {
     throw new Error(e);
   }
 }
-
-WebSocketClient.prototype.reconnect = function(sessionId) {
-  let session = this.getSession(sessionId);
-  if(!session || !session.url) {
-    console.error(`WebSocketClient.reconnect error: no url`)
-    return false;
-  }
-  // Timestamp the start time on reconnect attempts
-  if(!session.state.reconnecting){
-    session.state.reconnecting = new Date();
-  }
-  // Log the attempt
-  session.state.attempts++;
-  // Calculate the next exponential backoff delay
-  let delay = (Math.random()+0.5) * this.settings.reconnect.initial * Math.pow(this.settings.reconnect.decay, session.state.attempts);
-  // Use the delay or the $tw.Bob.settings.reconnect.max value
-  session.state.delay = Math.min(delay, this.settings.reconnect.max);
-  // Recreate the socket
-  this.connect(session);
-}
  
 /*
   If a heartbeat is not received within $tw.Bob.settings.heartbeat.timeout from
@@ -200,27 +195,29 @@ WebSocketClient.prototype.reconnect = function(sessionId) {
 WebSocketClient.prototype.heartbeat = function(data){
   if(data.sessionId) {
     console.log("heartbeat");
-    let session = this.getSession(data.sessionId),
-      socket = this.getSocket(data.sessionId);
-    // clear the ping timers
-    clearTimeout(session.state.pingTimeout);
-    clearTimeout(session.state.ping);
-    // Delay should be equal to the interval at which your server
-    // sends out pings plus a conservative assumption of the latency.  
-    session.state.pingTimeout = setTimeout(function() {
-      // Use `WebSocket#terminate()`, which immediately destroys the connection,
-      // instead of `WebSocket#close()`, which waits for the close timer.
-      socket.terminate();
-    }, this.settings.heartbeat.timeout + this.settings.heartbeat.interval);
-    // Send the next heartbeat ping after $tw.Bob.settings.heartbeat.interval ms
-    session.state.ping = setTimeout(function() {
-      socket.send(JSON.stringify({
-        type: 'ping',
-        id: 'heartbeat',
-        sessionId: data.sessionId,
-        wikiName: $tw.wikiName
-      }));
-    }, this.settings.heartbeat.interval);
+    let session = $tw.Bob.wsManager.getSession(data.sessionId),
+      socket = $tw.Bob.wsManager.getSocket(data.sessionId);
+    if(session) {
+      // clear the ping timers
+      clearTimeout(session.state.pingTimeout);
+      clearTimeout(session.state.ping);
+      // Delay should be equal to the interval at which your server
+      // sends out pings plus a conservative assumption of the latency.  
+      session.state.pingTimeout = setTimeout(function() {
+        // Use `WebSocket#terminate()`, which immediately destroys the connection,
+        // instead of `WebSocket#close()`, which waits for the close timer.
+        if (ocket && socket.readyState == 1) {
+          socket.terminate();
+        }
+      }, this.settings.heartbeat.timeout + this.settings.heartbeat.interval);
+      // Send the next heartbeat ping after $tw.Bob.settings.heartbeat.interval ms
+      session.state.ping = setTimeout(function() {
+        session.sendMessage({
+          type: 'ping',
+          id: 'heartbeat'
+        });
+      }, this.settings.heartbeat.interval); 
+    }
   }
 }
 

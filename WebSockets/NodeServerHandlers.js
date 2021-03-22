@@ -17,11 +17,8 @@ This handles messages sent to the node process.
 /* REQUIRED
   The session handles incoming acks
 */
-exports.ack = function(data) {
-  let session = $tw.Bob.wsManager.getSession(data.sessionId);
-  if(session) {
-    session.handleMesageAck(data);
-  }
+exports.ack = function(data,instance) {
+    this.handleMessageAck(data,instance);
 }
 
 /* REQUIRED
@@ -30,19 +27,10 @@ exports.ack = function(data) {
   It also echos back any data that was sent. This is used by the heartbeat to
   make sure that the server and browser are still connected.
 */
-exports.ping = function(data) {
-  let message = {};
-  Object.keys(data).forEach(function(key) {
-    message[key] = data[key];
-  })
-  message.type = 'pong';
-  message.id = "heartbeat";
+exports.ping = function(data,instance) {
   // When the server receives a ping it sends back a pong.
-  const response = JSON.stringify(message);
-  const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
-  if(connectionIndex) {
-    $tw.Bob.sessions[connectionIndex].socket.send(response);
-  }
+  let message = $tw.utils.extend(data,{type: 'pong'});
+  this.sendMessage(message);
 }
 
 /*
@@ -50,7 +38,7 @@ exports.ping = function(data) {
   to ensure that the connection to the server is still live. How do we use this in the
   server? Server to server communication?
 */
-exports.pong = function(data) {
+exports.pong = function(data,instance) {
   // Who did we ping?
 }
 
@@ -59,25 +47,20 @@ exports.pong = function(data) {
   update the access token. The server responds by confirming the handshake.
   Once confirmed, the client will start a heartbeat.
 */
-exports.handshake = function(data) {
-  let session = $tw.Bob.wsManager.getSession(data.sessionId);
-  if(new Date() <= session.tokenEOL) {
-    // Refresh the session token, detroying the login token if neccessary
-    session = $tw.Bob.wsServer.refreshSession(session);
-    // Respond to the initial "handshake" message to initialise everything.
-    let message = {
-      type: 'handshake',        
-      token: data.token, // Use the old token one last time
-      tokenRefresh: session.token, // Send the new token
-      tokenEOL: session.tokenEOL, // and the new tokenEOL
-      editingTiddlers: data.instance.wiki.getTiddlerText("$:/Bob/EditingTiddlers", ""), // send the current list of tiddlers being edited
-      settings: $tw.Bob.wsManager.getViewableSettings(state.sessionId),
-    };
-    session.queueMessage(message);
-  } else {
-    // Invalid login token, kill the socket
-    $tw.Bob.wsManager.deleteSocket(session.id);
-  }    
+exports.handshake = function(data,instance) {
+  // Refresh the session token, detroying the login token if neccessary
+  $tw.Bob.wsServer.refreshSession(this);
+  $tw.Bob.wsManager.setSession(this);
+  // Respond to the initial "handshake" message to initialise everything.
+  let message = {
+    type: 'handshake',        
+    token: data.token, // Use the old token one last time
+    tokenRefresh: this.token, // Send the new token
+    tokenEOL: this.tokenEOL, // and the new tokenEOL
+    editingTiddlers: instance.wiki.getTiddlerText("$:/Bob/EditingTiddlers", ""), // send the current list of tiddlers being edited
+    settings: $tw.Bob.wsManager.getViewableSettings(this.id),
+  };
+  this.queueMessage(message);
 }
 
   if(false) { // disable federation stuff now

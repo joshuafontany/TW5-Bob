@@ -215,7 +215,7 @@ ServerSide.loadWiki = function(wikiName, cb) {
       }
       */
       // Set the wiki as loaded
-      $tw.Bob.Wikis.set(wikiName,(wikiName == 'RootWiki')? true : instance);
+      $tw.Bob.Wikis.set(wikiName,(wikiName == 'RootWiki')? null : instance);
       $tw.hooks.invokeHook('wiki-loaded', wikiName);
     } catch(err) {
       if(typeof cb === 'function') {

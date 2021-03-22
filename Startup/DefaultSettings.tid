@@ -54,7 +54,7 @@ title: $:/plugins/OokTech/Bob/DefaultSettings
       "initial": 100,
       "decay": 1.5,
       "max": 10000,
-      "abort": 60000
+      "abort": 30000
     }
   },
   "mimeMap": {

@@ -3,22 +3,13 @@ title: $:/plugins/OokTech/Bob/ClientMessageHandlers.js
 type: application/javascript
 module-type: client-messagehandlers
 
-This handles messages sent to the wsClient (mostly in the browser).
+Handlers for messages sent to the wsClient (mostly in the browser).
 
-These are message handlers for messages sent to the client. If you want to
-add more functions the easiest way is to use this file as a template and make a
-new file that adds the files you want. To do this you need should copy
-everything until the line
+`this` is always the session object,
+`data` is the current message data,
+`instance` is the current $tw instance (if diffrent from the `RootWiki` $tw)
 
-exports.synchronous = true;
-
-Remember that the file has to end with
-
-})();
-
-to close the function that wraps the contents.
-Also change the title of the tiddler in the second line of the file, otherwise
-it will overwrite this file.
+$tw.Bob will always be at the root $tw object on both node and browser.
 \*/
 (function() {
 
@@ -29,11 +20,8 @@ it will overwrite this file.
 /* REQUIRED
   The session handles incoming acks
 */
-exports.ack = function(data) {
-  let session = $tw.Bob.wsManager.getSession(data.sessionId);
-  if(session) {
-    session.handleMesageAck(data);
-  }
+exports.ack = function(data,instance) {
+  this.handleMessageAck(data,instance);
 }
 
 /* REQUIRED MESSAGE HANDLER
@@ -41,23 +29,17 @@ exports.ack = function(data) {
   are connected by sending pings periodically. Pings from servers are not
   used in the heartbeat. The pong response echos back whatever was sent.
 */
-exports.ping = function(data) {
-  let message = {};
-  Object.keys(data).forEach(function(key) {
-    message[key] = data[key];
-  })
-  message.type = 'pong';
-  message.token = $tw.utils.getMessageToken();
-  message.wiki = $tw.wikiName;
-  // Send the response
-  $tw.Bob.wsClient.send(message);
+exports.ping = function(data,instance) {
+  // When the server receives a ping it sends back a pong.
+  let message = $tw.utils.extend(data,{type: 'pong'});
+  this.sendMessage(message);
 }
   
 /* REQUIRED MESSAGE HANDLER
   This handles the pong response of a client's ping. It is used as the 
   heartbeat to ensure that the session to the server is still live.
 */
-exports.pong = function(data) {
+exports.pong = function(data,instance) {
   // If this pong is part of a heartbeat then send another heartbeat
   if(data.id == "heartbeat") {
     $tw.Bob.wsClient.heartbeat(data);
@@ -72,32 +54,29 @@ exports.pong = function(data) {
   It is called directly after logging in, and then once an hour to
   update the client access token.
 */
-exports.handshake = function(data) {
-  console.log(JSON.stringify(data, null, 2));
-  let session = $tw.Bob.wsManager.getSession(data.sessionId);
-  // Update the session token and tokenEOL
-  session.token = data.tokenRefresh;
-  session.tokenEOL = data.tokenEOL;
-  // Update the settings
-  $tw.Bob.settings = data.settings;
-  $tw.Bob.wsClient.settings.heartbeat = $tw.Bob.settings.heartbeat;
-  $tw.Bob.wsClient.settings.reconnect = $tw.Bob.settings.reconnect;
+exports.handshake = function(data,instance) {
+  if(data.settings){
+    // Update the settings
+    $tw.Bob.settings = data.settings;
+    $tw.Bob.wsClient.settings = $tw.Bob.settings['ws-client'] || $tw.Bob.wsClient.settings;
+  }
   // Set the WS Session id to sessionStorage here
-  if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == session.id) {
-    window.sessionStorage.setItem("ws-adaptor-session",session.id);
+  if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == this.id) {
+    window.sessionStorage.setItem("ws-adaptor-session",this.id);
     // Clear the server warning
     if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Server Warning`)) {
       $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Server Warning`);
     }
-  }
-  if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Session Warning/${session.id}`)) {
-    $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Session Warning/${session.id}`);
+  } else {
+    if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Session Warning/${this.id}`)) {
+      $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Session Warning/${this.id}`);
+    }
   }
   // Start a heartbeat
-  $tw.Bob.wsClient.heartbeat(session.id);
+  $tw.Bob.wsClient.heartbeat(data);
   // Sync to the server
-  if(session.messages.entries().length > 0) {
-    $tw.Bob.wsClient.syncToServer(session.id);
+  if($tw.Bob.wsManager.tickets.entries().length > 0) {
+    $tw.Bob.wsClient.syncToServer(this.id);
   }
   // This is an array of tiddler titles, each title is a string.
   const response = $tw.wiki.allTitles();
@@ -107,7 +86,7 @@ exports.handshake = function(data) {
     titles: response
   };
   console.log("handler-listTiddlers: should send list here")
-  session.sendMessage(message);
+  //this.sendMessage(message);
 }
   /*
     TODO - determine if we should sanitise the tiddler titles and field names
@@ -447,12 +426,5 @@ exports.handshake = function(data) {
 	exports.profileList = function(data) {
 		console.log(data)
 	}
-
-  /*
-    For some messages we need an ack from the server to make sure that they
-    were received correctly. This removes the messages from the queue after
-    an ack is recevied.
-  */
-  exports.ack = $tw.utils.handleMessageAck;
 
 })();

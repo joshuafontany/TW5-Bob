@@ -250,9 +250,4 @@ This handles messages sent to the node process.
   }
   */
 
-  /*
-    This handles ack messages.
-  */
-  exports.ack = $tw.utils.handleMessageAck;
-
 })();

@@ -79,19 +79,21 @@ WebSocketSession.prototype.queueMessage = function(message,callback) {
   } else {
     message.id = this.getMessageId();
     ticket = {
+      id: message.id,
       message: JSON.stringify(message),
       ctime: null,
       ack: {}
     };
-    $tw.Bob.wsManager.setTicket(ticket)
   }
   if(!!callback && typeof callback == "function"){
     ticket.ack[this.id] = function() {
-      return callback.bind(this);
+      return callback.call();
     };
   } else {
-    ticket.ack[this.id] = false;
+    // Waiting = true
+    ticket.ack[this.id] = true;
   }
+  $tw.Bob.wsManager.setTicket(ticket);
   this.sendMessage(message);
 }
 
@@ -110,7 +112,7 @@ WebSocketSession.prototype.getMessageId = function() {
   return id;
 }
 
-// This returns sends a message if the socket is ready.
+// This sends a message if the socket is ready.
 WebSocketSession.prototype.sendMessage = function(message) {
   if($tw.Bob.wsManager.isReady(this.id)) {
     message = $tw.utils.extend({
@@ -119,17 +121,23 @@ WebSocketSession.prototype.sendMessage = function(message) {
       token: this.token,
       userid: this.userid
     },message);
-    console.log(`'${message.sessionId}' ${message.id}:`, message.type);
+    if (["ack", "ping", "pong"].indexOf(message.type) == -1) {
+      console.log(`['${message.sessionId}'] send-${message.id}:`, message.type);
+    }
     $tw.Bob.wsManager.getSocket(this.id).send(JSON.stringify(message));
   }
 }
 
 // This makes sure that the token sent allows the action on the wiki.
+// The message.session.id == socket.id has already been checked.
 WebSocketSession.prototype.authenticateMessage = function(eventData) {
-  return (
-    eventData.wikiName == this.wikiName && eventData.userid == this.userid  
-    && eventData.token == this.token && new Date() <= this.tokenEOL
+  let authed = (
+    eventData.wikiName == this.wikiName 
+    && eventData.userid == this.userid  
+    && eventData.token == this.token
   );
+  authed = (authed && new Date().getTime() <= this.tokenEOL);
+  return authed;
 }
 
 // The handle message function
@@ -137,37 +145,40 @@ WebSocketSession.prototype.handleMessage = function(eventData) {
     // Check authentication
     const authenticated = this.authenticateMessage(eventData),
       handler = (this.client)? $tw.Bob.wsManager.clientHandlers[eventData.type]: $tw.Bob.wsManager.serverHandlers[eventData.type];
-    console.log(`'${eventData.sessionId}' ${eventData.id}:`, eventData.type);
-    // Make sure we have a handler for the message type
-    if(!!authenticated && typeof handler === 'function') {
-        // The following messages do not need to be acknowledged
-        let noAck = ['ack', 'ping', 'pong'];
-        if(noAck.indexOf(eventData.type) == -1) {
-          // Acknowledge the message
-          this.sendMessageAck(eventData.id);
-        }
-        // Determine the wiki instance
-        if(eventData.wikiname == "RootWiki") {
-            eventData.instance = $tw;
-        } else if($tw.Bob.Wikis.has(eventData.eventName)) {
-            eventData.instance = $tw.Bob.Wikis.get(eventData.wikiName);
-        }
-        // Call the handler
-        handler(eventData);
-    } else {
-        console.error('WS handleMessage error: Unauthorized, or no handler for message of type ', eventData.type, {level:3});
+    if (!authenticated) {
+      // Invalid tokens, kill the socket
+      console.error(`WS handleMessage error: Unauthorized message of type ${eventData.type}`);
+      $tw.Bob.wsManager.deleteSocket(this.id);
+      return null;
     }
-}
-
-/*
-  This acknowledges that a message has been received.
-*/
-WebSocketSession.prototype.sendMessageAck = function(id) {
-  let ack = {
-    id: 'ack' + id,
-    type: 'ack'
-  }
-  this.sendMessage(ack);
+    // Make sure we have a handler for the message type
+    if(typeof handler === 'function') {
+      // If handshake, set the tokenRefresh before acking
+      if (this.client && eventData.type == "handshake" && !!eventData.tokenRefresh) {
+        this.token = eventData.tokenRefresh;
+        this.tokenEOL = eventData.tokenEOL;
+      }
+      // The following messages do not need to be acknowledged
+      let ack, noAck = ['ack', 'ping', 'pong'];
+      if(eventData.id && noAck.indexOf(eventData.type) == -1) {
+        console.log(`['${eventData.sessionId}'] handle-${eventData.id}:`, eventData.type);
+        // Acknowledge the message
+        ack = {
+          id: 'ack' + eventData.id,
+          type: 'ack'
+        }
+        this.sendMessage(ack);
+      }
+      // Determine the wiki instance
+      let instance = null;
+      if($tw.node && $tw.Bob.Wikis.has(eventData.wikiName)) {
+          instance = $tw.Bob.Wikis.get(eventData.wikiName);
+      }
+      // Call the handler
+      handler.call(this,eventData,instance||$tw);
+    } else {
+      console.error('WS handleMessage error: No handler for message of type ', eventData.type);
+    }
 }
 
 /*
@@ -183,7 +194,7 @@ WebSocketSession.prototype.sendMessageAck = function(id) {
   for that message is set to the current time so it can be properly
   removed later.
 */
-WebSocketSession.prototype.handleMessageAck = function(message) {
+WebSocketSession.prototype.handleMessageAck = function(message,instance) {
   let messageId = message.id.slice(3),
     ticket = $tw.Bob.wsManager.getTicket(messageId);
   if(ticket) {
@@ -191,22 +202,21 @@ WebSocketSession.prototype.handleMessageAck = function(message) {
     let ack = ticket.ack[this.id];
     // If there is a callback, call it
     if(!!ack && typeof ack == "function") {
-      debugger;
       ack.call();
     }
-    // Set the message as acknowledged.
-    ticket.ack[this.id] = true;
+    // Set the message as acknowledged (waiting == false).
+    ticket.ack[this.id] = false;
     // Check if all the expected acks have been received
     const keys = Object.keys(ticket.ack),
-      complete = keys.filter(function(id) {
-      return ticket.ack[id] === true;
+      waiting = keys.filter(function(id) {
+      return !!ticket.ack[id];
     });
     // If acks have been received from all connections than set the ctime.
-    if(complete.length == keys.length && !ticket.ctime) {
+    if(!waiting.length && !ticket.ctime) {
       ticket.ctime = Date.now();
     }
   } else {
-    console.log("WS handleMessageAck error: no message found for id:", messageId);
+    console.log("WS handleMessageAck error: no message found for id", messageId);
   }
 }
 

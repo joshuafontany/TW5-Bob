@@ -133,8 +133,12 @@ module-type: library TEST
 
   WebSocketManager.prototype.deleteSocket = function (sessionId) {
     if (this.hasSocket(sessionId)) {
-      let socket = this.getSocket(sessionID);
-      socket.terminate();
+      let socket = this.getSocket(sessionId);
+      if(!!socket.terminate) {
+        socket.terminate();
+      } else {
+        socket.close(4000, "Websocket closed by $tw.Bob.wsManager");
+      }
       this.sockets.delete(sessionId);
     }
   }
@@ -155,8 +159,8 @@ module-type: library TEST
   }
 
   WebSocketManager.prototype.setTicket = function (ticketData) {
-    if (ticketData.message.id) {
-      this.tcikets.set(ticketData.message.id, ticketData);
+    if (ticketData.id) {
+      this.tickets.set(ticketData.id, ticketData);
     }
   }
 
@@ -217,8 +221,7 @@ module-type: library TEST
       let session = this.getSession(sessionId);
       // section visible to anyone
       tempSettings.API = $tw.Bob.settings.API;
-      tempSettings.heartbeat = $tw.Bob.settings.heartbeat;
-      tempSettings.reconnect = $tw.Bob.settings.reconnect;
+      tempSettings['ws-client'] = $tw.Bob.settings['ws-client'];
       // Federation stuff is visible because you don't have to login to want to see
       // if federation is possible with a server
       tempSettings.enableFederation = $tw.Bob.settings.enableFederation;

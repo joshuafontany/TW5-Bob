@@ -54,7 +54,7 @@ WebSocketServer.prototype.serverClosed = function() {
   Session objects are defined in $:/plugins/OokTech/Bob/WSSession.js
 */
 WebSocketServer.prototype.handleConnection = function(socket,request,state) {
-  $tw.Bob.logger.log(`'${state.sessionId}': New client session from ip ${state.ip}`, {level:3});
+  $tw.Bob.logger.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`, {level:3});
   // Save the socket id
   socket.id = state.sessionId;
   $tw.Bob.wsManager.setSocket(socket);
@@ -68,14 +68,13 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
     }
     let session = $tw.Bob.wsManager.getSession(eventData.sessionId);
     if(session && session.id == this.id) {
-      // The Session Manager handles messages
       session.handleMessage(eventData);
     } else {
       $tw.Bob.logger.error('WS handleMessage error: Invalid or missing session', eventData, {level:3});
     }
   });
   socket.on('close', function(event) {
-    $tw.Bob.logger.log(`Closed connection: ${socket.id} `+JSON.stringify(socket._peername, null, 4));
+    $tw.Bob.logger.log(`['${socket.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
   });
   // Federation here? Why?
   if(false && $tw.node && $tw.Bob.settings.enableFederation === 'yes') {
@@ -127,20 +126,20 @@ WebSocketServer.prototype.requestSession = function(state) {
   }
   // Set a new login token and login tokenEOL. Only valid for 60 seconds.
   // These will be replaced with a session token during the "handshake".
-  let eol = new Date();
-  userSession.tokenEOL = eol.setMinutes(eol.getMinutes() + 1);
+  let eol = new Date().getTime() + (1000*60);
+  userSession.tokenEOL = new Date(eol).getTime();
   userSession.token = uuid_v4();
   // Log the session in this.authorizedUsers or this.anonymousUsers
+  $tw.Bob.wsManager.setSession(userSession);
   $tw.Bob.wsManager.updateUser(userSession);
   return userSession;
 }
 
 WebSocketServer.prototype.refreshSession = function(session) {
-  let test = new Date();
-  test.setMinutes(test.getMinutes() + 5);
+  let test = new Date().getTime() + (1000*60*5);
   if(session.tokenEOL <= test) {
-      let eol = new Date(session.tokenEOL);
-      session.tokenEOL = eol.setHours(eol.getHours() + 1);
+      let eol = new Date(session.tokenEOL).getTime() + (1000*60*60);
+      session.tokenEOL = new Date(eol).getTime();
       session.token = uuid_v4();
   }
   session.state.isAlive = true;
