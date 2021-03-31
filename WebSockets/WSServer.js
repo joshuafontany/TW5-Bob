@@ -55,27 +55,33 @@ WebSocketServer.prototype.serverClosed = function() {
 */
 WebSocketServer.prototype.handleConnection = function(socket,request,state) {
   $tw.Bob.logger.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`, {level:3});
-  // Save the socket id
+  // Set the socket id
   socket.id = state.sessionId;
-  $tw.Bob.wsManager.setSocket(socket);
   // Event handlers
-  socket.on('message', function(event) {
-    let eventData
-    try {
-      eventData = JSON.parse(event);
-    } catch (e) {
-      $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
-    }
-    let session = $tw.Bob.wsManager.getSession(eventData.sessionId);
-    if(session && session.id == this.id) {
-      session.handleMessage(eventData);
-    } else {
-      $tw.Bob.logger.error('WS handleMessage error: Invalid or missing session', eventData, {level:3});
-    }
-  });
   socket.on('close', function(event) {
     $tw.Bob.logger.log(`['${socket.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
   });
+  socket.on('message', function(event) {
+    let parsed;
+    try {
+      parsed = JSON.parse(event);
+    } catch (e) {
+      $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
+    }
+    let eventData = parsed || event;
+    if(eventData.sessionId && eventData.sessionId == this.id) {
+      let session = $tw.Bob.wsManager.getSession(eventData.sessionId);
+      if(session) {
+        session.handleMessage(eventData);
+      } else {
+        console.error('WS handleMessage error: Invalid or missing session', JSON.stringify(eventData,null,4));
+      }
+    } else {
+      console.error('WS handleMessage error: Invalid message', JSON.stringify(eventData,null,4));
+    }
+  });
+  // Save the socket
+  $tw.Bob.wsManager.setSocket(socket);
   // Federation here? Why?
   if(false && $tw.node && $tw.Bob.settings.enableFederation === 'yes') {
     $tw.Bob.Federation.updateConnections();

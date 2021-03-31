@@ -17,21 +17,11 @@ exports.name = "BobStartup";
 exports.before = ["startup"];
 exports.synchronous = true;
 
-const WebSocketManager = require('$:/plugins/OokTech/Bob/WSManager.js').WebSocketManager,
-WebSocketClient = require('$:/plugins/OokTech/Bob/WSClient.js').WebSocketClient;
+const Bob = require('$:/plugins/OokTech/Bob/Bob.js').Bob;
 
 exports.startup = function() {
-  // Initialise objects
-  $tw.Bob = $tw.Bob || {};
-  $tw.Bob.logger = $tw.Bob.logger || {};
-  $tw.Bob.version = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob').fields.version;
-  $tw.Bob.ExcludeFilter = $tw.wiki.getTiddlerText('$:/plugins/OokTech/Bob/ExcludeSync');
-  // Get the name for this wiki for websocket messages
-  $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", "");
-  // Always setup the WebSocketManager & the WebSocketClient
-  let managerSerialized = JSON.parse("{}");
-  $tw.Bob.wsManager = new WebSocketManager(managerSerialized);
-  $tw.Bob.wsClient = new WebSocketClient();   
+  // Initialise Bob
+  $tw.Bob = new Bob();  
   // Polyfill because IE uses old javascript
   if(!String.prototype.startsWith) {
     String.prototype.startsWith = function(search, pos) {

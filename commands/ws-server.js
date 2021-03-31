@@ -35,20 +35,10 @@ Command.prototype.execute = function() {
   let self = this;
   if(!$tw.boot.wikiTiddlersPath) {
     $tw.utils.warning("Warning: Wiki folder '" + $tw.boot.wikiPath + "' does not exist or is missing a tiddlywiki.info file");
+    return;
   }
-  // Initialise node specific Bob objects
-  $tw.Bob.Wikis = $tw.Bob.Wikis || new Map();
-  // Initialise the scriptQueue objects ???
-  $tw.Bob.scriptQueue = {};
-  $tw.Bob.scriptActive = {};
-  $tw.Bob.childproc = false;
-  // Init ServerSide utils
-  $tw.ServerSide = $tw.ServerSide || require('$:/plugins/OokTech/Bob/ServerSide.js');
-  // Initialise the $tw.Bob.settings object & load the user settings
-  $tw.Bob.settings = JSON.parse($tw.wiki.getTiddler('$:/plugins/OokTech/Bob/DefaultSettings').fields.text || "{}");
-  $tw.ServerSide.loadSettings($tw.Bob.settings,$tw.boot.wikiPath);
-  // Load the RootWiki
-  $tw.ServerSide.loadWiki("RootWiki");
+  // Initialise Bob on node
+  $tw.Bob.serverSide();
   // The single-file saver components
   if($tw.Bob.settings.enableBobSaver !== 'no') {
     let options = {

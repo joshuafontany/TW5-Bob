@@ -20,8 +20,8 @@ This handles messages sent to the node process.
     exist in the browser version of the wiki. This is different than the list of
     all tiddlers in files.
   */
-  exports.browserTiddlerList = function(data) {
-    // Save the list of tiddlers in the browser as part of the $tw object so it
+  exports.clientTiddlerList = function(data,instance) {
+    // Save the list of tiddlers in the browser as part of the session so it
     // can be used elsewhere.
     const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
     $tw.BrowserTiddlerList[connectionIndex] = data.titles;

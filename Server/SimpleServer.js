@@ -288,7 +288,7 @@ SimpleServer.prototype.addWikiRoutes = function(inputObject,prefix) {
           self.addRoute(routeDefinition(fullName));
         }
       });
-      $tw.ServerSide.loadWiki(fullName);
+      $tw.Bob.loadWiki(fullName);
       //$tw.Bob.logger.log("Added route " + String(new RegExp('^\/' + fullName + '\/?$')), {level:1})
       console.log("Added route " + String(new RegExp('^\/' + fullName + '\/?$')))
       // recurse!

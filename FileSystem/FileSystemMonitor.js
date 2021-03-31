@@ -109,7 +109,7 @@ exports.startup = function() {
                     newTitle = path.dirname(fileInfo.filepath);
                     const existingTiddler = $tw.Bob.Wikis[prefix].wiki.getTiddler(title);
                     // Load the tiddler from the wiki, check if they are different (non-existent is changed)
-                    if($tw.utils.TiddlerHasChanged(existingTiddler, {fields: tiddlerObject.tiddlers[0]})) {
+                    if($tw.Bob.tiddlerHasChanged(existingTiddler, {fields: tiddlerObject.tiddlers[0]})) {
                       // Rename the file
                       // If $:/config/FileSystemPaths is used than the folder and
                       // newTitle may overlap.

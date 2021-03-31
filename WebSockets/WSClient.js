@@ -94,7 +94,7 @@ WebSocketClient.prototype.connect = function(session) {
       const message = {
         type: 'handshake'
       };
-      session.queueMessage(message, function(){ console.log("Handshake ack recieved from", session.url.href)});
+      session.sendMessage(message, function(){ console.log("Handshake ack recieved from", session.url.href)});
     };
     // On Close
     socket.onclose = function(event) {
@@ -163,28 +163,33 @@ WebSocketClient.prototype.connect = function(session) {
     };
     // On Message
     socket.onmessage = function(event) {
-      let eventData
+      let parsed;
       try {
         if (typeof event == "string") {
-          eventData = JSON.parse(event);
+          parsed = JSON.parse(event);
         } else if (!!event.data && typeof event.data == "string") {
-          eventData = JSON.parse(event.data);
+          parsed = JSON.parse(event.data);
         }        
       } catch (e) {
-        console.error("WS handleMessage parse error: ", e);
+        $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
       }
-      let session = $tw.Bob.wsManager.getSession(eventData.sessionId);
-      if(session && session.id == socket.id) {
-        session.handleMessage(eventData);
+      let eventData = parsed || event;
+      if(eventData.sessionId && eventData.sessionId == this.id) {
+        let session = $tw.Bob.wsManager.getSession(eventData.sessionId);
+        if(session) {
+          session.handleMessage(eventData);
+        } else {
+          console.error('WS handleMessage error: Invalid or missing session', JSON.stringify(eventData,null,4));
+        }
       } else {
-        console.error('WS handleMessage error: Invalid or missing session', eventData);
+        console.error('WS handleMessage error: Invalid message', JSON.stringify(eventData,null,4));
       }
     }
     $tw.Bob.wsManager.setSocket(socket)
   } catch (e) {
-    //console.error(e)
+    console.error(e)
     debugger;
-    throw new Error(e);
+    //throw new Error(e);
   }
 }
  
@@ -204,15 +209,13 @@ WebSocketClient.prototype.heartbeat = function(data){
       // Delay should be equal to the interval at which your server
       // sends out pings plus a conservative assumption of the latency.  
       session.state.pingTimeout = setTimeout(function() {
-        // Use `WebSocket#terminate()`, which immediately destroys the connection,
-        // instead of `WebSocket#close()`, which waits for the close timer.
-        if (ocket && socket.readyState == 1) {
-          socket.terminate();
+        if(socket && socket.readyState == 1) {
+          socket.close(4000, `['${socket.id}'] Websocket closed by session.state.pingTimeout`);
         }
       }, this.settings.heartbeat.timeout + this.settings.heartbeat.interval);
       // Send the next heartbeat ping after $tw.Bob.settings.heartbeat.interval ms
       session.state.ping = setTimeout(function() {
-        session.sendMessage({
+        session.send({
           type: 'ping',
           id: 'heartbeat'
         });

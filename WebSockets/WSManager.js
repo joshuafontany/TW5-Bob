@@ -134,11 +134,7 @@ module-type: library TEST
   WebSocketManager.prototype.deleteSocket = function (sessionId) {
     if (this.hasSocket(sessionId)) {
       let socket = this.getSocket(sessionId);
-      if(!!socket.terminate) {
-        socket.terminate();
-      } else {
-        socket.close(4000, "Websocket closed by $tw.Bob.wsManager");
-      }
+      socket.close(4000, `['${socket.id}'] Websocket closed by $tw.Bob.wsManager`);
       this.sockets.delete(sessionId);
     }
   }

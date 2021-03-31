@@ -11,83 +11,83 @@ Handlers for messages sent to the wsClient (mostly in the browser).
 
 $tw.Bob will always be at the root $tw object on both node and browser.
 \*/
-(function() {
+(function () {
 
-/*jslint node: true, browser: true */
-/*global $tw: false */
-"use strict";
+  /*jslint node: true, browser: true */
+  /*global $tw: false */
+  "use strict";
 
-/* REQUIRED
-  The session handles incoming acks
-*/
-exports.ack = function(data,instance) {
-  this.handleMessageAck(data,instance);
-}
+  /* REQUIRED
+    The session handles incoming acks
+  */
+  exports.ack = function (data,instance) {
+    this.handleMessageAck(data,instance);
+  }
 
-/* REQUIRED MESSAGE HANDLER
-  This handles a ping from the server. The server and browser make sure they
-  are connected by sending pings periodically. Pings from servers are not
-  used in the heartbeat. The pong response echos back whatever was sent.
-*/
-exports.ping = function(data,instance) {
-  // When the server receives a ping it sends back a pong.
-  let message = $tw.utils.extend(data,{type: 'pong'});
-  this.sendMessage(message);
-}
-  
-/* REQUIRED MESSAGE HANDLER
-  This handles the pong response of a client's ping. It is used as the 
-  heartbeat to ensure that the session to the server is still live.
-*/
-exports.pong = function(data,instance) {
-  // If this pong is part of a heartbeat then send another heartbeat
-  if(data.id == "heartbeat") {
+  /* REQUIRED MESSAGE HANDLER
+    This handles a ping from the server. The server and browser make sure they
+    are connected by sending pings periodically. Pings from servers are not
+    used in the heartbeat. The pong response echos back whatever was sent.
+  */
+  exports.ping = function (data,instance) {
+    // When the server receives a ping it sends back a pong.
+    let message = $tw.utils.extend(data, { type: 'pong' });
+    this.send(message);
+  }
+
+  /* REQUIRED MESSAGE HANDLER
+    This handles the pong response of a client's ping. It is used as the 
+    heartbeat to ensure that the session to the server is still live.
+  */
+  exports.pong = function (data,instance) {
+    // If this pong is part of a heartbeat then send another heartbeat
+    if (data.id == "heartbeat") {
+      $tw.Bob.wsClient.heartbeat(data);
+    }
+  }
+
+  /* REQUIRED
+    When the handshake is confirmed the heartbeat timer starts. This tells us
+    if the connection to the server gets interrupted. The state is reset, 
+    and any unacknowledged messages are sent by "syncing" to the server.
+    This message handler updates the session token and client settings.
+    It is called directly after logging in, and then once an hour to
+    update the client access token.
+  */
+  exports.handshake = function (data,instance) {
+    if(data.settings) {
+      // Update the settings
+      $tw.Bob.settings = data.settings;
+      $tw.Bob.wsClient.settings = $tw.Bob.settings['ws-client'] || $tw.Bob.wsClient.settings;
+    }
+    // Set the WS Session id to sessionStorage here
+    if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == this.id) {
+      window.sessionStorage.setItem("ws-adaptor-session", this.id);
+      // Clear the server warning
+      if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Server Warning`)) {
+        $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Server Warning`);
+      }
+    } else {
+      if(instance.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Session Warning/${this.id}`)) {
+        instance.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Session Warning/${this.id}`);
+      }
+    }
+    // Start a heartbeat
     $tw.Bob.wsClient.heartbeat(data);
+    // Sync to the server
+    if ($tw.Bob.wsManager.tickets.entries().length > 0) {
+      $tw.Bob.wsClient.syncToServer(this.id);
+    }
+    // This is an array of tiddler titles, each title is a string.
+    const response = instance.wiki.allTitles();
+    // Send the response JSON as a string.
+    let message = {
+      type: 'clientTiddlerList',
+      titles: response
+    };
+    this.sendMessage(message);
   }
-}
 
-/* REQUIRED
-  When the handshake is confirmed the heartbeat timer starts. This tells us
-  if the connection to the server gets interrupted. The state is reset, 
-  and any unacknowledged messages are sent by "syncing" to the server.
-  This message handler updates the session token and client settings.
-  It is called directly after logging in, and then once an hour to
-  update the client access token.
-*/
-exports.handshake = function(data,instance) {
-  if(data.settings){
-    // Update the settings
-    $tw.Bob.settings = data.settings;
-    $tw.Bob.wsClient.settings = $tw.Bob.settings['ws-client'] || $tw.Bob.wsClient.settings;
-  }
-  // Set the WS Session id to sessionStorage here
-  if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == this.id) {
-    window.sessionStorage.setItem("ws-adaptor-session",this.id);
-    // Clear the server warning
-    if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Server Warning`)) {
-      $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Server Warning`);
-    }
-  } else {
-    if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Session Warning/${this.id}`)) {
-      $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Session Warning/${this.id}`);
-    }
-  }
-  // Start a heartbeat
-  $tw.Bob.wsClient.heartbeat(data);
-  // Sync to the server
-  if($tw.Bob.wsManager.tickets.entries().length > 0) {
-    $tw.Bob.wsClient.syncToServer(this.id);
-  }
-  // This is an array of tiddler titles, each title is a string.
-  const response = $tw.wiki.allTitles();
-  // Send the response JSON as a string.
-  let message = {
-    type: 'browserTiddlerList',
-    titles: response
-  };
-  console.log("handler-listTiddlers: should send list here")
-  //this.sendMessage(message);
-}
   /*
     TODO - determine if we should sanitise the tiddler titles and field names
 
@@ -104,70 +104,45 @@ exports.handshake = function(data,instance) {
       }
     }
   */
-  exports.saveTiddler = function(data) {
-    // Ignore the message if it isn't for this wiki
-    if(data.wiki === $tw.wikiName) {
-      if(data.tiddler) {
-        // The title must exist and must be a string, everything else is optional
-        if(data.tiddler.fields) {
-          if(typeof data.tiddler.fields.title === 'string') {
-            // if the tiddler exists already only update it if the update is
-            // different than the existing one.
-            const changed = $tw.utils.TiddlerHasChanged(data.tiddler, $tw.wiki.getTiddler(data.tiddler.fields.title));
-            if(changed) {
-              $tw.wiki.addTiddler(new $tw.Tiddler(data.tiddler.fields));
-              /* Not needed as we are using a syncer for each wiki?
-              // Set the change count in the syncer so that the syncer doesn't save the tiddler again.
-              if($tw.syncer.tiddlerInfo[data.tiddler.fields.title]) {
-                $tw.syncer.tiddlerInfo[data.tiddler.fields.title].changeCount = $tw.wiki.getChangeCount(data.tiddler.fields.title);
-								$tw.syncer.tiddlerInfo[data.tiddler.fields.title].timestampLastSaved = new Date();
-              } else {
-                $tw.syncer.tiddlerInfo[data.tiddler.fields.title] = {
-									changeCount: $tw.wiki.getChangeCount(data.tiddler.fields.title),
-									adaptorInfo: "",
-									revision: undefined
-								}
-              }
-              */
-            }
-          } else {
-            console.log('Invalid tiddler title');
-          }
-        } else {
-          console.log("No tiddler fields given");
-        }
-      } else {
-        console.log('No tiddler')
+  exports.saveTiddler = function (data,instance) {
+    if(data.tiddler && data.tiddler.fields
+      && typeof data.tiddler.fields.title === 'string') {
+      // The title must exist and must be a string, everything else is optional
+      // if the tiddler exists already only update it if the update is
+      // different than the existing one.
+      const changed = $tw.Bob.tiddlerHasChanged(data.tiddler,instance.wiki.getTiddler(data.tiddler.fields.title));
+      if (changed) {
+        instance.syncer.storeTiddler(data.tiddler.fields);
       }
+    } else {
+      console.error(`['${this.id}'] Save Tiddler error: Invalid tiddler`)
     }
   }
 
   /*
-    When the browser receive a loaded tiddler from the server,
+    When the client receive a "loaded" tiddler from the server,
     it is handled by the syncer.
   */
-  exports.loadTiddler = function(data) {
+  exports.loadTiddler = function (data,instance) {
     // Update the info stored about this tiddler
-    if(data.tiddler.fields) {
-      $tw.syncer.storeTiddler(data.tiddler.fields);
+    if (data.tiddler && data.tiddler.fields
+      && typeof data.tiddler.fields.title === 'string') {
+      instance.syncer.storeTiddler(data.tiddler.fields);
+    } else {
+      console.error(`['${this.id}'] Load Tiddler error: Invalid tiddler`)
     }
   }
 
   /*
-    This message handles the deleteTiddler message for the browser. Note that
-    this removes the tiddler from the wiki in the browser, but it does not
-    delete the .tid file from the node server if you are running tiddlywiki in
-    node. If you are running without node than this function is equavalient to
-    deleting the tiddler.
+    This message handles the deleteTiddler message for the client. Note that
+    this removes the tiddler from the client wiki in the browser and on node.
   */
-  exports.deleteTiddler = function(data) {
-    if(data.wiki === $tw.wikiName) {
-      data.tiddler = data.tiddler || {};
-      data.tiddler.fields = data.tiddler.fields || {};
-      const title = data.tiddler.fields.title;
-      if(title) {
-        $tw.wiki.deleteTiddler(title);
-      }
+  exports.deleteTiddler = function (data,instance) {
+    if (data.tiddler && data.tiddler.fields
+      && typeof data.tiddler.fields.title === 'string') {
+      instance.wiki.deleteTiddler(title);
+    } else {
+      console.error(`['${this.id}'] Delete Tiddler error: Invalid tiddler`)
     }
   }
 
@@ -176,51 +151,46 @@ exports.handshake = function(data,instance) {
     'skinny-tiddlers' event with the received tiddlers.
     It is handled by the syncadaptor.
   */
-  exports.skinnyTiddlers = function(data) {
-    const skinnyTiddlers = new CustomEvent('skinny-tiddlers', {bubbles: true, detail: data.tiddlers || []})
-    $tw.rootWidget.dispatchEvent(skinnyTiddlers)
+  exports.skinnyTiddlers = function (data,instance) {
+    const skinnyTiddlers = new CustomEvent('skinny-tiddlers', { bubbles: true, detail: data.tiddlers || [] })
+    instance.rootWidget.dispatchEvent(skinnyTiddlers)
   }
 
   /*
     This is for updating the tiddlers currently being edited. It needs a
     special handler to support multi-wikis.
   */
-  exports.updateEditingTiddlers = function(data) {
+  exports.updateEditingTiddlers = function (data) {
     // make sure there is actually a list sent
-    if(data.list) {
-        const listField = $tw.utils.stringifyList(data.list);
-        // Make the tiddler fields
-        const tiddlerFields = {
-          title: "$:/state/Bob/EditingTiddlers",
-          list: listField
-        };
-        // Add the tiddler
-        $tw.wiki.addTiddler(new $tw.Tiddler(tiddlerFields));
+    if (data.list) {
+      const listField = $tw.utils.stringifyList(data.list);
+      // Make the tiddler fields
+      const tiddlerFields = {
+        title: "$:/state/Bob/EditingTiddlers",
+        list: listField
+      };
+      // Add the tiddler
+      $tw.wiki.addTiddler(new $tw.Tiddler(tiddlerFields));
     } else {
-      console.log("No tiddler list given", {level:2});
+      console.log("No tiddler list given", { level: 2 });
     }
   }
 
   /*
-    This message asks the browser to send a list of all tiddlers back to the
+    This message asks the client to send a list of all tiddlers back to the
     node process.
-    This is useful for when you are trying to sync the browser and the file
+    This is useful for when you are trying to sync the client and the remote file
     system or if you only want a sub-set of existing tiddlers in the browser.
   */
-  exports.listTiddlers = function(data) {
+  exports.listTiddlers = function (data) {
     const connectionIndex = data.source_connection;
     // This is an array of tiddler titles, each title is a string.
     const response = $tw.wiki.allTitles();
-    // Send the response JSON as a string.
-    const token = $tw.utils.getMessageToken();//localStorage.getItem('ws-token')
     let message = {
-      type: 'browserTiddlerList',
-      titles: response,
-      token: token,
-      wiki: $tw.wiki.getTiddlerText('$:/WikiName')
+      type: 'clientTiddlerList',
+      titles: response
     };
-    console.log("handler-listTiddlers: should send list here")
-    //$tw.Bob.sendToServer(connectionIndex, message);
+    this.sendMessage(message);
   }
 
   /*
@@ -230,24 +200,24 @@ exports.handshake = function(data,instance) {
     It saves the server version under the normal title and saves the in-browser
     version with the prefix $:/state/Bob/Conflicts/
   */
-  exports.conflict = function(data) {
-    if(data.tiddler) {
-      if(data.tiddler.fields) {
+  exports.conflict = function (data) {
+    if (data.tiddler) {
+      if (data.tiddler.fields) {
         data.tiddler.fields.created = $tw.utils.stringifyDate(new Date(data.tiddler.fields.created))
         data.tiddler.fields.modified = $tw.utils.stringifyDate(new Date(data.tiddler.fields.modified))
         let wikiTiddler = $tw.wiki.getTiddler(data.tiddler.fields.title);
-        if(wikiTiddler) {
+        if (wikiTiddler) {
           wikiTiddler = JSON.parse(JSON.stringify(wikiTiddler));
           wikiTiddler.fields.modified = $tw.utils.stringifyDate(new Date(wikiTiddler.fields.modified))
           wikiTiddler.fields.created = $tw.utils.stringifyDate(new Date(wikiTiddler.fields.created))
           // Only add the tiddler if it is different
-          if($tw.utils.TiddlerHasChanged(data.tiddler, wikiTiddler)) {
+          if ($tw.Bob.tiddlerHasChanged(data.tiddler, wikiTiddler)) {
             const newTitle = '$:/state/Bob/Conflicts/' + data.tiddler.fields.title;
-            $tw.wiki.importTiddler(new $tw.Tiddler(wikiTiddler.fields, {title: newTitle}));
+            $tw.wiki.importTiddler(new $tw.Tiddler(wikiTiddler.fields, { title: newTitle }));
             // we have conflicts so open the conflict list tiddler
             let storyList = $tw.wiki.getTiddler('$:/StoryList').fields.list
             storyList = "$:/plugins/OokTech/Bob/ConflictList " + $tw.utils.stringifyList(storyList)
-            $tw.wiki.addTiddler({title: "$:/StoryList", text: "", list: storyList},$tw.wiki.getModificationFields());
+            $tw.wiki.addTiddler({ title: "$:/StoryList", text: "", list: storyList }, $tw.wiki.getModificationFields());
           }
         } else {
           // If the tiddler doesn't actually have a conflicting version than
@@ -262,12 +232,12 @@ exports.handshake = function(data,instance) {
     Import as a temporary tiddler so it can be saved or deleted by the person
     using the wiki
   */
-  exports.import = function(data) {
-    console.log('import', data.tiddler.fields.title, {level:2})
+  exports.import = function (data) {
+    console.log('import', data.tiddler.fields.title, { level: 2 })
     data.tiddler.fields.created = $tw.utils.stringifyDate(new Date(data.tiddler.fields.created))
     data.tiddler.fields.modified = $tw.utils.stringifyDate(new Date(data.tiddler.fields.modified))
     const newTitle = '$:/state/Bob/Import/' + data.tiddler.fields.title;
-    $tw.wiki.importTiddler(new $tw.Tiddler(data.tiddler.fields, {title: newTitle}));
+    $tw.wiki.importTiddler(new $tw.Tiddler(data.tiddler.fields, { title: newTitle }));
     // we have conflicts so open the conflict list tiddler
     let storyList = $tw.wiki.getTiddler('$:/StoryList').fields.list
     storyList = "$:/plugins/OokTech/Bob/ImportList " + $tw.utils.stringifyList(storyList)
@@ -275,18 +245,18 @@ exports.handshake = function(data,instance) {
       title: "$:/StoryList",
       text: "",
       list: storyList
-    },$tw.wiki.getModificationFields());
+    }, $tw.wiki.getModificationFields());
   }
 
   /*
     Download the file in the message data
   */
-  exports.downloadFile = function(data) {
-    if(data) {
+  exports.downloadFile = function (data) {
+    if (data) {
       const text = $tw.wiki.renderTiddler("text/plain", "$:/core/save/all", {});
       let a = document.createElement('a');
       a.download = 'index.html';
-      const thisStr = 'data:text/html;base64,'+window.btoa(unescape(encodeURIComponent(text)));
+      const thisStr = 'data:text/html;base64,' + window.btoa(unescape(encodeURIComponent(text)));
       a.setAttribute('href', thisStr);
       document.body.appendChild(a);
       a.click();
@@ -297,8 +267,8 @@ exports.handshake = function(data,instance) {
   /*
     Set the viewable wikis
   */
-  exports.setViewableWikis = function(data) {
-    if(data.list) {
+  exports.setViewableWikis = function (data) {
+    if (data.list) {
       const fields = {
         title: '$:/state/ViewableWikis',
         list: data.list
@@ -311,30 +281,30 @@ exports.handshake = function(data,instance) {
     This takes an alert from the server and displays it in the browser.
     And appends it to a message history list.
   */
-  exports.browserAlert = function(data) {
+  exports.browserAlert = function (data) {
     const serverMessagesTid = $tw.wiki.getTiddler('$:/settings/Bob/ServerMessageHistoryLimit');
     let hideAlerts = false;
-    if(serverMessagesTid) {
-      hideAlerts = serverMessagesTid.fields.hide_messages === 'true'?true:false;
+    if (serverMessagesTid) {
+      hideAlerts = serverMessagesTid.fields.hide_messages === 'true' ? true : false;
     }
-    if(!hideAlerts) {
-      if(data.alert) {
+    if (!hideAlerts) {
+      if (data.alert) {
         // Update the message history
         let tiddler = $tw.wiki.getTiddler('$:/Bob/AlertHistory');
         let tidObj = {
-          title:'$:/Bob/AlertHistory',
-          type:'application/json',
+          title: '$:/Bob/AlertHistory',
+          type: 'application/json',
           text: '{}'
         };
-        if(tiddler) {
+        if (tiddler) {
           tidObj = JSON.parse(JSON.stringify(tiddler.fields))
         }
-        const newNumber = Object.keys(JSON.parse(tidObj.text)).map(function(item) {
+        const newNumber = Object.keys(JSON.parse(tidObj.text)).map(function (item) {
           return Number(item.replace(/^\$:\/temp\/Server Alert /, ''))
-        }).sort(function(a,b){return a-b}).slice(-1)[0] + 1 || 0;
+        }).sort(function (a, b) { return a - b }).slice(-1)[0] + 1 || 0;
         const AlertTitle = '$:/temp/Server Alert ' + newNumber;
         tidObj.text = JSON.parse(tidObj.text);
-        tidObj.text[AlertTitle] = data.alert + ' - ' + $tw.utils.formatDateString(new Date(),"0hh:0mm, 0DD/0MM/YY");
+        tidObj.text[AlertTitle] = data.alert + ' - ' + $tw.utils.formatDateString(new Date(), "0hh:0mm, 0DD/0MM/YY");
         tidObj.text = JSON.stringify(tidObj.text);
         $tw.wiki.addTiddler(tidObj);
 
@@ -343,7 +313,7 @@ exports.handshake = function(data,instance) {
         const fields = {
           component: 'Server Message',
           title: AlertTitle,
-          text: data.alert+"<br/><$button>Clear Alerts<$action-deletetiddler $filter='[tag[$:/tags/Alert]component[Server Message]]'/></$button>",
+          text: data.alert + "<br/><$button>Clear Alerts<$action-deletetiddler $filter='[tag[$:/tags/Alert]component[Server Message]]'/></$button>",
           tags: '$:/tags/Alert'
         }
         this.wiki.addTiddler(new $tw.Tiddler(
@@ -360,15 +330,15 @@ exports.handshake = function(data,instance) {
     other servers
     These are used to pick which server to send messages to.
   */
-  exports.updateConnections = function(data) {
-    if(data.connections) {
+  exports.updateConnections = function (data) {
+    if (data.connections) {
       const fields = {
         title: '$:/Bob/ActiveConnections',
         list: $tw.utils.stringifyList(Object.keys(data.connections))
       };
       $tw.wiki.addTiddler(new $tw.Tiddler(fields));
-      Object.keys(data.connections).forEach(function(connectionUrl) {
-        if(data.connections[connectionUrl].name) {
+      Object.keys(data.connections).forEach(function (connectionUrl) {
+        if (data.connections[connectionUrl].name) {
           const connectionFields = {
             title: '$:/Bob/KnownServers/' + data.connections[connectionUrl].name,
             tags: '[[Remote Server]]',
@@ -383,10 +353,10 @@ exports.handshake = function(data,instance) {
             active: data.connections[connectionUrl].active
           }
           $tw.wiki.addTiddler(new $tw.Tiddler(connectionFields));
-          Object.keys(data.connections[connectionUrl].available_wikis).forEach(function(thisWikiName) {
-            const theTid = $tw.wiki.getTiddler('$:/Bob/KnownServers/' + data.connections[connectionUrl].name + '/wikis/' + thisWikiName) || {fields: {}};
+          Object.keys(data.connections[connectionUrl].available_wikis).forEach(function (thisWikiName) {
+            const theTid = $tw.wiki.getTiddler('$:/Bob/KnownServers/' + data.connections[connectionUrl].name + '/wikis/' + thisWikiName) || { fields: {} };
             $tw.wiki.addTiddler(new $tw.Tiddler({
-              title: '$:/Bob/KnownServers/'+ data.connections[connectionUrl].name + '/wikis/' + thisWikiName,
+              title: '$:/Bob/KnownServers/' + data.connections[connectionUrl].name + '/wikis/' + thisWikiName,
               sync: data.connections[connectionUrl].available_wikis[thisWikiName].sync || 'no',
               sync_type: data.connections[connectionUrl].available_wikis[thisWikiName].sync_type || '',
               auto_sync: data.connections[connectionUrl].available_wikis[thisWikiName].auto_sync || 'no',
@@ -400,7 +370,7 @@ exports.handshake = function(data,instance) {
               previous_sync: data.connections[connectionUrl].available_wikis[thisWikiName].previous_sync || 0
             }))
           })
-          data.connections[connectionUrl].available_chats.forEach(function(thisChatName) {
+          data.connections[connectionUrl].available_chats.forEach(function (thisChatName) {
             $tw.wiki.addTiddler(new $tw.Tiddler({
               title: '$:/Bob/KnownServers/' + data.connections[connectionUrl].name + '/chats/' + thisChatName,
               public: 'yes',
@@ -413,18 +383,18 @@ exports.handshake = function(data,instance) {
     }
   }
 
-	/*
-		The server tells the browser to check if there are new settings
-	*/
-	exports.updateSettings = function(data) {
-		$tw.Bob.wsClient.getSettings();
-	}
+  /*
+    The server tells the browser to check if there are new settings
+  */
+  exports.updateSettings = function (data) {
+    $tw.Bob.wsClient.getSettings();
+  }
 
-	/*
-		Receive a list of visible profiles from the server
-	*/
-	exports.profileList = function(data) {
-		console.log(data)
-	}
+  /*
+    Receive a list of visible profiles from the server
+  */
+  exports.profileList = function (data) {
+    console.log(data)
+  }
 
 })();

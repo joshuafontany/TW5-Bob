@@ -72,7 +72,7 @@ WebSocketSession.prototype.initState = function() {
     type: "message-type"
   }
 */
-WebSocketSession.prototype.queueMessage = function(message,callback) {
+WebSocketSession.prototype.sendMessage = function(message,callback) {
   let ticket;
   if($tw.Bob.wsManager.hasTicket(message.id)) {
     ticket = $tw.Bob.wsManager.getTicket(message.id);
@@ -94,7 +94,7 @@ WebSocketSession.prototype.queueMessage = function(message,callback) {
     ticket.ack[this.id] = true;
   }
   $tw.Bob.wsManager.setTicket(ticket);
-  this.sendMessage(message);
+  this.send(message);
 }
 
 /*
@@ -113,7 +113,7 @@ WebSocketSession.prototype.getMessageId = function() {
 }
 
 // This sends a message if the socket is ready.
-WebSocketSession.prototype.sendMessage = function(message) {
+WebSocketSession.prototype.send = function(message) {
   if($tw.Bob.wsManager.isReady(this.id)) {
     message = $tw.utils.extend({
       wikiName: this.wikiName,
@@ -136,8 +136,7 @@ WebSocketSession.prototype.authenticateMessage = function(eventData) {
     && eventData.userid == this.userid  
     && eventData.token == this.token
   );
-  authed = (authed && new Date().getTime() <= this.tokenEOL);
-  return authed;
+  return (authed && new Date().getTime() <= this.tokenEOL);
 }
 
 // The handle message function
@@ -159,15 +158,14 @@ WebSocketSession.prototype.handleMessage = function(eventData) {
         this.tokenEOL = eventData.tokenEOL;
       }
       // The following messages do not need to be acknowledged
-      let ack, noAck = ['ack', 'ping', 'pong'];
+      let noAck = ['ack', 'ping', 'pong'];
       if(eventData.id && noAck.indexOf(eventData.type) == -1) {
         console.log(`['${eventData.sessionId}'] handle-${eventData.id}:`, eventData.type);
         // Acknowledge the message
-        ack = {
+        this.send({
           id: 'ack' + eventData.id,
           type: 'ack'
-        }
-        this.sendMessage(ack);
+        });
       }
       // Determine the wiki instance
       let instance = null;
@@ -185,24 +183,23 @@ WebSocketSession.prototype.handleMessage = function(eventData) {
   This is the function for handling ack messages on both the server and
   client.
 
-  It takes an ack message object as input and checks it against the message
-  queue. If the queue contains a message with the same id as the ack
-  then the ack state for the session then any associated callback function is 
-  called and the ack for the session id is set to true.
+  It takes an ack message object as input and checks it against the tickets in
+  he message queue. If the queue has a ticket with an id that matches the ack
+  then the ticket's ack object is checked for any sessions waiting to be acklowledged.
 
-  If all acks for the message in the queue are set to true than the ctime
-  for that message is set to the current time so it can be properly
+  If there is a truthy value in the session's ack state and it is a function, then
+  the callback function associated with the session is called. Finally the "waiting"
+  state for the session id is set to false. If all acks for the ticket are set to false 
+  than the ctime for that message is set to the current time so it can be properly
   removed later.
 */
 WebSocketSession.prototype.handleMessageAck = function(message,instance) {
   let messageId = message.id.slice(3),
     ticket = $tw.Bob.wsManager.getTicket(messageId);
   if(ticket) {
-    // Get a reference to the ack state
-    let ack = ticket.ack[this.id];
     // If there is a callback, call it
-    if(!!ack && typeof ack == "function") {
-      ack.call();
+    if(!!ticket.ack[this.id] && typeof ticket.ack[this.id] == "function") {
+      ticket.ack[this.id].call();
     }
     // Set the message as acknowledged (waiting == false).
     ticket.ack[this.id] = false;
@@ -211,7 +208,7 @@ WebSocketSession.prototype.handleMessageAck = function(message,instance) {
       waiting = keys.filter(function(id) {
       return !!ticket.ack[id];
     });
-    // If acks have been received from all connections than set the ctime.
+    // If not waiting on any acks then set the ctime.
     if(!waiting.length && !ticket.ctime) {
       ticket.ctime = Date.now();
     }
