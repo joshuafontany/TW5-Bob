@@ -13,7 +13,7 @@ module-type: library
 
 if($tw.node) {
   const WebSocket = require('$:/plugins/OokTech/Bob/External/WS/ws.js'),
-  { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('$:/plugins/OokTech/Bob/External/uuid/src/index.js');
+  { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('$:/plugins/OokTech/Bob/External/uuid/index.js');
 
 /*
   A simple websocket server extending the `ws` library
@@ -148,7 +148,7 @@ WebSocketServer.prototype.refreshSession = function(session) {
       session.tokenEOL = new Date(eol).getTime();
       session.token = uuid_v4();
   }
-  session.state.isAlive = true;
+  session.state.alive = true;
   return session;
 }
 

@@ -15,7 +15,7 @@ Bob's WSClient library instance: $tw.Bob.wsClient
 
 const CONFIG_HOST_TIDDLER = "$:/config/bob/host",
   DEFAULT_HOST_TIDDLER = "$protocol$//$host$/",
-  uuid_NIL = require('$:/plugins/OokTech/Bob/External/uuid/src/nil.js').default;
+  uuid_NIL = require('$:/plugins/OokTech/Bob/External/uuid/nil.js').default;
 
 /*
   This adds actions for the different event hooks. Each hook sends a
@@ -213,7 +213,7 @@ function WSAdaptor(options) {
     this.isReadOnly = false;
     this.isAnonymous = true;
     this.sessionId = null;
-  //addHooks(this.clientId);
+    //addHooks(this.clientId);
 }
 
 // Syncadaptor properties
@@ -380,15 +380,6 @@ WSAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
       callback(null, adaptorInfo);
     }
     //Keeping track of "bags" and things would go here?
-    let tempTid = {fields:{}};
-    Object.keys(tiddler.fields).forEach(function(field) {
-        if(field !== 'created' && field !== 'modified') {
-          tempTid.fields[field] = tiddler.fields[field];
-        } else {
-          tempTid.fields[field] = $tw.utils.stringifyDate(tiddler.fields[field]);
-        }
-      }
-    );
     const message = {
       type: 'saveTiddler',
       tiddler: tempTid,
@@ -570,8 +561,8 @@ function setupSkinnyTiddlerLoading() {
   }
 }*/
 
-// Only set up the websockets if we aren't in an iframe or opened as a file.
-if($tw.browser && window.location === window.parent.location && window.location.hostname) {
+// Only set up the websockets if we are in the browser and have websockets.
+if($tw.browser && window.location.hostname && $tw.Bob.wsManager) {
   //setupSkinnyTiddlerLoading()
   exports.adaptorClass = WSAdaptor
 }

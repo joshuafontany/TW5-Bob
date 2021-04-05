@@ -16,15 +16,13 @@ This handles messages sent to the node process.
 
   const util = require("util");
   /*
-    This handles when the browser sends the list of all tiddlers that currently
+    This handles when the clients sends the list of all tiddlers that currently
     exist in the browser version of the wiki. This is different than the list of
-    all tiddlers in files.
+    all tiddlers on disk in the server.
   */
   exports.clientTiddlerList = function(data,instance) {
-    // Save the list of tiddlers in the browser as part of the session so it
-    // can be used elsewhere.
-    const connectionIndex = Number.isInteger(+data.source_connection) ? data.source_connection : null;
-    $tw.BrowserTiddlerList[connectionIndex] = data.titles;
+    // Save the list of tiddlers in the connected client
+    this.state.tiddlers = data.titles;
   }
 
   /*

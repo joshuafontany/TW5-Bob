@@ -108,8 +108,8 @@ WebSocketClient.prototype.connect = function(session) {
       clearTimeout(session.state.pingTimeout);
       clearTimeout(session.state.ping);
       // log the disconnection time & handle the message queue
-      session.state.disconnected = new Date().getTime();
-      if (!session.state.reconnecting) {
+      if (!session.state.disconnected) {
+        session.state.disconnected = new Date().getTime();
         session.state.reconnecting = session.state.disconnected;
       }
       // Error code <= 1000 means that the connection was closed normally.

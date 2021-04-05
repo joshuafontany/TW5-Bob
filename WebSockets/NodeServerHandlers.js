@@ -61,7 +61,7 @@ exports.handshake = function(data,instance) {
     settings: $tw.Bob.wsManager.getViewableSettings(this.id),
   };
   this.sendMessage(message);
-  $tw.Bob.createSettingsTiddlers(data,instance);
+  $tw.Bob.createStateTiddlers(data,instance);
 
 }
 

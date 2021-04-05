@@ -108,11 +108,10 @@ $tw.Bob will always be at the root $tw object on both node and browser.
     if(data.tiddler && data.tiddler.fields
       && typeof data.tiddler.fields.title === 'string') {
       // The title must exist and must be a string, everything else is optional
-      // if the tiddler exists already only update it if the update is
-      // different than the existing one.
-      const changed = $tw.Bob.tiddlerHasChanged(data.tiddler,instance.wiki.getTiddler(data.tiddler.fields.title));
-      if (changed) {
-        instance.syncer.storeTiddler(data.tiddler.fields);
+      let update = new $tw.Tiddler(data.tiddler.fields),
+      tiddler = instance.wiki.getTiddler(data.tiddler.fields.title);
+      if (!tiddler || !tiddler.isEqual(update)) {
+        instance.syncer.storeTiddler(update.fields);
       }
     } else {
       console.error(`['${this.id}'] Save Tiddler error: Invalid tiddler`)

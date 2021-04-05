@@ -12,7 +12,8 @@ A core prototype to hand everything else onto.
   /*global $tw: false */
   "use strict";
 
-  const WebSocketManager = require('$:/plugins/OokTech/Bob/WSManager.js').WebSocketManager,
+  const Y = require('$:/plugins/OokTech/Bob/External/yjs/yjs.cjs'),
+    WebSocketManager = require('$:/plugins/OokTech/Bob/WSManager.js').WebSocketManager,
     WebSocketClient = require('$:/plugins/OokTech/Bob/WSClient.js').WebSocketClient;
   /*
     A simple websocket session model
@@ -66,6 +67,12 @@ A core prototype to hand everything else onto.
       // Wikis
       this.Wikis = new Map();
       this.loadWiki("RootWiki");
+      let ymap = $tw.Ydoc.getMap('$tw.activeTiddlers');
+      $tw.Ydoc.transact(() => {
+        ymap.set('$:/StoryList', true);
+        ymap.set('TEST', false);
+      });
+      console.log(JSON.stringify(ymap.toJSON(),null,2));
     }
 
     // Settings Methods
@@ -166,44 +173,49 @@ A core prototype to hand everything else onto.
     /*
       Creates initial settings tiddlers for the wiki.
     */
-    Bob.prototype.createSettingsTiddlers = function (data, instance) {
+    Bob.prototype.createStateTiddlers = function (data, instance) {
       // Create the $:/ServerIP tiddler
-      const message = {
-        type: 'saveTiddler',
-        wiki: data.wiki
-      };
-      message.tiddler = { fields: { title: "$:/Bob/ServerIP", text: $tw.Bob.settings.serverInfo.ipAddress, port: $tw.Bob.settings.serverInfo.port, host: $tw.Bob.settings.serverInfo.host } };
-      $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
-
-      let wikiInfo = undefined
-      try {
-        // Save the lists of plugins, languages and themes in tiddlywiki.info
-        const wikiInfoPath = path.join($tw.Bob.Wikis[data.wiki].wikiPath, 'tiddlywiki.info');
-        wikiInfo = JSON.parse(fs.readFileSync(wikiInfoPath, "utf8"));
-      } catch (e) {
-        console.log(e)
+      let pluginTiddlers = {
+        "$:/state/Bob/ServerIP": {
+          title: "$:/state/Bob/ServerIP",
+          text: $tw.Bob.settings.serverInfo.ipAddress,
+          port: $tw.Bob.settings.serverInfo.port,
+          host: $tw.Bob.settings.serverInfo.host
+        }
       }
-      if (typeof wikiInfo === 'object') {
+      if (typeof instance.wikiInfo === 'object') {
         // Get plugin list
         const fieldsPluginList = {
-          title: '$:/Bob/ActivePluginList',
-          list: $tw.utils.stringifyList(wikiInfo.plugins)
+          title: '$:/state/Bob/ActivePluginList',
+          list: $tw.utils.stringifyList(instance.wikiInfo.plugins)
         }
-        message.tiddler = { fields: fieldsPluginList };
-        $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
+        pluginTiddlers['$:/state/Bob/ActivePluginList'] = fieldsPluginList;
+        
         const fieldsThemesList = {
-          title: '$:/Bob/ActiveThemesList',
-          list: $tw.utils.stringifyList(wikiInfo.themes)
+          title: '$:/state/Bob/ActiveThemesList',
+          list: $tw.utils.stringifyList(instance.wikiInfo.themes)
         }
-        message.tiddler = { fields: fieldsThemesList };
-        $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
+        pluginTiddlers['$:/state/Bob/ActiveThemesList'] = fieldsThemesList;
+        
         const fieldsLanguagesList = {
-          title: '$:/Bob/ActiveLanguagesList',
-          list: $tw.utils.stringifyList(wikiInfo.languages)
+          title: '$:/state/Bob/ActiveLanguagesList',
+          list: $tw.utils.stringifyList(instance.wikiInfo.languages)
         }
-        message.tiddler = { fields: fieldsLanguagesList };
-        $tw.Bob.SendToBrowser($tw.Bob.sessions[data.source_connection], message);
+        pluginTiddlers['$:/state/Bob/ActiveLanguagesList'] = fieldsLanguagesList;
       }
+      const message = {
+        type: 'saveTiddler',
+        wiki: data.wiki,
+        tiddler: {
+          fields: {
+            title: "$:/state/Bob",
+            type: "application/json",
+            "plugin-type": "plugin",
+            text: JSON.stringify({tiddlers: pluginTiddlers}) 
+          }
+        }
+      };
+      this.wsManager.getSession(data.sessionId).sendMessage(message);
     }
 
     // Wiki methods
@@ -213,17 +225,18 @@ A core prototype to hand everything else onto.
     */
     Bob.prototype.loadWiki = function (wikiName, cb) {
       const settings = this.getWikiSettings(wikiName);
+      let wikiPath = this.wikiExists(settings.path);
       // Make sure it isn't loaded already
-      if (settings && !this.Wikis.has(wikiName)) {
+      if (!!wikiPath && !this.Wikis.has(wikiName)) {
         try {
           let instance = (wikiName == 'RootWiki') ? $tw : require("./boot.js").TiddlyWiki();
           if (wikiName == 'RootWiki') {
 
           } else {
-            // Pass the command line arguments to the boot kernel
-            instance.boot.argv = ["+plugins/" + settings.syncadaptor, settings.path];
-            // Boot the TW5 app
-            instance.boot.boot();
+              // Pass the command line arguments to the boot kernel
+              instance.boot.argv = ["+plugins/" + settings.syncadaptor, wikiPath];
+              // Boot the TW5 app
+              instance.boot.boot();
           }
           // Name the wiki
           instance.wikiName = wikiName;
@@ -232,6 +245,27 @@ A core prototype to hand everything else onto.
             text: wikiName
           };
           instance.wiki.addTiddler(new $tw.Tiddler(fields));
+
+          // Setup the Y shared CRDT types.
+          // All Y shared types will be named with tiddler titles
+          // or prefixed with the `$tw.` namepsace
+          instance.Ydoc = new Y.Doc();
+          
+          const active = instance.Ydoc.getMap('$:/state/Bob/ActiveTiddlers'),
+            edits = instance.Ydoc.getMap('$:/state/Bob/EditingTiddlers');
+          active.observe(event => {
+            console.log('changes', event.changes);
+            instance.syncer.storeTiddler(active.toJSON());
+          });
+          edits.observe(event => {
+            console.log('changes', event.changes);
+            instance.syncer.storeTiddler(edits.toJSON());
+          });
+          $tw.Ydoc.transact(() => {
+            editing.set('title', '$:/state/Bob/ActiveTiddlers');
+            active.set('list', '$:/StoryList');
+            editing.set('title', '$:/state/Bob/EditingTiddlers');
+          });
 
           // Setup the FileSystemMonitors
           /*
@@ -254,6 +288,8 @@ A core prototype to hand everything else onto.
           if (typeof cb === 'function') {
             cb(err);
           } else {
+            console.error(err);
+            debugger;
             return err;
           }
         }
@@ -368,6 +404,7 @@ A core prototype to hand everything else onto.
 
     /*
       This checks to make sure there is a tiddlwiki.info file in a wiki folder
+      If so, the full wikipath is returned, else false is returned.
     */
     Bob.prototype.wikiExists = function (wikiFolder) {
       let exists = false;
@@ -386,26 +423,7 @@ A core prototype to hand everything else onto.
         }
         exists = fs.existsSync(path.resolve(wikiFolder, 'tiddlywiki.info'));
       }
-      return exists;
-    }
-
-    /*
-      This checks to make sure that a wiki exists
-    */
-    Bob.prototype.existsListed = function (wikiName) {
-      if (typeof wikiName !== 'string') {
-        return false;
-      }
-      let exists = false;
-      // First make sure that the wiki is listed
-      const settings = this.getWikiSettings(wikiName);
-      // Make sure that the wiki actually exists
-      exists = this.wikiExists(settings.path);
-      if (exists) {
-        return settings.path;
-      } else {
-        return exists;
-      }
+      return exists? wikiFolder: false;
     }
 
     // End Node methods

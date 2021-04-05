@@ -21,7 +21,7 @@ const Bob = require('$:/plugins/OokTech/Bob/Bob.js').Bob;
 
 exports.startup = function() {
   // Initialise Bob
-  $tw.Bob = new Bob();  
+  $tw.Bob = new Bob();
   // Polyfill because IE uses old javascript
   if(!String.prototype.startsWith) {
     String.prototype.startsWith = function(search, pos) {
