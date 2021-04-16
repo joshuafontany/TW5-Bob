@@ -2,9 +2,9 @@
 
 Object.defineProperty(exports, '__esModule', { value: true });
 
-var encoding = require('lib0/dist/encoding.cjs');
-var decoding = require('lib0/dist/decoding.cjs');
-require('yjs');
+var encoding = require('../../lib0/dist/encoding.cjs');
+var decoding = require('../../lib0/dist/decoding.cjs');
+require('../yjs.cjs');
 
 const messagePermissionDenied = 0;
 

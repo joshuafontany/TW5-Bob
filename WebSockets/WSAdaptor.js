@@ -4,7 +4,7 @@ type: application/javascript
 module-type: syncadaptor
 
 A sync adaptor for syncing changes using websockets with 
-Bob's WSClient library instance: $tw.Bob.wsClient
+Bob's WSManager library instance: $tw.Bob.wsManager
 
 \*/
 (function(){
@@ -15,7 +15,7 @@ Bob's WSClient library instance: $tw.Bob.wsClient
 
 const CONFIG_HOST_TIDDLER = "$:/config/bob/host",
   DEFAULT_HOST_TIDDLER = "$protocol$//$host$/",
-  uuid_NIL = require('$:/plugins/OokTech/Bob/External/uuid/nil.js').default;
+  uuid_NIL = require('./External/uuid/nil.js').default;
 
 /*
   This adds actions for the different event hooks. Each hook sends a
@@ -212,7 +212,7 @@ function WSAdaptor(options) {
     this.isLoggedIn = false;
     this.isReadOnly = false;
     this.isAnonymous = true;
-    this.sessionId = null;
+    this.session = null;
     //addHooks(this.clientId);
 }
 
@@ -225,7 +225,7 @@ WSAdaptor.prototype.name = "wsadaptor";
 WSAdaptor.prototype.supportsLazyLoading = true;
 
 WSAdaptor.prototype.isReady = function() {
-  return this.hasStatus && this.sessionId && $tw.Bob.wsManager.isReady(this.sessionId);
+  return this.hasStatus && this.session && this.session.isReady();
 }
 
 WSAdaptor.prototype.getHost = function() {
@@ -259,12 +259,16 @@ WSAdaptor.prototype.getTiddlerInfo = function(tiddler, options) {
 Get the current status of the user
 */
 WSAdaptor.prototype.getStatus = function(callback) {
+  // Setup the local Ydoc for this client session
+  if(!$tw.Bob.Ydocs.has($tw.wikiName)){
+    $tw.Bob.initY($tw.wikiName);
+  }
 	// Get status
 	let self = this,
-        isSseEnabled = false,
-        sessionId = window.sessionStorage.getItem("ws-adaptor-session") || uuid_NIL,
-        params = "?wiki=" + $tw.wikiName + "&session=" + sessionId;
-	this.logger.log("Getting status");
+    isSseEnabled = false,
+    sessionId = window.sessionStorage.getItem("ws-adaptor-session") || uuid_NIL,
+    params = "?wiki=" + $tw.wikiName + "&session=" + sessionId;
+  this.logger.log("Getting status");
 	$tw.utils.httpRequest({
 		url: this.host + "api/status" + params,
 		callback: function(err,data) {
@@ -290,21 +294,21 @@ WSAdaptor.prototype.getStatus = function(callback) {
 
 				isSseEnabled = !!json.sse_enabled;
 
-                // Set the session id, setup the WS connection
-                if(!self.sessionId && !!json.session) {
-                    // Setup the connection url
-                    let url = new URL($tw.Bob.wsClient.getHost(self.host));
-                    url.searchParams.append("wiki", $tw.wikiName);
-                    url.searchParams.append("session", json.session.id);
-                    json.session.url = url;
-                    self.sessionId = $tw.Bob.wsClient.initSession(json.session);
-                }
-            }
-            // Invoke the callback if present
-            if(callback) {
-                callback(null,self.isLoggedIn,json.username,self.isReadOnly,self.isAnonymous,isSseEnabled);
-            }
+        // Set the session id, setup the WS connection
+        if(!self.session && !!json.session) {
+          // Setup the connection url
+          json.session.url = new URL($tw.Bob.wsManager.getHost(self.host));
+          json.session.url.searchParams.append("wiki", $tw.wikiName);
+          json.session.url.searchParams.append("session", json.session.id);
+          json.session.client = true;
+          self.session = $tw.Bob.wsManager.newSession(json.session).openConn();
         }
+      }
+      // Invoke the callback if present
+      if(callback) {
+          callback(null,self.isLoggedIn,json.username,self.isReadOnly,self.isAnonymous,isSseEnabled);
+      }
+    }
 	});
 };
 

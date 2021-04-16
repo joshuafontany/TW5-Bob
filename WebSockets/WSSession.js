@@ -36,7 +36,8 @@ function WebSocketSession(options) {
   this.isReadOnly = options.isReadOnly; // User-session + Wiki's read-only state
   this.isAnonymous = options.isAnonymous; // User's anon state
   this.url = options.url; // The url obj used to connect
-  this.initState(); // Init the 
+  this.ws = null;  // The active websocket
+  this.yhandlers = []; // Session & docname specific Y handlers
 }
 
 WebSocketSession.prototype.accessLevels = {
@@ -45,10 +46,10 @@ WebSocketSession.prototype.accessLevels = {
   Admin: "admin"
 }
 
-WebSocketSession.prototype.initState = function() {
-  let newState;
+WebSocketSession.prototype.initState = function(ws) {
+  this.ws = ws;
   if(this.client) {
-    newState = {
+    this.state = {
       pingTimeout: null,
       ping: null,
       disconnected: null,
@@ -58,11 +59,158 @@ WebSocketSession.prototype.initState = function() {
       retryTimeout: null
     };
   } else {
-    newState = {
-      alive: false
+    this.state = {
+      alive: true,
+      clientTitles: []
     };
   }
-  this.state = newState;
+}
+
+/*
+  Client connection methods
+*/
+WebSocketSession.prototype.openConn = function() {
+  let self = this;
+  if(!this.client || !this.url) {
+    console.error(`['${self.id}'] WSSession connect error: no client url`)
+    return false;
+  }
+  // Create the socket
+  try{
+    let socket = new $tw.Bob.ws(this.url.href);
+    socket.binaryType = "arraybuffer";
+    // On Open
+    socket.onopen = function(event) {
+      console.log(`['${self.id}'] Opened socket to ${self.url.href}`);
+      // Reset the state, open any Y provider connections & send a handshake request
+      self.initState(this);
+      $tw.Bob.wsManager.openYProviders(self);
+      const message = {
+        type: 'handshake'
+      };
+      self.sendMessage(message, function(){
+        console.log(`['${self.id}'] Handshake ack recieved from ${self.url.href}`)
+      });
+    };
+    // On Close
+    socket.onclose = function(event) {
+      /*
+      The heartbeat process will terminate the socket if it fails. This lets us know when to
+      use a reconnect algorithm with exponential back-off and a maximum retry window.
+      */
+      let text, tiddler;
+      console.log(`['${self.id}'] Closed socket to ${self.url.href}`);
+      // Close the Y provider connections
+      $tw.Bob.wsManager.closeYProviders(self);
+      // Clear the ping timers
+      clearTimeout(self.state.pingTimeout);
+      clearTimeout(self.state.ping);
+      // log the disconnection time & handle the message queue
+      if (!self.state.disconnected) {
+        self.state.disconnected = new Date().getTime();
+        self.state.reconnecting = self.state.disconnected;
+      }
+      if(event.code == 4023 && $tw.syncadaptor.session == self) {
+        // Error code 4023 means that the client session is invalid, and should be refreshed
+        $tw.syncadaptor.session = null;
+        // Get the login status
+        $tw.syncer.getStatus(function(err,isLoggedIn) {
+          if(err) {
+            console.log(`['${self.id}'] Error retrieveing status after invalid session request.`)
+          } else {
+            // Do a sync from the server
+            $tw.syncer.syncFromServer();
+          }
+        });
+      } else if(event.code > 1000) {
+        if( $tw.Bob.settings['ws-client'].reconnect.auto &&
+        self.state.disconnected - self.state.reconnecting < $tw.Bob.settings['ws-client'].reconnect.abort) {
+          // Error code = 1000 means that the connection was closed normally.
+          text = `''WARNING: You are no longer connected to the server (${self.url}).` + 
+          `Reconnecting (attempt ${self.state.attempts})...''`;
+          // Reconnect here
+          self.state.retryTimeout = setTimeout(function(){
+              // Log the attempt
+              self.state.reconnecting = new Date().getTime();
+              self.state.attempts++;
+              // Calculate the next exponential backoff delay
+              let delay = (Math.random()+0.5) * $tw.Bob.settings['ws-client'].reconnect.initial * Math.pow($tw.Bob.settings['ws-client'].reconnect.decay, self.state.attempts);
+              // Use the delay or the $tw.Bob.settings.reconnect.max value
+              self.state.delay = Math.min(delay, $tw.Bob.settings['ws-client'].reconnect.max);
+              // Recreate the socket
+              self.openConn();
+            }, self.state.delay);
+        } else {
+          text = `''WARNING: You are no longer connected (${self.url}).` + 
+          `''<$button style='color:black;'>Reconnect <$action-reconnectwebsocket/><$action-navigate $to='$:/plugins/Bob/ConflictList'/></$button>`;
+        }
+      }
+      if($tw.syncadaptor.session && $tw.syncadaptor.session == self) {
+        text = `<div style='position:fixed;top:0px;width:100%;background-color:red;height:2.5em;text-align:center;vertical-align:center;color:white;'>` + text + `</div>`;
+        tiddler = {
+          title: `$:/plugins/OokTech/Bob/Server Warning/`,
+          text: text,
+          component: `$tw.Bob.wsClient`,
+          session: self.id,
+          tags: '$:/tags/PageTemplate'
+        };
+      } else {
+        text = `<div style='width:100%;height:100%;background-color:red;max-height:2.5em;color:white;'>` + text + `</div>`;
+        tiddler = {
+          title: `$:/plugins/OokTech/Bob/Session Warning/${self.id}`,
+          text: text,
+          component: `$tw.Bob.wsClient`,
+          session: self.id,
+          tags: '$:/tags/Alert'
+        };
+      }
+      // Display the socket warning after the 3rd reconnect attempt or if not auto-reconnecting
+      if(!$tw.Bob.settings['ws-client'].reconnect.auto || self.state.attempts > 3) {
+        let instance = $tw.Bob.Wikis.get(self.wikiName);
+        instance.wiki.addTiddler(new $tw.Tiddler(
+          instance.wiki.getCreationFields(),
+          tiddler,
+          instance.wiki.getModificationFields()
+        ));
+      }
+    };
+    // On Message
+    socket.onmessage = function(event) {
+      let parsed;
+      try {
+        if (typeof event == "string") {
+          parsed = JSON.parse(event);
+        } else if (!!event.data && typeof event.data == "string") {
+          parsed = JSON.parse(event.data);
+        }        
+      } catch (e) {
+        $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
+      }
+      let eventData = parsed || event;
+      if(eventData.sessionId && eventData.sessionId == self.id) {
+        self.handleMessage(eventData);
+      } else {
+        console.error(`['${self.id}'] WS handleMessage error: Invalid or missing session id`, JSON.stringify(eventData,null,4));
+      }
+    }
+  } catch (e) {
+    console.error(`['${self.id}'] WS error creating socket`, e.toString())
+    return false;
+  }
+  return self;
+}
+
+WebSocketSession.prototype.closeConn = function() {
+  this.ws.close(4023, `['${this.id}'] Websocket closed by session`);
+}
+
+/*
+  This returns a new id for a message.
+  Messages from a client (usually the browser) have ids that start with c, 
+  messages from a server have ids that starts with s.
+*/
+WebSocketSession.prototype.getMessageId = function() {
+  return this.client? "c" + $tw.Bob.wsManager.clientId++: "s" + $tw.Bob.wsManager.serverId++;
 }
 
 /*
@@ -74,13 +222,14 @@ WebSocketSession.prototype.initState = function() {
 */
 WebSocketSession.prototype.sendMessage = function(message,callback) {
   let ticket;
-  if($tw.Bob.wsManager.hasTicket(message.id)) {
+  if(message.id && $tw.Bob.wsManager.hasTicket(message.id)) {
     ticket = $tw.Bob.wsManager.getTicket(message.id);
   } else {
     message.id = this.getMessageId();
     ticket = {
       id: message.id,
       message: JSON.stringify(message),
+      qtime: Date.now(),
       ctime: null,
       ack: {}
     };
@@ -98,23 +247,15 @@ WebSocketSession.prototype.sendMessage = function(message,callback) {
 }
 
 /*
-  This returns a new id for a message.
-  Messages from a client (usually the browser) have ids that start with c, 
-  messages from a server have ids that starts with s.
+  Tests a session's socket connection
 */
-WebSocketSession.prototype.getMessageId = function() {
-  let id;
-  if (this.client) {
-    id = "c" + $tw.Bob.wsManager.messageId++
-  } else {
-    id = "s" + $tw.Bob.wsManager.messageId++
-  }
-  return id;
+WebSocketSession.prototype.isReady = function() {
+  return !!this.ws && this.ws.readyState == 1;
 }
 
 // This sends a message if the socket is ready.
 WebSocketSession.prototype.send = function(message) {
-  if($tw.Bob.wsManager.isReady(this.id)) {
+  if(this.isReady()) {
     message = $tw.utils.extend({
       wikiName: this.wikiName,
       sessionId: this.id,
@@ -124,31 +265,37 @@ WebSocketSession.prototype.send = function(message) {
     if (["ack", "ping", "pong"].indexOf(message.type) == -1) {
       console.log(`['${message.sessionId}'] send-${message.id}:`, message.type);
     }
-    $tw.Bob.wsManager.getSocket(this.id).send(JSON.stringify(message));
+    this.ws.send(JSON.stringify(message), err => { err != null && this.closeConn() });
   }
 }
 
 // This makes sure that the token sent allows the action on the wiki.
-// The message.session.id == socket.id has already been checked.
+// The message.sessionId == session.id has already been checked.
 WebSocketSession.prototype.authenticateMessage = function(eventData) {
   let authed = (
     eventData.wikiName == this.wikiName 
     && eventData.userid == this.userid  
     && eventData.token == this.token
+    && new Date().getTime() <= this.tokenEOL
   );
-  return (authed && new Date().getTime() <= this.tokenEOL);
+  if(authed == false) {
+    console.error(`['${this.id}'] WS authentication error: Unauthorized message of type ${eventData.type}`);
+  }
+  return authed;
 }
 
 // The handle message function
 WebSocketSession.prototype.handleMessage = function(eventData) {
     // Check authentication
-    const authenticated = this.authenticateMessage(eventData),
-      handler = (this.client)? $tw.Bob.wsManager.clientHandlers[eventData.type]: $tw.Bob.wsManager.serverHandlers[eventData.type];
+    const authenticated = this.authenticateMessage(eventData);
     if (!authenticated) {
       // Invalid tokens, kill the socket
-      console.error(`WS handleMessage error: Unauthorized message of type ${eventData.type}`);
-      $tw.Bob.wsManager.deleteSocket(this.id);
+      this.ws.close(4023, `['${this.id}'] Websocket closed by session`);
       return null;
+    }
+    let handler = (this.client)? $tw.Bob.wsManager.clientHandlers[eventData.type]: $tw.Bob.wsManager.serverHandlers[eventData.type];
+    if(eventData.type == "y") {
+      handler = this.yhandlers[eventData.doc];
     }
     // Make sure we have a handler for the message type
     if(typeof handler === 'function') {
@@ -168,14 +315,14 @@ WebSocketSession.prototype.handleMessage = function(eventData) {
         });
       }
       // Determine the wiki instance
-      let instance = null;
+      let instance = $tw;
       if($tw.node && $tw.Bob.Wikis.has(eventData.wikiName)) {
           instance = $tw.Bob.Wikis.get(eventData.wikiName);
       }
       // Call the handler
-      handler.call(this,eventData,instance||$tw);
+      handler.call(this,eventData,instance);
     } else {
-      console.error('WS handleMessage error: No handler for message of type ', eventData.type);
+      console.error(`['${this.id}'] WS handleMessage error: No handler for message of type ${eventData.type}`);
     }
 }
 
@@ -213,7 +360,8 @@ WebSocketSession.prototype.handleMessageAck = function(message,instance) {
       ticket.ctime = Date.now();
     }
   } else {
-    console.log("WS handleMessageAck error: no message found for id", messageId);
+    console.log(`['${message.sessionId}'] WS handleMessageAck error: no message found for id ${messageId}`);
+    debugger;
   }
 }
 

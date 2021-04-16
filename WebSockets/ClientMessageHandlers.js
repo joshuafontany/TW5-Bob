@@ -42,7 +42,7 @@ $tw.Bob will always be at the root $tw object on both node and browser.
   exports.pong = function (data,instance) {
     // If this pong is part of a heartbeat then send another heartbeat
     if (data.id == "heartbeat") {
-      $tw.Bob.wsClient.heartbeat(data);
+      $tw.Bob.wsManager.heartbeat(data);
     }
   }
 
@@ -58,10 +58,12 @@ $tw.Bob will always be at the root $tw object on both node and browser.
     if(data.settings) {
       // Update the settings
       $tw.Bob.settings = data.settings;
-      $tw.Bob.wsClient.settings = $tw.Bob.settings['ws-client'] || $tw.Bob.wsClient.settings;
     }
-    // Set the WS Session id to sessionStorage here
-    if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == this.id) {
+    if($tw.syncadaptor.session && $tw.syncadaptor.session == this) {
+      // Setup the local Ydoc for this client session
+      let doc = $tw.Bob.Ydocs.get(this.wikiName);
+      let provider = $tw.Bob.wsManager.initYProvider(this);
+      // Set the WS Session id to sessionStorage here
       window.sessionStorage.setItem("ws-adaptor-session", this.id);
       // Clear the server warning
       if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Server Warning`)) {
@@ -73,10 +75,10 @@ $tw.Bob will always be at the root $tw object on both node and browser.
       }
     }
     // Start a heartbeat
-    $tw.Bob.wsClient.heartbeat(data);
+    $tw.Bob.wsManager.heartbeat(data);
     // Sync to the server
     if ($tw.Bob.wsManager.tickets.entries().length > 0) {
-      $tw.Bob.wsClient.syncToServer(this.id);
+      $tw.Bob.wsManager.syncToServer(this.id);
     }
     // This is an array of tiddler titles, each title is a string.
     const response = instance.wiki.allTitles();
@@ -386,7 +388,158 @@ $tw.Bob will always be at the root $tw object on both node and browser.
     The server tells the browser to check if there are new settings
   */
   exports.updateSettings = function (data) {
-    $tw.Bob.wsClient.getSettings();
+      // Ask the server for its status
+      fetch('/api/status', {credentials: 'include', headers: {'x-wiki-name': $tw.wikiName}})
+      .then(response => response.json())
+      .then(function(data) {
+        function doThisLevel (inputObject, currentName) {
+          let currentLevel = {};
+          Object.keys(inputObject).forEach( function(property) {
+            if(typeof inputObject[property] === 'object') {
+              // Call recursive function to walk through properties, but only if
+              // there are properties
+              if(Object.keys(inputObject[property])) {
+                doThisLevel(inputObject[property], currentName + '/' + property, data);
+                currentLevel[property] = currentName + '/' + property;
+              }
+            } else {
+              // Add it to this one.
+              currentLevel[property] = inputObject[property];
+            }
+          });
+          const tiddlerFields = {
+            title: currentName,
+            text: JSON.stringify(currentLevel, "", 2),
+            type: 'application/json'
+          };
+          this.wiki.addTiddler(new $tw.Tiddler(tiddlerFields));
+        }
+
+        const fields = {};
+
+        const viewableWikiList = Object.keys(data['available_wikis']).filter(function(wikiName) {
+          return data['available_wikis'][wikiName].indexOf('view') > -1
+        })
+        const editableWikiList = Object.keys(data['available_wikis']).filter(function(wikiName) {
+          return data['available_wikis'][wikiName].indexOf('edit') > -1
+        })
+        // Set available wikis
+        fields.title = '$:/state/ViewableWikis';
+        fields.list = $tw.utils.stringifyList(viewableWikiList);
+        fields.type = 'application/json';
+        this.wiki.addTiddler(new $tw.Tiddler(fields));
+
+        // Set available wikis
+        fields.title = '$:/state/EditableWikis';
+        fields.list = $tw.utils.stringifyList(editableWikiList);
+        fields.type = 'application/json';
+        this.wiki.addTiddler(new $tw.Tiddler(fields));
+
+        const editions_out = {}
+        Object.keys(data['available_editions']).map(function(curr, ind) {
+          editions_out[curr] = data['available_editions'][curr]['description'];
+        })
+        fields.list = '';
+        // Set available editions
+        fields.title = '$:/Bob/AvailableEditionList';
+        fields.text = JSON.stringify(editions_out, "", 2);
+        fields.type = 'application/json';
+        this.wiki.addTiddler(new $tw.Tiddler(fields));
+
+        // Set available languages
+        fields.title = '$:/Bob/AvailableLanguageList';
+        fields.text = JSON.stringify(Object.keys(data['available_languages']));
+        fields.type = 'application/json';
+        this.wiki.addTiddler(new $tw.Tiddler(fields));
+
+        const plugins_out = {}
+        Object.keys(data['available_plugins']).map(function(curr, ind) {
+          plugins_out[curr] = data['available_plugins'][curr]['description'];
+        })
+        // Set available plugins
+        fields.title = '$:/Bob/AvailablePluginList';
+        fields.text = JSON.stringify(plugins_out, "", 2);
+        fields.type = 'application/json';
+        this.wiki.addTiddler(new $tw.Tiddler(fields));
+
+        const themes_out = {}
+        Object.keys(data['available_themes']).map(function(curr, ind) {
+          themes_out[curr] = data['available_themes'][curr]['description'];
+        })
+        // Set available themes
+        fields.title = '$:/Bob/AvailableThemeList';
+        fields.text = JSON.stringify(themes_out, "", 2);
+        fields.type = 'application/json';
+        this.wiki.addTiddler(new $tw.Tiddler(fields));
+
+        // Save settings for the wiki
+        fields.title = '$:/WikiSettings';
+        fields.text = JSON.stringify(data['settings'], "", 2);
+        fields.type = 'application/json';
+        this.wiki.addTiddler(new $tw.Tiddler(fields));
+        $tw.Bob.settings = data['settings']
+
+        doThisLevel(data['settings'], '$:/WikiSettings/split');
+
+        this.wiki.addTiddler(new $tw.Tiddler({title:'$:/ServerIP', text: (data.settings.serverInfo ? data.settings.serverInfo.ipAddress : window.location.protocol + '//' + window.location.hostname), port: window.location.port, host: data.settings['ws-server'].host, proxyprefix: data.settings.proxyprefix}))
+
+        this.wiki.addTiddler(new $tw.Tiddler({title:'$:/status/IsLoggedIn', text:data.logged_in}));
+
+        this.wiki.addTiddler(new $tw.Tiddler({title:'$:/status/IsReadOnly', text:data.read_only}));
+        $tw.readOnly = data.read_only;
+
+        // Delete any info about owned wikis, this is here to clear the list if
+        // you log out
+        this.wiki.filterTiddlers('[prefix[$:/Bob/OwnedWikis]]').forEach(function(tidName) {
+          this.wiki.deleteTiddler(tidName);
+        })
+        if(data.owned_wikis) {
+          // save any info about owned wikis for the currently logged in person
+          Object.keys(data.owned_wikis).forEach(function(wikiName) {
+            const tidFields = {
+              title: "$:/Bob/OwnedWikis/" + wikiName,
+              visibility: data.owned_wikis[wikiName].visibility,
+              editors: $tw.utils.stringifyList(data.owned_wikis[wikiName].editors),
+              viewers: $tw.utils.stringifyList(data.owned_wikis[wikiName].viewers),
+              fetchers: $tw.utils.stringifyList(data.owned_wikis[wikiName].fetchers),
+              pushers: $tw.utils.stringifyList(data.owned_wikis[wikiName].pushers),
+              guest_access: $tw.utils.stringifyList(data.owned_wikis[wikiName].access ? data.owned_wikis[wikiName].access.Guest : ''),
+              normal_access: $tw.utils.stringifyList(data.owned_wikis[wikiName].access ? data.owned_wikis[wikiName].access.Normal : ''),
+              admin_access: $tw.utils.stringifyList(data.owned_wikis[wikiName].access ? data.owned_wikis[wikiName].access.Admin : ''),
+              wiki_name: wikiName,
+              text: "{{||$:/plugins/OokTech/Bob/Templates/WikiAccessManager}}",
+              tags: "$:/Bob/OwnedWikis"
+            }
+            this.wiki.addTiddler(new $tw.Tiddler(tidFields));
+          });
+        }
+        // Delete any listing for visible profiles, this makes sure they aren't
+        // left when you log out.
+        this.wiki.filterTiddlers('[prefix[$:/status/VisibleProfile/]]').forEach(function(tidName) {
+          this.wiki.deleteTiddler(tidName);
+        })
+        if(data.visible_profiles) {
+          Object.keys(data.visible_profiles).forEach(function(profileName) {
+            const tidFields = {
+              title: '$:/status/VisibleProfile/' + profileName,
+              visibility: data.visible_profiles[profileName].visibility,
+              text: this.wiki.renderText('text/html', "text/vnd.tiddlywiki", data.visible_profiles[profileName].about),
+              level: data.visible_profiles[profileName].level
+            };
+            this.wiki.addTiddler(new $tw.Tiddler(tidFields));
+          })
+        }
+        if(data.username) {
+          data.visible_profiles = data.visible_profiles || {};
+          data.visible_profiles[data.username] = data.visible_profiles[data.username] || {};
+          // This is only here with the secure server, add username and profile
+          // info
+          this.wiki.addTiddler(new $tw.Tiddler({title: '$:/status/UserName', text: data.username, visibility: data.visible_profiles[data.username].visibility, level: data.visible_profiles[data.username].level}));
+          this.wiki.addTiddler(new $tw.Tiddler({title: '$:/status/UserName/About', text: data.visible_profiles[data.username].about}));
+        } else {
+          this.wiki.deleteTiddler('$:/status/UserName/About');
+        }
+      });
   }
 
   /*

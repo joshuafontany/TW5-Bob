@@ -166,18 +166,15 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
     if($tw.Bob.wsServer && request.headers.upgrade === 'websocket') {
       // Verify the client here
       let state = self.verifyUpgrade(request);
-      if(!state){
-        console.log("ws-server: upgrade request failed");
-        socket.destroy();
-        return;
+      if(state){
+        $tw.Bob.wsServer.handleUpgrade(request,socket,head,function(ws) {
+          console.log("ws-server: upgrade request approved");
+          $tw.Bob.wsServer.emit('connection',ws,request,state);
+        });
       }
-      $tw.Bob.wsServer.handleUpgrade(request,socket,head,function(ws) {
-        console.log("ws-server: upgrade request approved");
-        $tw.Bob.wsServer.emit('connection',ws,request,state);
-      });
     } else {
       console.log("ws-server: upgrade request denied");
-      socket.destroy();
+      socket.close(4023, `['${sesion.id}'] Websocket closed by server`);
       return;
     }
   });

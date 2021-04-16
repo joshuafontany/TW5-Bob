@@ -12,9 +12,8 @@ A core prototype to hand everything else onto.
   /*global $tw: false */
   "use strict";
 
-  const Y = require('$:/plugins/OokTech/Bob/External/yjs/yjs.cjs'),
-    WebSocketManager = require('$:/plugins/OokTech/Bob/WSManager.js').WebSocketManager,
-    WebSocketClient = require('$:/plugins/OokTech/Bob/WSClient.js').WebSocketClient;
+  const Yutils = require('./External/yjs/y-utils.cjs'),
+    WebSocketManager = require('./WSManager.js').WebSocketManager;
   /*
     A simple websocket session model
     options: 
@@ -22,15 +21,46 @@ A core prototype to hand everything else onto.
   function Bob(options) {
     // Get the name for this wiki for websocket messages
     $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", "");
-    this.settings = {};
+    this.settings = {    // Setup the heartbeat settings placeholders (filled in by the 'handshake')
+      'ws-client': {
+        "heartbeat": {
+          "interval":1000, // default 1 sec heartbeats
+          "timeout":5000 // default 5 second heartbeat timeout
+        },
+        "reconnect": {
+          "auto": true,
+          "initial": 100, // small initial increment
+          "decay": 1.5, // exponential decay d^n (number-of-retries)
+          "max": 10000, // maximum retry increment
+          "abort": 60000 // failure after this long
+        }
+      }
+    };
     this.version = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob').fields.version;
     this.ExcludeFilter = $tw.wiki.getTiddlerText('$:/plugins/OokTech/Bob/ExcludeSync');
+    // Wikis & Ydocs maps
+    this.Wikis = new Map();
+    this.Ydocs = new Map();
     // Logger
     this.logger = {};
-    // Always setup the WebSocketManager & the WebSocketClient
+    // Setup Websocket library
+    if($tw.node){
+      this.ws = require('./External/WS/ws.js');
+      this.url = require('url').URL;
+    } else {
+      this.ws = WebSocket;
+      this.url = URL;
+    }
+    // Always setup the WebSocketManager
     let managerSerialized = JSON.parse("{}");
     this.wsManager = new WebSocketManager(managerSerialized);
-    this.wsClient = new WebSocketClient();
+  }
+
+  // Polyfill because IE uses old javascript
+  if(!String.prototype.startsWith) {
+    String.prototype.startsWith = function(search, pos) {
+      return this.substr(!pos || pos < 0 ? 0 : +pos, search.length) === search;
+    };
   }
 
   if ($tw.node) {
@@ -64,11 +94,9 @@ A core prototype to hand everything else onto.
       // Initialise the $tw.Bob.settings object & load the user settings
       this.settings = JSON.parse($tw.wiki.getTiddler('$:/plugins/OokTech/Bob/DefaultSettings').fields.text || "{}");
       this.loadSettings(this.settings, $tw.boot.wikiPath);
-      // Wikis
-      this.Wikis = new Map();
       this.loadWiki("RootWiki");
-      let ymap = $tw.Ydoc.getMap('$tw.activeTiddlers');
-      $tw.Ydoc.transact(() => {
+      let ymap = this.Ydocs.get("RootWiki").getMap('$tw.activeTiddlers');
+      this.Ydocs.get("RootWiki").transact(() => {
         ymap.set('$:/StoryList', true);
         ymap.set('TEST', false);
       });
@@ -114,11 +142,12 @@ A core prototype to hand everything else onto.
       this.updateSettings(settings, newSettings);
       this.updateSettingsWikiPaths(settings.wikis);
       // Get the ip address to make it easier for other computers to connect.
-      const ip = require('$:/plugins/OokTech/Bob/External/IP/ip.js');
+      const ip = require('./External/IP/ip.js');
       const ipAddress = ip.address();
       settings.serverInfo = {
         name: settings.serverName,
         ipAddress: ipAddress,
+        protocol: !!settings["tls-key"] && !!!settings["tls-cert"]? "https": "http",
         port: settings['ws-server'].port || "8080",
         host: settings['ws-server'].host || "127.0.0.1"
       }
@@ -178,9 +207,10 @@ A core prototype to hand everything else onto.
       let pluginTiddlers = {
         "$:/state/Bob/ServerIP": {
           title: "$:/state/Bob/ServerIP",
-          text: $tw.Bob.settings.serverInfo.ipAddress,
-          port: $tw.Bob.settings.serverInfo.port,
-          host: $tw.Bob.settings.serverInfo.host
+          text: this.settings.serverInfo.ipAddress,
+          protocol: this.settings.serverInfo.protocol,
+          port: this.settings.serverInfo.port,
+          host: this.settings.serverInfo.host
         }
       }
       if (typeof instance.wikiInfo === 'object') {
@@ -247,26 +277,8 @@ A core prototype to hand everything else onto.
           instance.wiki.addTiddler(new $tw.Tiddler(fields));
 
           // Setup the Y shared CRDT types.
-          // All Y shared types will be named with tiddler titles
-          // or prefixed with the `$tw.` namepsace
-          instance.Ydoc = new Y.Doc();
+          let doc = this.initY(wikiName);
           
-          const active = instance.Ydoc.getMap('$:/state/Bob/ActiveTiddlers'),
-            edits = instance.Ydoc.getMap('$:/state/Bob/EditingTiddlers');
-          active.observe(event => {
-            console.log('changes', event.changes);
-            instance.syncer.storeTiddler(active.toJSON());
-          });
-          edits.observe(event => {
-            console.log('changes', event.changes);
-            instance.syncer.storeTiddler(edits.toJSON());
-          });
-          $tw.Ydoc.transact(() => {
-            editing.set('title', '$:/state/Bob/ActiveTiddlers');
-            active.set('list', '$:/StoryList');
-            editing.set('title', '$:/state/Bob/EditingTiddlers');
-          });
-
           // Setup the FileSystemMonitors
           /*
           // Make sure that the tiddlers folder exists
@@ -282,8 +294,8 @@ A core prototype to hand everything else onto.
           }
           */
           // Set the wiki as loaded
-          this.Wikis.set(wikiName, (wikiName == 'RootWiki') ? null : instance);
-          $tw.hooks.invokeHook('wiki-loaded', wikiName);
+          this.Wikis.set(wikiName,instance);
+          $tw.hooks.invokeHook('wiki-loaded',wikiName);
         } catch (err) {
           if (typeof cb === 'function') {
             cb(err);
@@ -295,7 +307,7 @@ A core prototype to hand everything else onto.
         }
       }
       if (typeof cb === 'function') {
-        cb(null, wikiName);
+        cb(null, this.getWikiPath(wikiName));
       } else {
         return this.getWikiPath(wikiName);
       }
@@ -427,6 +439,17 @@ A core prototype to hand everything else onto.
     }
 
     // End Node methods
+  }
+
+  // Yjs methods
+
+  /*
+    This function sets up a Y doc on a client to sync changes.
+    All Y shared types will be named with tiddler titles &
+    stashed in the wiki when the Y doc is destroyed.
+  */
+  Bob.prototype.initY = function(wikiName) {
+    return Yutils.getYDoc(wikiName);
   }
 
   // Tiddler methods

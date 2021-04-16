@@ -12,22 +12,21 @@ module-type: library
 "use strict";
 
 if($tw.node) {
-  const WebSocket = require('$:/plugins/OokTech/Bob/External/WS/ws.js'),
-  { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('$:/plugins/OokTech/Bob/External/uuid/index.js');
+  const { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('./External/uuid/index.js');
 
 /*
   A simple websocket server extending the `ws` library
   options: 
 */
 function WebSocketServer(options) {
-  Object.assign(this, new WebSocket.Server(options));
+  Object.assign(this, new $tw.Bob.ws.Server(options));
   // Set the event handlers
   this.on('listening',this.serverOpened);
   this.on('close',this.serverClosed);
   this.on('connection',this.handleConnection);
 }
 
-WebSocketServer.prototype = Object.create(WebSocket.Server.prototype);
+WebSocketServer.prototype = Object.create(require('./External/WS/ws.js').Server.prototype);
 WebSocketServer.prototype.constructor = WebSocketServer;
 
 WebSocketServer.prototype.defaultVariables = {
@@ -55,11 +54,13 @@ WebSocketServer.prototype.serverClosed = function() {
 */
 WebSocketServer.prototype.handleConnection = function(socket,request,state) {
   $tw.Bob.logger.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`, {level:3});
-  // Set the socket id
+  // Set the socket id & init the session
   socket.id = state.sessionId;
+  let session = $tw.Bob.wsManager.getSession(state.sessionId);
   // Event handlers
   socket.on('close', function(event) {
     $tw.Bob.logger.log(`['${socket.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
+    $tw.Bob.wsManager.closeYConnections(session);
   });
   socket.on('message', function(event) {
     let parsed;
@@ -69,23 +70,14 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
       $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
     }
     let eventData = parsed || event;
-    if(eventData.sessionId && eventData.sessionId == this.id) {
-      let session = $tw.Bob.wsManager.getSession(eventData.sessionId);
-      if(session) {
-        session.handleMessage(eventData);
-      } else {
-        console.error('WS handleMessage error: Invalid or missing session', JSON.stringify(eventData,null,4));
-      }
+    if(eventData.sessionId && eventData.sessionId == session.id) {
+      session.handleMessage(eventData);
     } else {
-      console.error('WS handleMessage error: Invalid message', JSON.stringify(eventData,null,4));
+      console.error('WS handleMessage error: Invalid or missing session id', JSON.stringify(eventData,null,4));
+      this.close(4023, `['${sesion.id}'] Websocket closed by server`);
     }
   });
-  // Save the socket
-  $tw.Bob.wsManager.setSocket(socket);
-  // Federation here? Why?
-  if(false && $tw.node && $tw.Bob.settings.enableFederation === 'yes') {
-    $tw.Bob.Federation.updateConnections();
-  }
+  session.initState(socket);
 }
 
 WebSocketServer.prototype.isAdmin = function(username) {
@@ -147,9 +139,8 @@ WebSocketServer.prototype.refreshSession = function(session) {
       let eol = new Date(session.tokenEOL).getTime() + (1000*60*60);
       session.tokenEOL = new Date(eol).getTime();
       session.token = uuid_v4();
-  }
-  session.state.alive = true;
-  return session;
+  };
+  $tw.Bob.wsManager.setSession(session);
 }
 
 /*

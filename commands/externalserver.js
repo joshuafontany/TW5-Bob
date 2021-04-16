@@ -35,7 +35,7 @@ if($tw.node) {
     console.log('TiddlyWiki version', $tw.version, 'with Bob version', bobVersion);
     // Get the ip address to display to make it easier for other computers to
     // connect.
-    const ip = require('$:/plugins/OokTech/Bob/External/IP/ip.js');
+    const ip = require('../External/IP/ip.js');
     const ipAddress = ip.address();
     $tw.Bob.settings.serverInfo = {
       ipAddress: ipAddress

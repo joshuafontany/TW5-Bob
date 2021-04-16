@@ -50,19 +50,19 @@ exports.pong = function(data,instance) {
 exports.handshake = function(data,instance) {
   // Refresh the session token, detroying the login token if neccessary
   $tw.Bob.wsServer.refreshSession(this);
-  $tw.Bob.wsManager.setSession(this);
   // Respond to the initial "handshake" message to initialise everything.
   let message = {
     type: 'handshake',        
     token: data.token, // Use the old token one last time
     tokenRefresh: this.token, // Send the new token
     tokenEOL: this.tokenEOL, // and the new tokenEOL
-    editingTiddlers: instance.wiki.getTiddlerText("$:/Bob/EditingTiddlers", ""), // send the current list of tiddlers being edited
+    editingTiddlers: instance.wiki.getTiddlerText("$:/state/Bob/EditingTiddlers", ""), // send the current list of tiddlers being edited
     settings: $tw.Bob.wsManager.getViewableSettings(this.id),
   };
   this.sendMessage(message);
+  // Setup the serverside Y connection
+  $tw.Bob.wsManager.initYConnection(this);
   $tw.Bob.createStateTiddlers(data,instance);
-
 }
 
   if(false) { // disable federation stuff now

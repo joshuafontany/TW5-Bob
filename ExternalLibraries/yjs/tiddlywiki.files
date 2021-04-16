@@ -35,6 +35,24 @@
           "suffix": "})();"
         }
       }
+    },
+        {
+      "path": "./y-protocols",
+      "filesRegExp": "^.+\\.(c)?js",
+      "isTiddlerFile": false,
+      "isEditableFile": false,
+      "fields": {
+        "title": {
+          "source": "filename",
+          "prefix": "$:/plugins/OokTech/Bob/External/yjs/y-protocols/"
+        },
+        "module-type": "library",
+        "type": "application/javascript",
+        "text": {
+          "prefix": "(function(){\n",
+          "suffix": "})();"
+        }
+      }
     }
   ]
 }

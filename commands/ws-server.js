@@ -21,9 +21,9 @@ exports.info = {
 
 exports.platforms = ["node"];
 
-const SaverServer = require('$:/plugins/OokTech/Bob/SaverServer.js').SaverServer,
-  SimpleServer = require('$:/plugins/OokTech/Bob/SimpleServer.js').SimpleServer,
-  WebSocketServer = require('$:/plugins/OokTech/Bob/WSServer.js').WebSocketServer;
+const SaverServer = require('../SaverServer.js').SaverServer,
+  SimpleServer = require('../SimpleServer.js').SimpleServer,
+  WebSocketServer = require('../WSServer.js').WebSocketServer;
 
 const Command = function(params,commander,callback) {
   this.params = params;

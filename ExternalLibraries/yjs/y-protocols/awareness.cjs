@@ -2,13 +2,13 @@
 
 Object.defineProperty(exports, '__esModule', { value: true });
 
-var encoding = require('lib0/dist/encoding.cjs');
-var decoding = require('lib0/dist/decoding.cjs');
-var time = require('lib0/dist/time.cjs');
-var math = require('lib0/dist/math.cjs');
-var observable_js = require('lib0/dist/observable.cjs');
-var f = require('lib0/dist/function.cjs');
-require('yjs');
+var encoding = require('../../lib0/dist/encoding.cjs');
+var decoding = require('../../lib0/dist/decoding.cjs');
+var time = require('../../lib0/dist/time.cjs');
+var math = require('../../lib0/dist/math.cjs');
+var observable_js = require('../../lib0/dist/observable.cjs');
+var f = require('../../lib0/dist/function.cjs');
+require('../yjs.cjs');
 
 /**
  * @module awareness-protocol

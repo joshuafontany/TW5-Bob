@@ -17,16 +17,14 @@ exports.name = "BobStartup";
 exports.before = ["startup"];
 exports.synchronous = true;
 
-const Bob = require('$:/plugins/OokTech/Bob/Bob.js').Bob;
+const Bob = require('./Bob.js').Bob;
 
 exports.startup = function() {
-  // Initialise Bob
+  // Initialise Bob as a $tw object
   $tw.Bob = new Bob();
-  // Polyfill because IE uses old javascript
-  if(!String.prototype.startsWith) {
-    String.prototype.startsWith = function(search, pos) {
-      return this.substr(!pos || pos < 0 ? 0 : +pos, search.length) === search;
-    };
+  // Set the wiki as loaded in the browser
+  if(!!$tw.browser && $tw.wikiName) {
+    $tw.Bob.Wikis.set($tw.wikiName,$tw);
   }
 }
 
