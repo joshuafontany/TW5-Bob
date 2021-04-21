@@ -301,7 +301,6 @@ A core prototype to hand everything else onto.
             cb(err);
           } else {
             console.error(err);
-            debugger;
             return err;
           }
         }

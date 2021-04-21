@@ -80,21 +80,23 @@ const readMessage = (provider, buf, emitSynced) => {
  * @param {WebsocketProvider} provider
  */
 const setupWS = provider => {
-  if (provider.session && provider.session.ws !== null) {
+  if (provider.session && provider.session.ws.readyState == 1) {
     provider.synced = false;
     // listen and reply to y message events
-    provider.session.yhandlers[provider.doc.name] = event => {
-      provider.wsLastMessageReceived = time.getUnixTime();
-      const encoder = readMessage(provider, new Uint8Array(event.y), true);
-      if (encoding.length(encoder) > 1) {
-        let message = {
-          type: "y",
-          doc: provider.doc.name,
-          y: Array.from(new Uint8Array(encoding.toUint8Array(encoder)))
+    if(!provider.handler) {
+      provider.handler = event => {
+        provider.wsLastMessageReceived = time.getUnixTime();
+        const encoder = readMessage(provider, new Uint8Array(event.y), true);
+        if (encoding.length(encoder) > 1) {
+          let message = {
+            type: "y",
+            doc: provider.doc.name,
+            y: Array.from(new Uint8Array(encoding.toUint8Array(encoder)))
+          }
+          provider.session.sendMessage(message);
         }
-        provider.session.sendMessage(message);
-      }
-    };
+      };
+    }
 
     provider.wsLastMessageReceived = time.getUnixTime();
     provider.wsconnected = true;
@@ -245,6 +247,36 @@ class WebsocketProvider extends observable_js.Observable {
       });
     }
     awareness.on('update', this._awarenessUpdateHandler);
+
+    this.destroy = () => {
+      this.closeConn();
+      this.awareness.off('update', this._awarenessUpdateHandler);
+      this.doc.off('update', this._updateHandler);
+      super.destroy();
+    }
+
+    this.closeConn = () => {
+      if (this.wsconnected) {
+        let provider = this;
+        provider.wsconnected = false;
+        provider.synced = false;
+        // update awareness (all users except local left)
+        awarenessProtocol.removeAwarenessStates(provider.awareness, Array.from(provider.awareness.getStates().keys()).filter(client => client !== provider.doc.clientID), provider);
+        provider.emit('status', [{
+          status: 'disconnected'
+        }]);
+      }
+      this.disconnectBc();
+    }
+  
+    this.openConn = () =>{
+      if(!this.wsconnected) {
+        setupWS(this);
+      }
+      this.connectBc();
+    }
+
+
     this.openConn();
   }
 
@@ -261,13 +293,6 @@ class WebsocketProvider extends observable_js.Observable {
       this.emit('synced', [state]);
       this.emit('sync', [state]);
     }
-  }
-
-  destroy () {
-    this.closeConn();
-    this.awareness.off('update', this._awarenessUpdateHandler);
-    this.doc.off('update', this._updateHandler);
-    super.destroy();
   }
 
   connectBc () {
@@ -309,27 +334,6 @@ class WebsocketProvider extends observable_js.Observable {
       bc.unsubscribe(this.bcChannel, this._bcSubscriber);
       this.bcconnected = false;
     }
-  }
-
-  closeConn () {
-    if (provider.wsconnected) {
-      provider.wsconnected = false;
-      provider.synced = false;
-      provider.session.yhandlers[doc.name] = null;
-      // update awareness (all users except local left)
-      awarenessProtocol.removeAwarenessStates(provider.awareness, Array.from(provider.awareness.getStates().keys()).filter(client => client !== provider.doc.clientID), provider);
-      provider.emit('status', [{
-        status: 'disconnected'
-      }]);
-    }
-    this.disconnectBc();
-  }
-
-  openConn () {
-    if(!this.wsconnected) {
-      setupWS(this);
-    }
-    this.connectBc();
   }
 }
 

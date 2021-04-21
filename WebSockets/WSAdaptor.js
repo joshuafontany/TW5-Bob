@@ -295,7 +295,7 @@ WSAdaptor.prototype.getStatus = function(callback) {
 				isSseEnabled = !!json.sse_enabled;
 
         // Set the session id, setup the WS connection
-        if(!self.session && !!json.session) {
+        if(!!json.session) {
           // Setup the connection url
           json.session.url = new URL($tw.Bob.wsManager.getHost(self.host));
           json.session.url.searchParams.append("wiki", $tw.wikiName);

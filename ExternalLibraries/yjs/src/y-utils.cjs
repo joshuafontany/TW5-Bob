@@ -25,7 +25,7 @@ const updateHandler = (update, origin, doc) => {
   encoding.writeVarUint(encoder, messageSync)
   syncProtocol.writeUpdate(encoder, update)
   const message = encoding.toUint8Array(encoder)
-  doc.sessions.forEach((_, session) => send(doc, session, message))
+  doc.sessions.forEach((session, id) => send(doc, session, message))
 }
 
 class WSSharedDoc extends Y.Doc {
@@ -38,10 +38,11 @@ class WSSharedDoc extends Y.Doc {
     if(!!$tw.node) {
       this.mux = mutex.createMutex()
       /**
-       * Maps from session to set of controlled user ids. Delete all user ids from awareness when this session is closed
+       * Maps from session to set of controlled user ids & session/doc specific handlers. Delete all user ids from awareness, and clear handlers when this session is closed
        * @type {Map<Object, Set<number>>}
        */
       this.sessions = new Map()
+      this.handlers = new Map()
       /**
        * @type {awarenessProtocol.Awareness}
        */
@@ -162,21 +163,16 @@ const messageListener = (session, doc, message) => {
  */
  exports.closeConn = (session,docname) => {
   const doc = getYDoc(docname)
-  if (doc.sessions.has(session)) {
+  if (doc.sessions.has(session.id)) {
     /**
      * @type {Set<number>}
      */
     // @ts-ignore
-    const controlledIds = doc.sessions.get(session)
-    doc.sessions.delete(session)
+    const controlledIds = doc.sessions.get(session.id)
+    doc.sessions.delete(session.id)
+    doc.handlers.delete(session.id)
     awarenessProtocol.removeAwarenessStates(doc.awareness, Array.from(controlledIds), null)
-    /*
-    if (doc.sessions.size === 0) {
-      $tw.Bob.Ydocs.delete(doc.name)
-    }
-    */
   }
-  session.yhandlers[docname] = null;
 }
 
 /**
@@ -187,10 +183,15 @@ const messageListener = (session, doc, message) => {
 exports.openConn = (session, docname, { gc = true } = {}) => {
   // get doc, initialize if it does not exist yet
   const doc = getYDoc(docname, gc)
-  doc.sessions.set(session, new Set())
+  doc.sessions.set(session.id, new Set())
 
   // listen and reply to y message events
-  session.yhandlers[docname] = /** @param {json} event */ event => messageListener(session, doc, new Uint8Array(event.y))
+  if(!doc.handlers.has(session.id)) {
+    doc.handlers.set(session.id,(event) => {
+      /** @param {json} event */
+      messageListener(session, doc, new Uint8Array(event.y))
+    })
+  }
 
   // send sync step 1
   const encoder = encoding.createEncoder()

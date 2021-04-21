@@ -164,7 +164,7 @@ module-type: library TEST
   WebSocketManager.prototype.openYProviders = function(session) {
     if(this.yproviders.has(session.id)) {
       let docs = this.yproviders.get(session.id);
-      docs.forEach(docname,provider => {
+      docs.forEach((provider,docname) => {
         provider.openConn();
       });
     }   
@@ -173,7 +173,7 @@ module-type: library TEST
   WebSocketManager.prototype.closeYProviders = function(session) {
     if(this.yproviders.has(session.id)) {
       let docs = this.yproviders.get(session.id);
-      docs.forEach(docname,provider => {
+      docs.forEach((provider,docname) => {
         provider.closeConn();
       });
     }  
@@ -185,13 +185,13 @@ module-type: library TEST
   }
 
   WebSocketManager.prototype.openYConnections = function(session) {
-    $tw.Bob.Ydocs.forEach(docname,doc => {
+    $tw.Bob.Ydocs.forEach((doc,docname) => {
       Yutils.openConn(session,docname);
     });
   }
 
   WebSocketManager.prototype.closeYConnections = function(session) {
-    $tw.Bob.Ydocs.forEach(docname,doc => {
+    $tw.Bob.Ydocs.forEach((doc,docname) => {
       Yutils.closeConn(session,docname);
     });
   }

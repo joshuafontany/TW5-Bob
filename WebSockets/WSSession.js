@@ -37,7 +37,6 @@ function WebSocketSession(options) {
   this.isAnonymous = options.isAnonymous; // User's anon state
   this.url = options.url; // The url obj used to connect
   this.ws = null;  // The active websocket
-  this.yhandlers = []; // Session & docname specific Y handlers
 }
 
 WebSocketSession.prototype.accessLevels = {
@@ -84,12 +83,12 @@ WebSocketSession.prototype.openConn = function() {
       console.log(`['${self.id}'] Opened socket to ${self.url.href}`);
       // Reset the state, open any Y provider connections & send a handshake request
       self.initState(this);
-      $tw.Bob.wsManager.openYProviders(self);
       const message = {
         type: 'handshake'
       };
       self.sendMessage(message, function(){
-        console.log(`['${self.id}'] Handshake ack recieved from ${self.url.href}`)
+        console.log(`['${self.id}'] Handshake ack recieved from ${self.url.href}`);
+        $tw.Bob.wsManager.openYProviders(self);
       });
     };
     // On Close
@@ -112,6 +111,7 @@ WebSocketSession.prototype.openConn = function() {
       }
       if(event.code == 4023 && $tw.syncadaptor.session == self) {
         // Error code 4023 means that the client session is invalid, and should be refreshed
+        window.sessionStorage.removeItem("ws-adaptor-session")
         $tw.syncadaptor.session = null;
         // Get the login status
         $tw.syncer.getStatus(function(err,isLoggedIn) {
@@ -124,7 +124,7 @@ WebSocketSession.prototype.openConn = function() {
         });
       } else if(event.code > 1000) {
         if( $tw.Bob.settings['ws-client'].reconnect.auto &&
-        self.state.disconnected - self.state.reconnecting < $tw.Bob.settings['ws-client'].reconnect.abort) {
+        self.state.reconnecting - self.state.disconnected < $tw.Bob.settings['ws-client'].reconnect.abort) {
           // Error code = 1000 means that the connection was closed normally.
           text = `''WARNING: You are no longer connected to the server (${self.url}).` + 
           `Reconnecting (attempt ${self.state.attempts})...''`;
@@ -293,9 +293,11 @@ WebSocketSession.prototype.handleMessage = function(eventData) {
       this.ws.close(4023, `['${this.id}'] Websocket closed by session`);
       return null;
     }
-    let handler = (this.client)? $tw.Bob.wsManager.clientHandlers[eventData.type]: $tw.Bob.wsManager.serverHandlers[eventData.type];
-    if(eventData.type == "y") {
-      handler = this.yhandlers[eventData.doc];
+    let handler ;
+    if(eventData.type == "y" ) {
+      handler = this.client? $tw.Bob.wsManager.yproviders.get(this.id).get(eventData.doc).handler: $tw.Bob.Ydocs(eventData.doc).handlers[session.id];
+    } else {
+      handler = this.client? $tw.Bob.wsManager.clientHandlers[eventData.type]: $tw.Bob.wsManager.serverHandlers[eventData.type];
     }
     // Make sure we have a handler for the message type
     if(typeof handler === 'function') {
@@ -322,6 +324,7 @@ WebSocketSession.prototype.handleMessage = function(eventData) {
       // Call the handler
       handler.call(this,eventData,instance);
     } else {
+      debugger;
       console.error(`['${this.id}'] WS handleMessage error: No handler for message of type ${eventData.type}`);
     }
 }
