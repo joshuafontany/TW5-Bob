@@ -25,7 +25,7 @@ const updateHandler = (update, origin, doc) => {
   encoding.writeVarUint(encoder, messageSync)
   syncProtocol.writeUpdate(encoder, update)
   const message = encoding.toUint8Array(encoder)
-  doc.sessions.forEach((session, id) => send(doc, session, message))
+  doc.sessions.forEach((s, _) => send(doc, s, message))
 }
 
 class WSSharedDoc extends Y.Doc {
@@ -66,8 +66,8 @@ class WSSharedDoc extends Y.Doc {
         encoding.writeVarUint(encoder, messageAwareness)
         encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients))
         const buff = encoding.toUint8Array(encoder)
-        this.sessions.forEach((_, c) => {
-          send(this, c, buff)
+        this.sessions.forEach((s, _) => {
+          send(this, s, buff)
         })
       }
       this.awareness.on('update', awarenessChangeHandler)
@@ -141,7 +141,7 @@ const messageListener = (session, doc, message) => {
 
 /**
  * @param {WSSharedDoc} doc
- * @param {WSSession} session
+ * @param {Uuid_v4} sessionId
  * @param {Uint8Array} m
  */
  const send = (doc, session, m) => {
@@ -151,9 +151,9 @@ const messageListener = (session, doc, message) => {
       doc: doc.name,
       y: Array.from(new Uint8Array(m))
     }
-    session.sendMessage(message, /** @param {any} err */ err => { err != null && closeConn(doc, session) })
+    session.sendMessage(message, /** @param {any} err */ err => { err != null && closeConn(session,doc.name) })
   } catch (e) {
-    closeConn(doc, session)
+    closeConn(session,doc.name)
   }
 }
 
@@ -161,7 +161,7 @@ const messageListener = (session, doc, message) => {
  * @param {WSSharedDoc} doc
  * @param {WSSession} session
  */
- exports.closeConn = (session,docname) => {
+ closeConn = (session,docname) => {
   const doc = getYDoc(docname)
   if (doc.sessions.has(session.id)) {
     /**
@@ -174,13 +174,14 @@ const messageListener = (session, doc, message) => {
     awarenessProtocol.removeAwarenessStates(doc.awareness, Array.from(controlledIds), null)
   }
 }
+exports.closeConn = closeConn
 
 /**
  * @param {WSSession} session
  * @param {any} docname
  * @param {any} opts
  */
-exports.openConn = (session, docname, { gc = true } = {}) => {
+openConn = (session, docname, { gc = true } = {}) => {
   // get doc, initialize if it does not exist yet
   const doc = getYDoc(docname, gc)
   doc.sessions.set(session.id, new Set())
@@ -206,3 +207,5 @@ exports.openConn = (session, docname, { gc = true } = {}) => {
     send(doc, session, encoding.toUint8Array(encoder))
   }
 }
+
+exports.openConn = openConn

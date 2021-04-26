@@ -295,7 +295,7 @@ WebSocketSession.prototype.handleMessage = function(eventData) {
     }
     let handler ;
     if(eventData.type == "y" ) {
-      handler = this.client? $tw.Bob.wsManager.yproviders.get(this.id).get(eventData.doc).handler: $tw.Bob.Ydocs(eventData.doc).handlers[session.id];
+      handler = this.client? $tw.Bob.wsManager.yproviders.get(this.id).get(eventData.doc).handler: $tw.Bob.Ydocs.get(eventData.doc).handlers.get(this.id);
     } else {
       handler = this.client? $tw.Bob.wsManager.clientHandlers[eventData.type]: $tw.Bob.wsManager.serverHandlers[eventData.type];
     }
