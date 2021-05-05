@@ -221,7 +221,7 @@ const createDeleteSetFromStructStore = ss => {
         const clock = struct.id.clock;
         let len = struct.length;
         if (i + 1 < structs.length) {
-          for (let next = structs[i + 1]; i + 1 < structs.length && next.id.clock === clock + len && next.deleted; next = structs[++i + 1]) {
+          for (let next = structs[i + 1]; i + 1 < structs.length && next.deleted; next = structs[++i + 1]) {
             len += next.length;
           }
         }
@@ -3294,7 +3294,7 @@ const popStackItem = (undoManager, stack, eventType) => {
           performedChange = true;
         }
       }
-      result = stackItem;
+      result = performedChange ? stackItem : null;
     }
     transaction.changed.forEach((subProps, type) => {
       // destroy search marker if necessary
@@ -6331,6 +6331,7 @@ class YText extends AbstractType {
     super._callObserver(transaction, parentSubs);
     const event = new YTextEvent(this, transaction, parentSubs);
     const doc = transaction.doc;
+    callTypeObservers(this, transaction, event);
     // If a remote change happened, we try to cleanup potential formatting duplicates.
     if (!transaction.local) {
       // check if another formatting item was inserted
@@ -6379,7 +6380,6 @@ class YText extends AbstractType {
         }
       });
     }
-    callTypeObservers(this, transaction, event);
   }
 
   /**
@@ -6811,7 +6811,7 @@ class YXmlTreeWalker {
      * @type {Item|null}
      */
     let n = this._currentNode;
-    let type = /** @type {any} */ (n.content).type;
+    let type = n && n.content && /** @type {any} */ (n.content).type;
     if (n !== null && (!this._firstCall || n.deleted || !this._filter(type))) { // if first call, we check if we can use the first item
       do {
         type = /** @type {any} */ (n.content).type;

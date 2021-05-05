@@ -18,7 +18,7 @@ A core prototype to hand everything else onto.
     A simple websocket session model
     options: 
   */
-  function Bob(options) {
+  function Bob(options) {debugger;
     // Get the name for this wiki for websocket messages
     $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", "");
     this.settings = {    // Setup the heartbeat settings placeholders (filled in by the 'handshake')
