@@ -1,0 +1,21 @@
+{
+  "tiddlers": [
+    {
+      "file": "base64.js",
+      "fields": {
+        "type": "application/javascript",
+        "title": "$:/plugins/OokTech/Bob/External/js-base64/base64.js",
+        "module-type": "library"
+      },
+      "prefix": "(function(){\n",
+      "suffix": "})();"
+    },
+    {
+      "file": "README.md",
+      "fields": {
+        "type": "text/plain",
+        "title": "$:/plugins/OokTech/Bob/External/js-base64/README"
+      }
+    }
+  ]
+}

@@ -99,7 +99,7 @@ exports.handshake = function(data,instance) {
       // remote server
       // If the socket is closed than reconnect
       const remoteSocketAddress = data.url.startsWith('ws://')?data.url:'ws://'+data.url+'/api/federation/socket'
-      const WebSocket = require('$:/plugins/OokTech/Bob/External/WS/ws.js');
+      const WebSocket = require('$:/plugins/OokTech/Bob/External/ws/ws.js');
       if(Object.keys($tw.Bob.Federation.remoteConnections).indexOf(data.url) === -1 || $tw.Bob.Federation.remoteConnections[data.url].socket.readyState === WebSocket.OPEN) {
         try {
           $tw.Bob.Federation.remoteConnections[data.url] = {}

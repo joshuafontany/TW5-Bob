@@ -3,17 +3,19 @@
 Object.defineProperty(exports, '__esModule', { value: true });
 
 require('./yjs.cjs');
-var bc = require('../lib0/dist/broadcastchannel.cjs');
-var time = require('../lib0/dist/time.cjs');
-var encoding = require('../lib0/dist/encoding.cjs');
-var decoding = require('../lib0/dist/decoding.cjs');
-var syncProtocol = require('./y-protocols/sync.cjs');
-var authProtocol = require('./y-protocols/auth.cjs');
-var awarenessProtocol = require('./y-protocols/awareness.cjs');
-var mutex = require('../lib0/dist/mutex.cjs');
-var observable_js = require('../lib0/dist/observable.cjs');
-var math = require('../lib0/dist/math.cjs');
-var url = require('../lib0/dist/url.cjs');
+const bc = require('../lib0/dist/broadcastchannel.cjs');
+const time = require('../lib0/dist/time.cjs');
+const encoding = require('../lib0/dist/encoding.cjs');
+const decoding = require('../lib0/dist/decoding.cjs');
+const syncProtocol = require('./y-protocols/sync.cjs');
+const authProtocol = require('./y-protocols/auth.cjs');
+const awarenessProtocol = require('./y-protocols/awareness.cjs');
+const mutex = require('../lib0/dist/mutex.cjs');
+const observable_js = require('../lib0/dist/observable.cjs');
+const math = require('../lib0/dist/math.cjs');
+const url = require('../lib0/dist/url.cjs');
+
+const {Base64} = require('../js-base64/base64.js');
 
 /*
 Unlike stated in the LICENSE file, it is not necessary to include the copyright notice and permission notice when you copy code from this file.
@@ -86,12 +88,12 @@ const setupWS = provider => {
     if(!provider.handler) {
       provider.handler = event => {
         provider.wsLastMessageReceived = time.getUnixTime();
-        const encoder = readMessage(provider, new Uint8Array(event.y), true);
+        const encoder = readMessage(provider, Base64.toUint8Array(event.y), true);
         if (encoding.length(encoder) > 1) {
           let message = {
             type: "y",
             doc: provider.doc.name,
-            y: Array.from(new Uint8Array(encoding.toUint8Array(encoder)))
+            y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoder)))
           }
           provider.session.sendMessage(message);
         }
@@ -111,7 +113,7 @@ const setupWS = provider => {
     let message = {
       type: "y",
       doc: provider.doc.name,
-      y: Array.from(new Uint8Array(encoding.toUint8Array(encoder)))
+      y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoder)))
     }
     provider.session.sendMessage(message);
     // broadcast local awareness state
@@ -122,7 +124,7 @@ const setupWS = provider => {
       let message = {
         type: "y",
         doc: provider.doc.name,
-        y: Array.from(new Uint8Array(encoding.toUint8Array(encoderAwarenessState)))
+        y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoderAwarenessState)))
       }
       provider.session.sendMessage(message);
     }
@@ -138,7 +140,7 @@ const broadcastMessage = (provider, buf) => {
     let message = {
       type: "y",
       doc: provider.doc.name,
-      y: Array.from(new Uint8Array(buf).values())
+      y: Base64.fromUint8Array(new Uint8Array(buf).values())
     }
     provider.session.sendMessage(message);
   }
@@ -199,7 +201,7 @@ class WebsocketProvider extends observable_js.Observable {
         let message = {
           type: "y",
           doc: this.doc.name,
-          y: Array.from(new Uint8Array(encoding.toUint8Array(encoder)))
+          y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoder)))
         }
         this.session.sendMessage(message);
       }
@@ -275,7 +277,6 @@ class WebsocketProvider extends observable_js.Observable {
       }
       this.connectBc();
     }
-
 
     this.openConn();
   }

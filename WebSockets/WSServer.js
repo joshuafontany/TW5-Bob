@@ -26,7 +26,7 @@ function WebSocketServer(options) {
   this.on('connection',this.handleConnection);
 }
 
-WebSocketServer.prototype = Object.create(require('./External/WS/ws.js').Server.prototype);
+WebSocketServer.prototype = Object.create(require('./External/ws/ws.js').Server.prototype);
 WebSocketServer.prototype.constructor = WebSocketServer;
 
 WebSocketServer.prototype.defaultVariables = {

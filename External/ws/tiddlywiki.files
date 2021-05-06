@@ -4,7 +4,7 @@
       "file": "index.js",
       "fields": {
         "type": "application/javascript",
-        "title": "$:/plugins/OokTech/Bob/External/WS/ws.js",
+        "title": "$:/plugins/OokTech/Bob/External/ws/ws.js",
         "module-type": "library"
       },
       "prefix": "(function(){\n",

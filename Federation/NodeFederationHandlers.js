@@ -616,7 +616,7 @@ exports.startup = function() {
           // Get the url for the remote websocket
           const URL = require('url');
           const remoteUrl = new URL(data.remoteUrl);
-          const WebSocket = require('$:/plugins/OokTech/Bob/External/WS/ws.js');
+          const WebSocket = require('$:/plugins/OokTech/Bob/External/ws/ws.js');
           const websocketProtocol = (remoteUrl.protocol.startsWith('https'))?'wss://':'ws://';
           // connect web socket
           const socket = new WebSocket(websocketProtocol + remoteUrl.host + remoteUrl.pathname);

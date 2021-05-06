@@ -8,6 +8,8 @@ const decoding = require('../lib0/dist/decoding.cjs')
 const mutex = require('../lib0/dist/mutex.cjs')
 const map = require('../lib0/dist/map.cjs')
 
+const {Base64} = require('../js-base64/base64.js');
+
 // disable gc when using snapshots!
 const gcEnabled = !!$tw.node? (process.env.GC !== 'false' && process.env.GC !== '0'): true;
 
@@ -100,15 +102,15 @@ exports.getYDoc = getYDoc
  * @return {WebsocketProvider}
  */
  const getProvider = (session,docname) => {
-  let sessionMap = map.setIfUndefined($tw.Bob.wsManager.yproviders, session.id, () => {
-    let sessionMap = new Map();
-    $tw.Bob.wsManager.yproviders.set(session.id,sessionMap)
-    return sessionMap;
+  let providerMap = map.setIfUndefined($tw.Bob.wsManager.yproviders, session.id, () => {
+    let providers = new Map();
+    $tw.Bob.wsManager.yproviders.set(session.id,providers)
+    return providers;
   });
-  return map.setIfUndefined(sessionMap, docname, () => {
+  return map.setIfUndefined(providerMap, docname, () => {
     const doc = getYDoc(docname)
     const provider = new WebsocketProvider(session,doc)
-    sessionMap.set(docname,provider)
+    providerMap.set(docname,provider)
     return provider
   })
 }
@@ -149,7 +151,7 @@ const messageListener = (session, doc, message) => {
     let message = {
       type: "y",
       doc: doc.name,
-      y: Array.from(new Uint8Array(m))
+      y: Base64.fromUint8Array(new Uint8Array(m))
     }
     session.sendMessage(message, /** @param {any} err */ err => { err != null && closeConn(session,doc.name) })
   } catch (e) {
@@ -190,7 +192,7 @@ openConn = (session, docname, { gc = true } = {}) => {
   if(!doc.handlers.has(session.id)) {
     doc.handlers.set(session.id,(event) => {
       /** @param {json} event */
-      messageListener(session, doc, new Uint8Array(event.y))
+      messageListener(session, doc, Base64.toUint8Array(event.y))
     })
   }
 

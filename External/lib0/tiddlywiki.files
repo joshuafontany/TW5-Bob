@@ -1,0 +1,50 @@
+{
+  "tiddlers": [
+   {
+      "file": "README.md",
+      "fields": {
+        "title": "$:/plugins/OokTech/Bob/External/lib0/README",
+        "type": "text/markdown",
+        "source": ""
+      }
+    }
+  ],
+    "directories": [
+    {
+      "path": "./lib0",
+      "filesRegExp": "^.+\\.(c)?js",
+      "isTiddlerFile": false,
+      "isEditableFile": false,
+      "fields": {
+        "title": {
+          "source": "filename",
+          "prefix": "$:/plugins/OokTech/Bob/External/lib0/dist/"
+        },
+        "module-type": "library",
+        "type": "application/javascript",
+        "text": {
+          "prefix": "(function(){\n",
+          "suffix": "})();"
+        }
+      }
+    },
+        {
+      "path": "./isomorphic.js",
+      "filesRegExp": "^.+\\.(c)?js",
+      "isTiddlerFile": false,
+      "isEditableFile": false,
+      "fields": {
+        "title": {
+          "source": "filename",
+          "prefix": "$:/plugins/OokTech/Bob/External/lib0/isomorphic.js/"
+        },
+        "module-type": "library",
+        "type": "application/javascript",
+        "text": {
+          "prefix": "(function(){\n",
+          "suffix": "})();"
+        }
+      }
+    }
+  ]
+}

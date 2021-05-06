@@ -259,10 +259,6 @@ WSAdaptor.prototype.getTiddlerInfo = function(tiddler, options) {
 Get the current status of the user
 */
 WSAdaptor.prototype.getStatus = function(callback) {
-  // Setup the local Ydoc for this client session
-  if(!$tw.Bob.Ydocs.has($tw.wikiName)){
-    $tw.Bob.initY($tw.wikiName);
-  }
 	// Get status
 	let self = this,
     isSseEnabled = false,

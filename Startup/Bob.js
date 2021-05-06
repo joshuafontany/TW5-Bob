@@ -14,6 +14,7 @@ A core prototype to hand everything else onto.
 
   const Yutils = require('./External/yjs/y-utils.cjs'),
     WebSocketManager = require('./WSManager.js').WebSocketManager;
+
   /*
     A simple websocket session model
     options: 
@@ -39,13 +40,14 @@ A core prototype to hand everything else onto.
     this.version = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob').fields.version;
     this.ExcludeFilter = $tw.wiki.getTiddlerText('$:/plugins/OokTech/Bob/ExcludeSync');
     // Wikis & Ydocs maps
-    this.Wikis = new Map();
+    this.Yversion = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/External/yjs/yjs.cjs').fields.version;
     this.Ydocs = new Map();
+    this.Wikis = new Map();
     // Logger
     this.logger = {};
     // Setup Websocket library
     if($tw.node){
-      this.ws = require('./External/WS/ws.js');
+      this.ws = require('./External/ws/ws.js');
       this.url = require('url').URL;
     } else {
       this.ws = WebSocket;
@@ -56,11 +58,179 @@ A core prototype to hand everything else onto.
     this.wsManager = new WebSocketManager(managerSerialized);
   }
 
-  // Polyfill because IE uses old javascript
-  if(!String.prototype.startsWith) {
-    String.prototype.startsWith = function(search, pos) {
-      return this.substr(!pos || pos < 0 ? 0 : +pos, search.length) === search;
-    };
+  // Yjs methods
+
+  /*
+    This function sets up a Y doc on a client to sync changes.
+    All Y shared types will be named with tiddler titles &
+    stashed in the wiki when the Y doc is destroyed.
+  */
+  Bob.prototype.initY = function(wikiName) {
+    return Yutils.getYDoc(wikiName);
+  }
+
+  // Tiddler methods
+
+  /*
+    This function takes two tiddler objects and returns a boolean value
+    indicating if they are the same or not.
+  */
+  Bob.prototype.tiddlerHasChanged = function (tiddler, otherTiddler) {
+    if (!otherTiddler) {
+      return true;
+    }
+    if (!tiddler) {
+      return true;
+    }
+    if (!otherTiddler.fields && tiddler.fields) {
+      return true;
+    }
+    if (!tiddler.fields && otherTiddler.fields) {
+      return true;
+    }
+    const hash1 = tiddler.hash || this.getTiddlerHash(tiddler);
+    const hash2 = otherTiddler.hash || this.getTiddlerHash(otherTiddler);
+    return hash1 !== hash2;
+  };
+
+  /*
+    This is a simple and fast hashing function that we can use to test if a
+    tiddler has changed or not.
+    This doesn't need to be at all secure, and doesn't even need to be that
+    robust against collisions, it just needs to make collisions rare for a very
+    easy value of rare, like 0.1% would be more than enough to make this very
+    useful, and this should be much better than that.
+
+    Remember that this just cares about collisions between one tiddler and its
+    previous state after an edit, not between all tiddlers in the wiki or
+    anything like that.
+  */
+  Bob.prototype.getTiddlerHash = function (tiddler) {
+    const tiddlerString = this.stableStringify(this.normalizeTiddler(tiddler))
+    let hash = 0;
+    if (tiddlerString.length === 0) {
+      return hash;
+    }
+    for (let i = 0; i < tiddlerString.length; i++) {
+      const char = tiddlerString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return hash;
+  }
+
+  // This is a stable json stringify function from https://github.com/epoberezkin/fast-json-stable-stringify
+  Bob.prototype.stableStringify = function (data, opts) {
+    if (!opts) opts = {};
+    if (typeof opts === 'function') opts = { cmp: opts };
+    let cycles = (typeof opts.cycles === 'boolean') ? opts.cycles : false;
+
+    let cmp = opts.cmp && (function (f) {
+      return function (node) {
+        return function (a, b) {
+          const aobj = { key: a, value: node[a] };
+          const bobj = { key: b, value: node[b] };
+          return f(aobj, bobj);
+        };
+      };
+    })(opts.cmp);
+
+    let seen = [];
+    return (function stringify(node) {
+      if (node && node.toJSON && typeof node.toJSON === 'function') {
+        node = node.toJSON();
+      }
+
+      if (node === undefined) return;
+      if (typeof node == 'number') return isFinite(node) ? '' + node : 'null';
+      if (typeof node !== 'object') return JSON.stringify(node);
+
+      let i, out;
+      if (Array.isArray(node)) {
+        out = '[';
+        for (i = 0; i < node.length; i++) {
+          if (i) out += ',';
+          out += stringify(node[i]) || 'null';
+        }
+        return out + ']';
+      }
+
+      if (node === null) return 'null';
+
+      if (seen.indexOf(node) !== -1) {
+        if (cycles) return JSON.stringify('__cycle__');
+        throw new TypeError('Converting circular structure to JSON');
+      }
+
+      let seenIndex = seen.push(node) - 1;
+      let keys = Object.keys(node).sort(cmp && cmp(node));
+      out = '';
+      for (i = 0; i < keys.length; i++) {
+        let key = keys[i];
+        let value = stringify(node[key]);
+
+        if (!value) continue;
+        if (out) out += ',';
+        out += JSON.stringify(key) + ':' + value;
+      }
+      seen.splice(seenIndex, 1);
+      return '{' + out + '}';
+    })(data);
+  };
+
+  /*
+    This normalizes a tiddler so that it can be compared to another tiddler to
+    determine if they are the same.
+
+    Any two tiddlers that have the same fields and content (including title)
+    will return exactly the same thing using this function.
+
+    Fields are included in alphabetical order, as defined by the javascript
+    array sort method.
+
+    The tag field gets sorted and the list field is interpreted as a string
+    array. If either field exists but it is an empty string it is replaced with
+    an empty array.
+
+    Date fields (modified and created) are stringified.
+  */
+  Bob.prototype.normalizeTiddler = function (tiddler) {
+    let newTid = {};
+    if (tiddler) {
+      if (tiddler.fields) {
+        let fields = Object.keys(tiddler.fields) || []
+        fields.sort()
+        fields.forEach(function (field) {
+          if (field === 'list' || field === 'tags') {
+            if (Array.isArray(tiddler.fields[field])) {
+              newTid[field] = tiddler.fields[field].slice()
+              if (field === 'tags') {
+                newTid[field] = newTid[field].sort()
+              }
+            } else if (tiddler.fields[field] === '') {
+              newTid[field] = []
+            } else {
+              newTid[field] = $tw.utils.parseStringArray(tiddler.fields[field]).slice()
+              if (field === 'tags') {
+                newTid[field] = newTid[field].sort()
+              }
+            }
+          } else if (field === 'modified' || field === 'created') {
+            if (typeof tiddler.fields[field] === 'object' && tiddler.fields[field] !== null) {
+              newTid[field] = $tw.utils.stringifyDate(tiddler.fields[field]);
+            } else {
+              newTid[field] = tiddler.fields[field]
+            }
+          } else {
+            newTid[field] = tiddler.fields[field]
+          }
+        })
+        if (typeof newTid.text === 'undefined' || !newTid.text) {
+          newTid.text = '';
+        }
+      }
+    }
+    return { fields: newTid }
   }
 
   if ($tw.node) {
@@ -438,184 +608,14 @@ A core prototype to hand everything else onto.
     }
 
     // End Node methods
-  }
-
-  // Yjs methods
-
-  /*
-    This function sets up a Y doc on a client to sync changes.
-    All Y shared types will be named with tiddler titles &
-    stashed in the wiki when the Y doc is destroyed.
-  */
-  Bob.prototype.initY = function(wikiName) {
-    return Yutils.getYDoc(wikiName);
-  }
-
-  // Tiddler methods
-
-  /*
-    This function takes two tiddler objects and returns a boolean value
-    indicating if they are the same or not.
-  */
-  Bob.prototype.tiddlerHasChanged = function (tiddler, otherTiddler) {
-    if (!otherTiddler) {
-      return true;
-    }
-    if (!tiddler) {
-      return true;
-    }
-    if (!otherTiddler.fields && tiddler.fields) {
-      return true;
-    }
-    if (!tiddler.fields && otherTiddler.fields) {
-      return true;
-    }
-    const hash1 = tiddler.hash || this.getTiddlerHash(tiddler);
-    const hash2 = otherTiddler.hash || this.getTiddlerHash(otherTiddler);
-    return hash1 !== hash2;
-  };
-
-  /*
-    This is a simple and fast hashing function that we can use to test if a
-    tiddler has changed or not.
-    This doesn't need to be at all secure, and doesn't even need to be that
-    robust against collisions, it just needs to make collisions rare for a very
-    easy value of rare, like 0.1% would be more than enough to make this very
-    useful, and this should be much better than that.
-
-    Remember that this just cares about collisions between one tiddler and its
-    previous state after an edit, not between all tiddlers in the wiki or
-    anything like that.
-  */
-  Bob.prototype.getTiddlerHash = function (tiddler) {
-    const tiddlerString = this.stableStringify(this.normalizeTiddler(tiddler))
-    let hash = 0;
-    if (tiddlerString.length === 0) {
-      return hash;
-    }
-    for (let i = 0; i < tiddlerString.length; i++) {
-      const char = tiddlerString.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return hash;
-  }
-
-  // This is a stable json stringify function from https://github.com/epoberezkin/fast-json-stable-stringify
-  Bob.prototype.stableStringify = function (data, opts) {
-    if (!opts) opts = {};
-    if (typeof opts === 'function') opts = { cmp: opts };
-    let cycles = (typeof opts.cycles === 'boolean') ? opts.cycles : false;
-
-    let cmp = opts.cmp && (function (f) {
-      return function (node) {
-        return function (a, b) {
-          const aobj = { key: a, value: node[a] };
-          const bobj = { key: b, value: node[b] };
-          return f(aobj, bobj);
-        };
+  } else {
+    // Polyfill because IE uses old javascript
+    if(!String.prototype.startsWith) {
+      String.prototype.startsWith = function(search, pos) {
+        return this.substr(!pos || pos < 0 ? 0 : +pos, search.length) === search;
       };
-    })(opts.cmp);
-
-    let seen = [];
-    return (function stringify(node) {
-      if (node && node.toJSON && typeof node.toJSON === 'function') {
-        node = node.toJSON();
-      }
-
-      if (node === undefined) return;
-      if (typeof node == 'number') return isFinite(node) ? '' + node : 'null';
-      if (typeof node !== 'object') return JSON.stringify(node);
-
-      let i, out;
-      if (Array.isArray(node)) {
-        out = '[';
-        for (i = 0; i < node.length; i++) {
-          if (i) out += ',';
-          out += stringify(node[i]) || 'null';
-        }
-        return out + ']';
-      }
-
-      if (node === null) return 'null';
-
-      if (seen.indexOf(node) !== -1) {
-        if (cycles) return JSON.stringify('__cycle__');
-        throw new TypeError('Converting circular structure to JSON');
-      }
-
-      let seenIndex = seen.push(node) - 1;
-      let keys = Object.keys(node).sort(cmp && cmp(node));
-      out = '';
-      for (i = 0; i < keys.length; i++) {
-        let key = keys[i];
-        let value = stringify(node[key]);
-
-        if (!value) continue;
-        if (out) out += ',';
-        out += JSON.stringify(key) + ':' + value;
-      }
-      seen.splice(seenIndex, 1);
-      return '{' + out + '}';
-    })(data);
-  };
-
-  /*
-    This normalizes a tiddler so that it can be compared to another tiddler to
-    determine if they are the same.
-
-    Any two tiddlers that have the same fields and content (including title)
-    will return exactly the same thing using this function.
-
-    Fields are included in alphabetical order, as defined by the javascript
-    array sort method.
-
-    The tag field gets sorted and the list field is interpreted as a string
-    array. If either field exists but it is an empty string it is replaced with
-    an empty array.
-
-    Date fields (modified and created) are stringified.
-  */
-  Bob.prototype.normalizeTiddler = function (tiddler) {
-    let newTid = {};
-    if (tiddler) {
-      if (tiddler.fields) {
-        let fields = Object.keys(tiddler.fields) || []
-        fields.sort()
-        fields.forEach(function (field) {
-          if (field === 'list' || field === 'tags') {
-            if (Array.isArray(tiddler.fields[field])) {
-              newTid[field] = tiddler.fields[field].slice()
-              if (field === 'tags') {
-                newTid[field] = newTid[field].sort()
-              }
-            } else if (tiddler.fields[field] === '') {
-              newTid[field] = []
-            } else {
-              newTid[field] = $tw.utils.parseStringArray(tiddler.fields[field]).slice()
-              if (field === 'tags') {
-                newTid[field] = newTid[field].sort()
-              }
-            }
-          } else if (field === 'modified' || field === 'created') {
-            if (typeof tiddler.fields[field] === 'object' && tiddler.fields[field] !== null) {
-              newTid[field] = $tw.utils.stringifyDate(tiddler.fields[field]);
-            } else {
-              newTid[field] = tiddler.fields[field]
-            }
-          } else {
-            newTid[field] = tiddler.fields[field]
-          }
-        })
-        if (typeof newTid.text === 'undefined' || !newTid.text) {
-          newTid.text = '';
-        }
-      }
     }
-    return { fields: newTid }
   }
-
-
 
   exports.Bob = Bob;
 
