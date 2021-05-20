@@ -59,7 +59,7 @@ $tw.Bob will always be at the root $tw object on both node and browser.
       // Update the settings
       $tw.Bob.settings = data.settings;
     }
-    if($tw.syncadaptor.session && $tw.syncadaptor.session == this) {
+    if($tw.Bob.sessionId && $tw.Bob.sessionId == this.id) {
       // Setup the local Ydoc for this client session
       let doc = $tw.Bob.Ydocs.get(this.wikiName);
       let provider = $tw.Bob.wsManager.initYProvider(this);

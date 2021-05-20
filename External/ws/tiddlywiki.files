@@ -14,21 +14,21 @@
       "file": "README.md",
       "fields": {
         "type": "text/plain",
-        "title": "$:/plugins/OokTech/Bob/External/WS/README"
+        "title": "$:/plugins/OokTech/Bob/External/ws/README"
       }
     },
     {
       "file": "LICENSE",
       "fields": {
         "type": "text/plain",
-        "title": "$:/plugins/OokTech/Bob/External/WS/LICENSE"
+        "title": "$:/plugins/OokTech/Bob/External/ws/LICENSE"
       }
     },
     {
       "file": "lib/buffer-util.js",
       "fields": {
         "type": "application/javascript",
-        "title": "$:/plugins/OokTech/Bob/External/WS/lib/buffer-util.js",
+        "title": "$:/plugins/OokTech/Bob/External/ws/lib/buffer-util.js",
         "module-type": "library"
       },
       "prefix": "(function(){\n",
@@ -38,7 +38,7 @@
       "file": "lib/constants.js",
       "fields": {
         "type": "application/javascript",
-        "title": "$:/plugins/OokTech/Bob/External/WS/lib/constants.js",
+        "title": "$:/plugins/OokTech/Bob/External/ws/lib/constants.js",
         "module-type": "library"
       },
       "prefix": "(function(){\n",
@@ -48,7 +48,7 @@
       "file": "lib/event-target.js",
       "fields": {
         "type": "application/javascript",
-        "title": "$:/plugins/OokTech/Bob/External/WS/lib/event-target.js",
+        "title": "$:/plugins/OokTech/Bob/External/ws/lib/event-target.js",
         "module-type": "library"
       },
       "prefix": "(function(){\n",
@@ -58,7 +58,7 @@
       "file": "lib/extension.js",
       "fields": {
         "type": "application/javascript",
-        "title": "$:/plugins/OokTech/Bob/External/WS/lib/extension.js",
+        "title": "$:/plugins/OokTech/Bob/External/ws/lib/extension.js",
         "module-type": "library"
       },
       "prefix": "(function(){\n",
@@ -68,7 +68,7 @@
       "file": "lib/permessage-deflate.js",
       "fields": {
         "type": "application/javascript",
-        "title": "$:/plugins/OokTech/Bob/External/WS/lib/permessage-deflate.js",
+        "title": "$:/plugins/OokTech/Bob/External/ws/lib/permessage-deflate.js",
         "module-type": "library"
       },
       "prefix": "(function(){\n",
@@ -78,7 +78,7 @@
       "file": "lib/receiver.js",
       "fields": {
         "type": "application/javascript",
-        "title": "$:/plugins/OokTech/Bob/External/WS/lib/receiver.js",
+        "title": "$:/plugins/OokTech/Bob/External/ws/lib/receiver.js",
         "module-type": "library"
       },
       "prefix": "(function(){\n",
@@ -88,7 +88,7 @@
       "file": "lib/sender.js",
       "fields": {
         "type": "application/javascript",
-        "title": "$:/plugins/OokTech/Bob/External/WS/lib/sender.js",
+        "title": "$:/plugins/OokTech/Bob/External/ws/lib/sender.js",
         "module-type": "library"
       },
       "prefix": "(function(){\n",
@@ -98,7 +98,7 @@
       "file": "lib/validation.js",
       "fields": {
         "type": "application/javascript",
-        "title": "$:/plugins/OokTech/Bob/External/WS/lib/validation.js",
+        "title": "$:/plugins/OokTech/Bob/External/ws/lib/validation.js",
         "module-type": "library"
       },
       "prefix": "(function(){\n",
@@ -108,7 +108,7 @@
       "file": "lib/websocket-server.js",
       "fields": {
         "type": "application/javascript",
-        "title": "$:/plugins/OokTech/Bob/External/WS/lib/websocket-server.js",
+        "title": "$:/plugins/OokTech/Bob/External/ws/lib/websocket-server.js",
         "module-type": "library"
       },
       "prefix": "(function(){\n",
@@ -118,7 +118,7 @@
       "file": "lib/websocket.js",
       "fields": {
         "type": "application/javascript",
-        "title": "$:/plugins/OokTech/Bob/External/WS/lib/websocket.js",
+        "title": "$:/plugins/OokTech/Bob/External/ws/lib/websocket.js",
         "module-type": "library"
       },
       "prefix": "(function(){\n",

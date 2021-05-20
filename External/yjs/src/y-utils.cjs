@@ -52,12 +52,12 @@ class WSSharedDoc extends Y.Doc {
       this.awareness.setLocalState(null)
       /**
        * @param {{ added: Array<number>, updated: Array<number>, removed: Array<number> }} changes
-       * @param {Object | null} session Origin is the connection that made the change
+       * @param {Object | null} origin Origin is the connection that made the change
        */
-      const awarenessChangeHandler = ({ added, updated, removed }, session) => {
+      const awarenessChangeHandler = ({ added, updated, removed }, origin) => {
         const changedClients = added.concat(updated, removed)
-        if (session !== null) {
-          const connControlledIDs = /** @type {Set<number>} */ (this.sessions.get(session))
+        if (origin !== null) {
+          const connControlledIDs = /** @type {Set<number>} */ (this.sessions.get(origin))
           if (connControlledIDs !== undefined) {
             added.forEach(clientID => { connControlledIDs.add(clientID) })
             removed.forEach(clientID => { connControlledIDs.delete(clientID) })
@@ -95,7 +95,7 @@ const getYDoc = (docname, gc = true) => map.setIfUndefined($tw.Bob.Ydocs, docnam
 exports.getYDoc = getYDoc
 
 /**
- * Gets a Y.Doc provider by name, whether in memory or on disk
+ * Gets a Y.Doc provider
  *
  * @param {WSSession} session - the session with id to find or create
  * @param {WSSharedDoc} doc - the name of the Y.Doc to link to the session provider

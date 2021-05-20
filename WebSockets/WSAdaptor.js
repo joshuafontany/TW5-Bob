@@ -14,8 +14,7 @@ Bob's WSManager library instance: $tw.Bob.wsManager
 "use strict";
 
 const CONFIG_HOST_TIDDLER = "$:/config/bob/host",
-  DEFAULT_HOST_TIDDLER = "$protocol$//$host$/",
-  uuid_NIL = require('./External/uuid/nil.js').default;
+  DEFAULT_HOST_TIDDLER = "$protocol$//$host$/";
 
 /*
   This adds actions for the different event hooks. Each hook sends a
@@ -212,7 +211,11 @@ function WSAdaptor(options) {
     this.isLoggedIn = false;
     this.isReadOnly = false;
     this.isAnonymous = true;
-    this.session = null;
+    if (window.sessionStorage.getItem("ws-adaptor-session") !== null) {
+      this.sessionId = window.sessionStorage.getItem("ws-adaptor-session");
+    } else {
+      this.sessionId = require('./External/uuid/nil.js').default;
+    }
     //addHooks(this.clientId);
 }
 
@@ -262,8 +265,7 @@ WSAdaptor.prototype.getStatus = function(callback) {
 	// Get status
 	let self = this,
     isSseEnabled = false,
-    sessionId = window.sessionStorage.getItem("ws-adaptor-session") || uuid_NIL,
-    params = "?wiki=" + $tw.wikiName + "&session=" + sessionId;
+    params = "?wiki=" + $tw.wikiName + "&session=" + this.sessionId;
   this.logger.log("Getting status");
 	$tw.utils.httpRequest({
 		url: this.host + "api/status" + params,

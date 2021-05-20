@@ -24,7 +24,6 @@ exports.startup = function() {
   $tw.Bob = new Bob();
   // Set the wiki as loaded in the browser
   if(!!$tw.browser && $tw.wikiName) {
-    $tw.Bob.initY($tw.wikiName);
     $tw.Bob.Wikis.set($tw.wikiName,$tw);
   }
 }

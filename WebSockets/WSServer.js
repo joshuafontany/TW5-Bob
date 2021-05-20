@@ -104,6 +104,7 @@ WebSocketServer.prototype.requestSession = function(state) {
   let userSession, 
       wikiName = state.queryParameters["wiki"],
       sessionId = state.queryParameters["session"];
+  
   if(sessionId == uuid_NIL || !$tw.Bob.wsManager.hasSession(sessionId)  
       || $tw.Bob.wsManager.getSession(sessionId).username !== state.authenticatedUsername) {
       // Anon users always have a new random userid created

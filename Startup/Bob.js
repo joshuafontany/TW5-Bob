@@ -12,16 +12,15 @@ A core prototype to hand everything else onto.
   /*global $tw: false */
   "use strict";
 
-  const Yutils = require('./External/yjs/y-utils.cjs'),
-    WebSocketManager = require('./WSManager.js').WebSocketManager;
+  const WebSocketManager = require('./WSManager.js').WebSocketManager;
 
   /*
-    A simple websocket session model
+    "Bob" is a websocket helper module for both server and client/browser.
     options: 
   */
   function Bob(options) {debugger;
     // Get the name for this wiki for websocket messages
-    $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", "");
+    $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", ""));
     this.settings = {    // Setup the heartbeat settings placeholders (filled in by the 'handshake')
       'ws-client': {
         "heartbeat": {
@@ -56,17 +55,6 @@ A core prototype to hand everything else onto.
     // Always setup the WebSocketManager
     let managerSerialized = JSON.parse("{}");
     this.wsManager = new WebSocketManager(managerSerialized);
-  }
-
-  // Yjs methods
-
-  /*
-    This function sets up a Y doc on a client to sync changes.
-    All Y shared types will be named with tiddler titles &
-    stashed in the wiki when the Y doc is destroyed.
-  */
-  Bob.prototype.initY = function(wikiName) {
-    return Yutils.getYDoc(wikiName);
   }
 
   // Tiddler methods

@@ -12,6 +12,7 @@ module-type: library TEST
   "use strict";
 
   let Yutils = require('./External/yjs/y-utils.cjs'),
+    const map = require('./External/lib0/dist/map.cjs'),
     WebSocketSession = require('./WSSession.js').WebSocketSession,
     WebSocketUser = require('./WSUser.js').WebSocketUser;
 
@@ -43,6 +44,21 @@ module-type: library TEST
     }
   }
 
+  WebSocketManager.prototype.accessLevels = {
+    Reader: "reader",
+    Writer: "writer",
+    Admin: "admin"
+  }
+
+  /*
+    This returns a new id for a message.
+    Messages from a client (usually the browser) have ids that start with c, 
+    messages from a server have ids that starts with s.
+  */
+    WebSocketManager.prototype.getMessageId = function(client) {
+    return !!client ? "c" + this.clientId++: "s" + this.serverId++;
+  }
+
   WebSocketManager.prototype.getHost = function(host) {
     host = new $tw.Bob.url(host || (!!document.location && document.location.href));
     // Websocket host
@@ -72,14 +88,16 @@ module-type: library TEST
 
   // Tests a session's socket connection
   WebSocketManager.prototype.isReady = function(sessionId) {
-    return this.hasSocket(sessionId) && this.getSession(sessionId).ws.readyState == 1;
+    return this.hasSocket(sessionId) && this.getSession(sessionId).isReady();
   }
 
-  // Create a new session (serverside)
-  WebSocketManager.prototype.newSession = function(sessionData) {
-    let session = new WebSocketSession(sessionData);
-    this.setSession(session);
-    return session;
+  // Create or get a new session
+  WebSocketManager.prototype.getSession = function(sessionId) {
+    map.setIfUndefined(this.sessions, sessionId, () => {
+      let session = new WebSocketSession(sessionId);
+      this.sessions.set(sessionId, session);
+      return session;
+    })
   }
 
   WebSocketManager.prototype.hasSession = function(sessionId) {
@@ -321,36 +339,6 @@ module-type: library TEST
   /*
     Sync methods
   */
-  
-  /*
-    If a heartbeat is not received within $tw.Bob.settings['ws-client'].heartbeat.timeout from
-    the last heartbeat, terminate the given socket. Setup the next heartbeat.
-  */
-  WebSocketManager.prototype.heartbeat = function(data){
-    if(data.sessionId) {
-      console.log("heartbeat");
-      let session = this.getSession(data.sessionId);
-      if(session) {
-        // clear the ping timers
-        clearTimeout(session.state.pingTimeout);
-        clearTimeout(session.state.ping);
-        // Delay should be equal to the interval at which your server
-        // sends out pings plus a conservative assumption of the latency.  
-        session.state.pingTimeout = setTimeout(function() {
-          if(session.ws && session.ws.readyState == 1) {
-            session.ws.close(4000, `['${session.ws.id}'] Websocket closed by session.state.pingTimeout`);
-          }
-        }, $tw.Bob.settings['ws-client'].heartbeat.timeout + $tw.Bob.settings['ws-client'].heartbeat.interval);
-        // Send the next heartbeat ping after $tw.Bob.settings['ws-client'].heartbeat.interval ms
-        session.state.ping = setTimeout(function() {
-          session.send({
-            type: 'ping',
-            id: 'heartbeat'
-          });
-        }, $tw.Bob.settings['ws-client'].heartbeat.interval); 
-      }
-    }
-  }
 
   WebSocketManager.prototype.syncToServer = function(sessionId) {
     /*
