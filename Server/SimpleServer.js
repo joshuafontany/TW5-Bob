@@ -173,7 +173,7 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
         });
       }
     } else {
-      console.log("ws-server: upgrade request denied");
+      console.log(`['${sesion.id}'] ws-server: upgrade request denied`);
       socket.close(4023, `['${sesion.id}'] Websocket closed by server`);
       return;
     }

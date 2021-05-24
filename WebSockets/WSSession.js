@@ -62,17 +62,17 @@ const setupWS = (session) => {
      * @param {any} error
      */
     const onclose = (error,event) => {
-      console.log(`['${session.id}'] Closed socket to ${ssessionelf.url.href}`);
+      console.log(`['${session.id}'] Closed socket to ${session.url.href}`);
       // Close the Y provider connections
       $tw.Bob.wsManager.closeYProviders(session);
       // Clear the ping timers
       clearTimeout(session.pingTimeout);
       clearTimeout(session.ping);
 
-      if(event && event.code == 4023 && $tw.Bob.sessionId == session.id) {
-        // Error code 4023 means that the client session is invalid, and should be refreshed
+      if(event && event.code == 4023) {
+        // Error code 4023 means that the client session is invalid, and should be discarded
         window.sessionStorage.removeItem("ws-adaptor-session")
-        $tw.Bob.sessionId = null;
+        this.sessionId = null;
         // Get the login status
         $tw.syncer.getStatus(function(err,isLoggedIn) {
           if(err) {
@@ -82,7 +82,7 @@ const setupWS = (session) => {
             $tw.syncer.syncFromServer();
           }
         });
-      } else if(event.code > 1000) {
+      } else if(event && event.code > 1000) {
         if( $tw.Bob.settings['ws-client'].reconnect.auto &&
         self.state.reconnecting - self.state.disconnected < $tw.Bob.settings['ws-client'].reconnect.abort) {
           // Error code = 1000 means that the connection was closed normally.
@@ -111,7 +111,7 @@ const setupWS = (session) => {
         session.connecting = false;
         if (session.connected) {
           session.connected = false;
-          session.emit('disconnect', [{ type: 'disconnect', error }, session]);
+          session.emit('disconnect', [{ type: 'disconnect', error: error, event: event }, session]);
         } else {
           session.unsuccessfulReconnects++;
         }
@@ -119,7 +119,8 @@ const setupWS = (session) => {
         // log10(wsUnsuccessfulReconnects).
         // The idea is to increase reconnect timeout slowly and have no reconnect
         // timeout at the beginning (log(1) = 0)
-        setTimeout(setupWS, math.min(math.log10(session.unsuccessfulReconnects + 1) * reconnectTimeoutBase, maxReconnectTimeout), session);
+        let delay = math.min(math.log10(session.unsuccessfulReconnects + 1) * $tw.Bob.settings['ws-client'].reconnect.base * (1+Math.random()*0.5), $tw.Bob.settings['ws-client'].reconnect.max);
+        setTimeout(setupWS, delay, session);
       }
 
     };
@@ -262,6 +263,9 @@ const setupHeartbeat = (session) => {
   }
 
   destroy () {
+    // clear the ping timers
+    clearTimeout(this.pingTimeout);
+    clearTimeout(this.ping);
     clearInterval(this._checkInterval);
     this.disconnect();
     super.destroy();

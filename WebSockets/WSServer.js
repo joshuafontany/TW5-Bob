@@ -73,7 +73,7 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
     if(eventData.sessionId && eventData.sessionId == session.id) {
       session.handleMessage(eventData);
     } else {
-      console.error('WS handleMessage error: Invalid or missing session id', JSON.stringify(eventData,null,4));
+      console.error(`['${sesion.id}'] handleMessage error: Invalid or missing session id`, JSON.stringify(eventData,null,4));
       this.close(4023, `['${sesion.id}'] Websocket closed by server`);
     }
   });

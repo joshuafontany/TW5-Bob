@@ -51,10 +51,9 @@ title: $:/plugins/OokTech/Bob/DefaultSettings
     },
     "reconnect": {
       "auto": true,
-      "initial": 100,
-      "decay": 1.5,
-      "max": 10000,
-      "abort": 30000
+      "base": 1200,
+      "max": 5000,
+      "abort": 20
     }
   },
   "mimeMap": {
