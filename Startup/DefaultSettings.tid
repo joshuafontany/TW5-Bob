@@ -44,18 +44,17 @@ title: $:/plugins/OokTech/Bob/DefaultSettings
     "readers": "(anon)",
     "writers": "(authenticated)"
   },
-  "ws-client": {
-    "heartbeat": {
-      "interval":1000,
-      "timeout":5000
-    },
-    "reconnect": {
-      "auto": true,
-      "base": 1200,
-      "max": 5000,
-      "abort": 20
-    }
+  "heartbeat": {
+    "interval":1000,
+    "timeout":5000
   },
+  "reconnect": {
+    "auto": true,
+    "base": 1200,
+    "max": 100000,
+    "decay": 1.5,
+    "abort": 20
+  }
   "mimeMap": {
     ".aac": "audio/aac",
     ".avi": "video/x-msvideo",

@@ -18,7 +18,8 @@
   "reconnect": {
     "auto": true,
     "base": 1200,
-    "max": 5000,
+    "max": 100000,
+    "decay": 1.5,
     "abort": 20
   },
   "wikisPath": "./Wikis",

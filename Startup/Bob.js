@@ -12,6 +12,7 @@ A core prototype to hand everything else onto.
   /*global $tw: false */
   "use strict";
 
+  const Yutils = require('./External/yjs/y-utils.cjs');
   const WebSocketManager = require('./WSManager.js').WebSocketManager;
 
   /*
@@ -22,26 +23,24 @@ A core prototype to hand everything else onto.
     // Get the name for this wiki for websocket messages
     $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", ""));
     this.settings = {    // Setup the heartbeat settings placeholders (filled in by the 'handshake')
-      'ws-client': {
-        "heartbeat": {
-          "interval":1000, // default 1 sec heartbeats
-          "timeout":5000 // default 5 second heartbeat timeout
-        },
-        "reconnect": {
-          "auto": true,
-          "initial": 100, // small initial increment
-          "decay": 1.5, // exponential decay d^n (number-of-retries)
-          "max": 10000, // maximum retry increment
-          "abort": 60000 // failure after this long
-        }
+      "heartbeat": {
+        "interval":1000, // default 1 sec heartbeats
+        "timeout":5000 // default 5 second heartbeat timeout
+      },
+      "reconnect": {
+        "auto": true,
+        "initial": 1200, // small initial increment
+        "decay": 1.5, // exponential decay d^n (number-of-retries)
+        "max": 1000000, // maximum retry increment
+        "abort": 20 // failure after this many tries
       }
     };
     this.version = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob').fields.version;
     this.ExcludeFilter = $tw.wiki.getTiddlerText('$:/plugins/OokTech/Bob/ExcludeSync');
     // Wikis & Ydocs maps
-    this.Yversion = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/External/yjs/yjs.cjs').fields.version;
-    this.Ydocs = new Map();
     this.Wikis = new Map();
+    this.Ydocs = new Map();
+    this.Yversion = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/External/yjs/yjs.cjs').fields.version;
     // Logger
     this.logger = {};
     // Setup Websocket library
@@ -221,6 +220,18 @@ A core prototype to hand everything else onto.
     return { fields: newTid }
   }
 
+
+  /*
+  *
+  * Ydoc methods
+  */
+  Bob.prototype.getYDoc = function (docname, gc = true) {
+    return Yutils.getYDoc(this.Ydocs,docname,gc);
+  }
+
+  /*
+  * Node methods
+  */
   if ($tw.node) {
     const path = require('path');
     const fs = require('fs');

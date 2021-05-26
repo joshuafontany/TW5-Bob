@@ -1,7 +1,6 @@
 const Y = require('./yjs.cjs')
 const syncProtocol = require('./y-protocols/sync.cjs')
 const awarenessProtocol = require('./y-protocols/awareness.cjs')
-const WebsocketProvider = require('./y-wsbob.cjs').WebsocketProvider
 
 const encoding = require('../lib0/dist/encoding.cjs')
 const decoding = require('../lib0/dist/decoding.cjs')
@@ -78,44 +77,24 @@ class WSSharedDoc extends Y.Doc {
   }
 }
 
+exports.WSSharedDoc = WSSharedDoc
+
 /**
  * Gets a Y.Doc by name, whether in memory or on disk
  *
+ * @param {Map} store - the map storing the Ydocs
  * @param {string} docname - the name of the Y.Doc to find or create
  * @param {boolean} gc - whether to allow gc on the doc (applies only when created)
- * @return {WSSharedDoc}
+ * @return {WSSharedDoc || Y.doc}
  */
-const getYDoc = (docname, gc = true) => map.setIfUndefined($tw.Bob.Ydocs, docname, () => {
-  const doc = new WSSharedDoc(docname)
+const getYDoc = (store, docname, gc = true) => map.setIfUndefined(store, docname, () => {
+  const doc = !!$tw.node? new WSSharedDoc(docname): new Y.doc(docname)
   doc.gc = gc
-  $tw.Bob.Ydocs.set(docname, doc)
+  store.set(docname, doc)
   return doc
 })
 
 exports.getYDoc = getYDoc
-
-/**
- * Gets a Y.Doc provider
- *
- * @param {WSSession} session - the session with id to find or create
- * @param {WSSharedDoc} doc - the name of the Y.Doc to link to the session provider
- * @return {WebsocketProvider}
- */
- const getProvider = (session,docname) => {
-  let providerMap = map.setIfUndefined($tw.Bob.wsManager.yproviders, session.id, () => {
-    let providers = new Map();
-    $tw.Bob.wsManager.yproviders.set(session.id,providers)
-    return providers;
-  });
-  return map.setIfUndefined(providerMap, docname, () => {
-    const doc = getYDoc(docname)
-    const provider = new WebsocketProvider(session,doc)
-    providerMap.set(docname,provider)
-    return provider
-  })
-}
-
-exports.getProvider = getProvider
 
 /**
  * @param {any} session

@@ -11,10 +11,10 @@ module-type: library TEST
   /*global $tw: false */
   "use strict";
 
-  let Yutils = require('./External/yjs/y-utils.cjs'),
-    const map = require('./External/lib0/dist/map.cjs'),
-    WebSocketSession = require('./WSSession.js').WebSocketSession,
-    WebSocketUser = require('./WSUser.js').WebSocketUser;
+  const Yutils = require('./External/yjs/y-utils.cjs');
+  const map = require('./External/lib0/dist/map.cjs');
+  const WebSocketSession = require('./WSSession.js').WebSocketSession;
+  const WebSocketUser = require('./WSUser.js').WebSocketUser;
 
   /*
       A simple session manager, it currently holds everything in server memory.
@@ -25,11 +25,9 @@ module-type: library TEST
   function WebSocketManager(options) {
     options = options || {};
     // Init
-    this.sessions = options.sessions || new Map();
-    this.anonymousUsers = options.anonymousUsers || new Map();
-    this.authorizedUsers = options.authorizedUsers || new Map();
-    // Setup Y-wsbob providers map
-    this.yproviders = new Map();
+    this.sessions = new Map();
+    this.anonymousUsers = new Map();
+    this.authorizedUsers = new Map();
     // Setup a Message Queue
     this.clientId = 0; // The current client message id
     this.serverId = 0; // The current server message id
@@ -86,15 +84,10 @@ module-type: library TEST
     }
   }
 
-  // Tests a session's socket connection
-  WebSocketManager.prototype.isReady = function(sessionId) {
-    return this.hasSocket(sessionId) && this.getSession(sessionId).isReady();
-  }
-
   // Create or get a new session
-  WebSocketManager.prototype.getSession = function(sessionId) {
+  WebSocketManager.prototype.getSession = function(sessionId,url,options) {
     map.setIfUndefined(this.sessions, sessionId, () => {
-      let session = new WebSocketSession(sessionId);
+      let session = new WebSocketSession(sessionId,url,options);
       this.sessions.set(sessionId, session);
       return session;
     })
@@ -102,20 +95,6 @@ module-type: library TEST
 
   WebSocketManager.prototype.hasSession = function(sessionId) {
     return this.sessions.has(sessionId);
-  }
-
-  WebSocketManager.prototype.getSession = function(sessionId) {
-    if (this.hasSession(sessionId)) {
-      return this.sessions.get(sessionId);
-    } else {
-      return null;
-    }
-  }
-
-  WebSocketManager.prototype.setSession = function(sessionData) {
-    if (sessionData.id) {
-      this.sessions.set(sessionData.id, sessionData);
-    }
   }
 
   WebSocketManager.prototype.deleteSession = function(sessionId) {
@@ -265,7 +244,8 @@ module-type: library TEST
       let session = this.getSession(sessionId);
       // section visible to anyone
       tempSettings.API = $tw.Bob.settings.API;
-      tempSettings['ws-client'] = $tw.Bob.settings['ws-client'];
+      tempSettings.heartbeat = $tw.Bob.settings.heartbeat;
+      tempSettings.reconnect = $tw.Bob.settings.reconnect;
       // Federation stuff is visible because you don't have to login to want to see
       // if federation is possible with a server
       tempSettings.enableFederation = $tw.Bob.settings.enableFederation;
