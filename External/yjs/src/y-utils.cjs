@@ -1,12 +1,13 @@
+'use strict';
+
 const Y = require('./yjs.cjs')
 const syncProtocol = require('./y-protocols/sync.cjs')
+const authProtocol = require('./y-protocols/auth.cjs')
 const awarenessProtocol = require('./y-protocols/awareness.cjs')
-
 const encoding = require('../lib0/dist/encoding.cjs')
 const decoding = require('../lib0/dist/decoding.cjs')
 const mutex = require('../lib0/dist/mutex.cjs')
 const map = require('../lib0/dist/map.cjs')
-
 const {Base64} = require('../js-base64/base64.js');
 
 // disable gc when using snapshots!
@@ -14,7 +15,9 @@ const gcEnabled = !!$tw.node? (process.env.GC !== 'false' && process.env.GC !== 
 
 const messageSync = 0
 const messageAwareness = 1
-// const messageAuth = 2
+const messageAuth = 2;
+const messageQueryAwareness = 3;
+const messageSyncSubdoc = 4;
 
 /**
  * @param {Uint8Array} update
@@ -76,8 +79,6 @@ class WSSharedDoc extends Y.Doc {
     }
   }
 }
-
-exports.WSSharedDoc = WSSharedDoc
 
 /**
  * Gets a Y.Doc by name, whether in memory or on disk
@@ -143,7 +144,7 @@ const messageListener = (session, doc, message) => {
  * @param {WSSession} session
  */
  closeConn = (session,docname) => {
-  const doc = getYDoc(docname)
+  const doc = getYDoc($tw.Bob.Ydocs, docname)
   if (doc.sessions.has(session.id)) {
     /**
      * @type {Set<number>}
@@ -164,7 +165,7 @@ exports.closeConn = closeConn
  */
 openConn = (session, docname, { gc = true } = {}) => {
   // get doc, initialize if it does not exist yet
-  const doc = getYDoc(docname, gc)
+  const doc = getYDoc($tw.Bob.Ydocs, docname, gc)
   doc.sessions.set(session.id, new Set())
 
   // listen and reply to y message events

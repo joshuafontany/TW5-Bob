@@ -12,7 +12,6 @@ module-type: library
 "use strict";
 
 if($tw.node) {
-  const { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('./External/uuid/index.js');
 
 /*
   A simple websocket server extending the `ws` library
@@ -41,45 +40,6 @@ WebSocketServer.prototype.serverClosed = function() {
 
 }
 
-/*
-  This function handles incomming connections from client sessions.
-  It can support multiple client sessions, each with a unique sessionId. 
-  This function adds the message handler wrapper and the sessionId to
-  the client socket.
-  The message handler part is a generic wrapper that checks to see if we have a
-  handler function for the message type and if so it passes the message to the
-  handler, if not it prints an error to the console.
-
-  Session objects are defined in $:/plugins/OokTech/Bob/WSSession.js
-*/
-WebSocketServer.prototype.handleConnection = function(socket,request,state) {
-  $tw.Bob.logger.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`, {level:3});
-  // Set the socket id & init the session
-  socket.id = state.sessionId;
-  let session = $tw.Bob.wsManager.getSession(state.sessionId);
-  // Event handlers
-  socket.on('close', function(event) {
-    $tw.Bob.logger.log(`['${socket.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
-    $tw.Bob.wsManager.closeYConnections(session);
-  });
-  socket.on('message', function(event) {
-    let parsed;
-    try {
-      parsed = JSON.parse(event);
-    } catch (e) {
-      $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
-    }
-    let eventData = parsed || event;
-    if(eventData.sessionId && eventData.sessionId == session.id) {
-      session.handleMessage(eventData);
-    } else {
-      console.error(`['${sesion.id}'] handleMessage error: Invalid or missing session id`, JSON.stringify(eventData,null,4));
-      this.close(4023, `['${sesion.id}'] Websocket closed by server`);
-    }
-  });
-  session.initState(socket);
-}
-
 WebSocketServer.prototype.isAdmin = function(username) {
   if(!!username && !!$tw.Bob.server) {
     return $tw.Bob.server.isAuthorized("admin",username);
@@ -100,48 +60,41 @@ WebSocketServer.prototype.getUserAccess = function(username,wikiName) {
   return null;
 }
 
-WebSocketServer.prototype.requestSession = function(state) {
-  let userSession, 
-      wikiName = state.queryParameters["wiki"],
-      sessionId = state.queryParameters["session"];
-  
-  if(sessionId == uuid_NIL || !$tw.Bob.wsManager.hasSession(sessionId)  
-      || $tw.Bob.wsManager.getSession(sessionId).username !== state.authenticatedUsername) {
-      // Anon users always have a new random userid created
-      userSession = $tw.Bob.wsManager.newSession({
-          id: uuid_v4(),
-          ip: state.ip,
-          referer: state.referer,
-          wikiName: wikiName,
-          userid: !state.anonymous? state.authenticatedUsername: uuid_v4(),
-          username: state.username,
-          access: this.getUserAccess((state.anonymous)? null: state.authenticatedUsername,wikiName),
-          isLoggedIn: !!state.authenticatedUsername,
-          isReadOnly: !!state["read_only"],
-          isAnonymous: !!state.anonymous
-      });
-  } else {
-      userSession = $tw.Bob.wsManager.getSession(sessionId);
-  }
-  // Set a new login token and login tokenEOL. Only valid for 60 seconds.
-  // These will be replaced with a session token during the "handshake".
-  let eol = new Date().getTime() + (1000*60);
-  userSession.tokenEOL = new Date(eol).getTime();
-  userSession.token = uuid_v4();
-  // Log the session in this.authorizedUsers or this.anonymousUsers
-  $tw.Bob.wsManager.setSession(userSession);
-  $tw.Bob.wsManager.updateUser(userSession);
-  return userSession;
-}
+/*
+  This function handles incomming connections from client sessions.
+  It can support multiple client sessions, each with a unique sessionId. 
+  This function adds the message handler wrapper and the sessionId to
+  the client socket.
+  The message handler part is a generic wrapper that checks to see if we have a
+  handler function for the message type and if so it passes the message to the
+  handler, if not it prints an error to the console.
 
-WebSocketServer.prototype.refreshSession = function(session) {
-  let test = new Date().getTime() + (1000*60*5);
-  if(session.tokenEOL <= test) {
-      let eol = new Date(session.tokenEOL).getTime() + (1000*60*60);
-      session.tokenEOL = new Date(eol).getTime();
-      session.token = uuid_v4();
-  };
-  $tw.Bob.wsManager.setSession(session);
+  Session objects are defined in $:/plugins/OokTech/Bob/WSSession.js
+*/
+WebSocketServer.prototype.handleConnection = function(socket,request,state) {
+  $tw.Bob.logger.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`, {level:3});
+  let session = $tw.Bob.wsManager.getSession(state.sessionId);
+  // Event handlers
+  socket.on('close', function(event) {
+    $tw.Bob.logger.log(`['${session.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
+    $tw.Bob.wsManager.closeYConnections(session);
+  });
+  socket.on('message', function(event) {
+    let parsed;
+    try {
+      parsed = JSON.parse(event);
+    } catch (e) {
+      $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
+    }
+    let eventData = parsed || event;
+    if(eventData.sessionId && eventData.sessionId == session.id) {
+      session.handleMessage(eventData);
+    } else {
+      console.error(`['${sesion.id}'] handleMessage error: Invalid or missing session id`, JSON.stringify(eventData,null,4));
+      this.close(4023, `['${sesion.id}'] Websocket closed by server`);
+    }
+  });
+  session.initState(socket);
 }
 
 /*

@@ -61,13 +61,15 @@ const setupWS = (session) => {
       clearTimeout(session.ping);
       // Handle the websocket
       if (session.ws !== null) {
-        // Close the Y provider connections
-        $tw.Bob.wsManager.closeYProviders(session);
         // Test for reconnect
         session.ws = null;
         session.connecting = false;
         if (session.connected) {
           session.connected = false;
+          // Close the Y providers when disconnected
+          session.yproviders.forEach((provider,docname) => {
+            provider.closeConn();
+          });
           session.emit('disconnect', [{ type: 'disconnect', error: error, event: event }, session]);
         } else {
           session.unsuccessfulReconnects++;
@@ -85,10 +87,15 @@ const setupWS = (session) => {
     websocket.onclose = event => onclose(null,event);
     websocket.onerror = error => onclose(error);
     websocket.onopen = () => {
+      // Reset connection state
       session.lastMessageReceived = time.getUnixTime();
       session.connecting = false;
       session.connected = true;
       session.unsuccessfulReconnects = 0;
+      // Open Y provider connections
+      session.yproviders.forEach((provider,docname) => {
+        provider.openConn();
+      });
       session.emit('connect', [{ type: 'connect' }, session]);
     };
   }
@@ -125,13 +132,14 @@ const setupHeartbeat = (session) => {
    * @param {object} [opts]
    * @param {'arraybuffer' | 'blob' | null} [opts.binaryType] Set `ws.binaryType`
    */
-  constructor (sessionId, url, options) {
+  constructor (sessionId, options) {
     if (!sessionId) {
       throw new Error("WebSocketSession Error: no session id provided in constructor.")
     }
     super();
     this.id = sessionId;  // Required uuid_4()
-    this.url = url; // The url obj used to connect via url.href
+    this.token = null; // Regenerating uuid_4()
+    this.tokenEOL = null; // End-of-Life for this.token
     // Setup y-wsbob providers map
     this.yproviders = new Map();
     /**
@@ -153,13 +161,12 @@ const setupHeartbeat = (session) => {
   }
 
   config (options = {}) {
-    this.binaryType = options.binaryType || null; // websocket binaryType
+    this.url = options.url; // The url obj used to connect via url.href
+    this.binaryType = options.binaryType || "arraybuffer"; // websocket binaryType
     this.client = !!options.client; // Is this a "client" session?
     this.ip = options.ip; // The ip address for the other end of the socket connection
-    this.token = options.token; // Regenerating uuid_4()
-    this.tokenEOL = options.tokenEOL; // End-of-Life for this.token
     this.wikiName = options.wikiName || $tw.wikiName; // The name of the wiki for the session
-    this.userid = options.userid; // The internal userid
+    this.authenticatedUsername = options.authenticatedUsername; // The internal userid
     this.username = options.username; // The display username
     this.access = options.access, // The user-session's access level
     this.isLoggedIn = options.isLoggedIn; // User's login state
@@ -235,6 +242,10 @@ const setupHeartbeat = (session) => {
     // clear the ping timers
     clearTimeout(this.pingTimeout);
     clearTimeout(this.ping);
+    // clear the Y providers
+    this.yproviders.forEach((provider,docname) => {
+      provider.destroy();
+    });
     this.disconnect();
     super.destroy();
   }
@@ -260,7 +271,7 @@ const setupHeartbeat = (session) => {
   /**
    * Gets a Y.Doc provider
    *
-   * @param {WSSharedDoc} docname - the name of the Y.Doc provider to link to this session
+   * @param {string} docname - the name of the Y.Doc provider to link to this session
    * @return {WebsocketProvider}
    */
   getProvider (docname) {

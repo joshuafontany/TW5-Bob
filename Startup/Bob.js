@@ -21,7 +21,7 @@ A core prototype to hand everything else onto.
   */
   function Bob(options) {debugger;
     // Get the name for this wiki for websocket messages
-    $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", ""));
+    $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", "")) || "RootWiki";
     this.settings = {    // Setup the heartbeat settings placeholders (filled in by the 'handshake')
       "heartbeat": {
         "interval":1000, // default 1 sec heartbeats
@@ -263,13 +263,6 @@ A core prototype to hand everything else onto.
       // Initialise the $tw.Bob.settings object & load the user settings
       this.settings = JSON.parse($tw.wiki.getTiddler('$:/plugins/OokTech/Bob/DefaultSettings').fields.text || "{}");
       this.loadSettings(this.settings, $tw.boot.wikiPath);
-      this.loadWiki("RootWiki");
-      let ymap = this.Ydocs.get("RootWiki").getMap('$tw.activeTiddlers');
-      this.Ydocs.get("RootWiki").transact(() => {
-        ymap.set('$:/StoryList', true);
-        ymap.set('TEST', false);
-      });
-      console.log(JSON.stringify(ymap.toJSON(),null,2));
     }
 
     // Settings Methods
@@ -445,8 +438,8 @@ A core prototype to hand everything else onto.
           };
           instance.wiki.addTiddler(new $tw.Tiddler(fields));
 
-          // Setup the Y shared CRDT types.
-          let doc = this.initY(wikiName);
+          // Setup the Ydocs for the wiki
+          let wikiDoc = this.getYDoc(wikiName);
           
           // Setup the FileSystemMonitors
           /*

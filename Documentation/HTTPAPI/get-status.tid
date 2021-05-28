@@ -34,7 +34,7 @@ The JSON data returned comprises the following properties:
 ** ''id'' - the UUID the session
 ** ''token'' - the current auth token for the session
 ** ''tokenEOL'' - when the current auth token expires
-** ''userid'' - the UUID of the currently authenticated user
+** ''authenticatedUsername'' - the authenticatedUsername or UUID of the currently authenticated user
 ** ''username'' - the username of the currently authenticated user
 ** ''access'' - the access level of the currently authenticated user
 ** ''isLoggedIn'' - the logged in status of the currently authenticated user
@@ -56,7 +56,7 @@ For example:
     "id": "00000000-0000-0000-0000-000000000000",
     "token": "00000000-0000-0000-0000-000000000000",
     "expires": 1614052150748,
-    "user": "00000000-0000-0000-0000-000000000000",
+    "authenticatedUsername": "00000000-0000-0000-0000-000000000000",
     "username": "GUEST",
     "access": 0,
     "isLoggedIn": false,

@@ -21,6 +21,7 @@ exports.path = /^\/api\/status\/?$/;
 exports.handler = function(request,response,state) {
   // build the status objects
   let data = {
+      authenticatedUsername: state.authenticatedUsername,
       username: state.authenticatedUsername || state.server.get("anon-username") || "",
       anonymous: !state.authenticatedUsername,
       read_only: !state.server.isAuthorized("writers",state.authenticatedUsername),
@@ -32,12 +33,23 @@ exports.handler = function(request,response,state) {
       session: null
     };
   if(state.queryParameters && state.queryParameters["wiki"] && state.queryParameters["session"]) {
-    state.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
-    request.connection.remoteAddress;
-    state.username = data.username;
-    state.anonymous = data.anonymous;
-    state.read_only = data.read_only;
-    data.session = $tw.Bob.wsServer.requestSession(state);
+    data.session = $tw.Bob.wsManager.getSession(state.queryParameters["session"],{
+      url: state.urlInfo,
+      ip: request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
+      request.connection.remoteAddress,
+      wikiName: state.queryParameters["wiki"],
+      authenticatedUsername: !data.anonymous? data.authenticatedUsername: uuid_v4(),
+      username: data.username,
+      access: this.getUserAccess((data.anonymous)? null: data.authenticatedUsername,state.queryParameters["wiki"]),
+      isLoggedIn: !!data.authenticatedUsername,
+      isReadOnly: !!data.read_only,
+      isAnonymous: !!data.anonymous
+    });
+    // Set a new login token and login tokenEOL. Only valid for 60 seconds.
+    // These will be replaced with a session token during the "handshake".
+    $tw.Bob.wsManager.refreshSession(data.session,1000*60)
+    // Log the session in this.authorizedUsers or this.anonymousUsers
+    $tw.Bob.wsManager.updateUser(data.session);
   }
   let text = JSON.stringify(data);
   response.writeHead(200, {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Credentials": "true", "Access-Control-Allow-Headers": "*"});

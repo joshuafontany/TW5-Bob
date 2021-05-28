@@ -22,19 +22,22 @@ const Bob = require('./Bob.js').Bob;
 exports.startup = function() {
   // Initialise Bob as a $tw object
   $tw.Bob = new Bob();
-  if($tw.wikiName) {
-    // Setup the Ydocs for the wiki
-    let wikiDoc = $tw.Bob.getYDoc($tw.wikiName);
-
-    // Attach the providers 
-    
-    // Awareness
-        
-    // Initialize the wiki subdocs
-
-    // Set the wiki as loaded
-    $tw.Bob.Wikis.set($tw.wikiName,$tw);
+  if (!!$tw.node) {
+      // Initialise Bob on node
+      $tw.Bob.serverSide();
   }
+  // Set this wiki as loaded
+  $tw.Bob.Wikis.set($tw.wikiName,$tw);
+  // Setup the Ydocs for the wiki
+  let wikiDoc = $tw.Bob.getYDoc($tw.wikiName);
+
+  // Attach the providers 
+  
+  // Awareness
+      
+  // Initialize the wiki subdocs
+
+  
 }
 
 })();

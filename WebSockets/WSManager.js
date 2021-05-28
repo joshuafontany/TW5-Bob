@@ -15,6 +15,7 @@ module-type: library TEST
   const map = require('./External/lib0/dist/map.cjs');
   const WebSocketSession = require('./WSSession.js').WebSocketSession;
   const WebSocketUser = require('./WSUser.js').WebSocketUser;
+  const { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('./External/uuid/index.js');
 
   /*
       A simple session manager, it currently holds everything in server memory.
@@ -85,12 +86,21 @@ module-type: library TEST
   }
 
   // Create or get a new session
-  WebSocketManager.prototype.getSession = function(sessionId,url,options) {
+  WebSocketManager.prototype.getSession = function(sessionId,options) {
+    if(sessionId == uuid_NIL || !$tw.Bob.wsManager.hasSession(sessionId)) {
+        sessionId = uuid_v4()
+    }
     map.setIfUndefined(this.sessions, sessionId, () => {
-      let session = new WebSocketSession(sessionId,url,options);
+      let session = new WebSocketSession(sessionId,options);
       this.sessions.set(sessionId, session);
       return session;
     })
+  }
+
+  WebSocketManager.prototype.refreshSession = function(session,timeout) {
+    let eol = new Date(session.tokenEOL).getTime() + timeout;
+    session.tokenEOL = new Date(eol).getTime();
+    session.token = uuid_v4();
   }
 
   WebSocketManager.prototype.hasSession = function(sessionId) {
@@ -105,9 +115,9 @@ module-type: library TEST
 
   WebSocketManager.prototype.getSessionsByUserId = function(userid) {
     var usersSessions = new Map();
-    for (let [id, session] of this.sessions.entries()) {
-      if (session.userid === userid) {
-        usersSessions.add(id, session);
+    for (let [id,session] of this.sessions.entries()) {
+      if (session.authenticatedUsername === userid) {
+        usersSessions.add(id,session);
       }
     }
     return usersSessions;
@@ -153,29 +163,6 @@ module-type: library TEST
   /*
     Y methods
   */
-  WebSocketManager.prototype.initYProvider = function(session,docname) {
-    docname = docname || session.wikiName
-    return Yutils.getProvider(session,docname);
-  }
-
-  WebSocketManager.prototype.openYProviders = function(session) {
-    if(this.yproviders.has(session.id)) {
-      let docs = this.yproviders.get(session.id);
-      docs.forEach((provider,docname) => {
-        provider.openConn();
-      });
-    }   
-  }
-
-  WebSocketManager.prototype.closeYProviders = function(session) {
-    if(this.yproviders.has(session.id)) {
-      let docs = this.yproviders.get(session.id);
-      docs.forEach((provider,docname) => {
-        provider.closeConn();
-      });
-    }  
-  }
-
   WebSocketManager.prototype.initYConnection = function(session,docname) {
     docname = docname || session.wikiName;
     Yutils.openConn(session,docname);

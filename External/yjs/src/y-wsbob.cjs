@@ -4,7 +4,6 @@ Object.defineProperty(exports, '__esModule', { value: true });
 
 require('./yjs.cjs');
 const bc = require('../lib0/dist/broadcastchannel.cjs');
-const time = require('../lib0/dist/time.cjs');
 const encoding = require('../lib0/dist/encoding.cjs');
 const decoding = require('../lib0/dist/decoding.cjs');
 const syncProtocol = require('./y-protocols/sync.cjs');
@@ -12,9 +11,6 @@ const authProtocol = require('./y-protocols/auth.cjs');
 const awarenessProtocol = require('./y-protocols/awareness.cjs');
 const mutex = require('../lib0/dist/mutex.cjs');
 const observable_js = require('../lib0/dist/observable.cjs');
-const math = require('../lib0/dist/math.cjs');
-const url = require('../lib0/dist/url.cjs');
-
 const {Base64} = require('../js-base64/base64.js');
 
 /*
@@ -22,9 +18,10 @@ Unlike stated in the LICENSE file, it is not necessary to include the copyright 
 */
 
 const messageSync = 0;
-const messageQueryAwareness = 3;
 const messageAwareness = 1;
 const messageAuth = 2;
+const messageQueryAwareness = 3;
+const messageSyncSubdoc = 4;
 
 /**
  *                       encoder,          decoder,          provider,          emitSynced, messageType
@@ -82,12 +79,12 @@ const readMessage = (provider, buf, emitSynced) => {
  * @param {WebsocketProvider} provider
  */
 const setupWS = provider => {
-  if (provider.session && provider.session.ws.readyState == 1) {
+  if (provider.session && provider.session.isReady()) {
+    provider.wsconnected = true;
     provider.synced = false;
     // listen and reply to y message events
     if(!provider.handler) {
       provider.handler = event => {
-        provider.wsLastMessageReceived = time.getUnixTime();
         const encoder = readMessage(provider, Base64.toUint8Array(event.y), true);
         if (encoding.length(encoder) > 1) {
           let message = {
@@ -99,10 +96,6 @@ const setupWS = provider => {
         }
       };
     }
-
-    provider.wsLastMessageReceived = time.getUnixTime();
-    provider.wsconnected = true;
-
     provider.emit('status', [{
       status: 'connected'
     }]);
@@ -187,7 +180,6 @@ class WebsocketProvider extends observable_js.Observable {
      * @type {boolean}
      */
     this._synced = false;
-    this.wsLastMessageReceived = 0
 
     /**
      * @type {number}

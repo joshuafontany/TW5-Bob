@@ -45,11 +45,13 @@ exports.pong = function(data,instance) {
 /* REQUIRED
   When the websocket is approved the client will send a handshake to
   update the access token. The server responds by confirming the handshake.
-  Once confirmed, the client will start a heartbeat.
+  Once confirmed, the client will start a heartbeat and connect Y providers.
 */
 exports.handshake = function(data,instance) {
   // Refresh the session token, detroying the login token if neccessary
-  $tw.Bob.wsServer.refreshSession(this);
+  if(session.tokenEOL <= new Date().getTime() + (1000*60*5)) {
+    $tw.Bob.wsManager.refreshSession(this,1000*60*60);
+  }
   // Respond to the initial "handshake" message to initialise everything.
   let message = {
     type: 'handshake',        

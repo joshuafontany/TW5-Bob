@@ -37,8 +37,6 @@ Command.prototype.execute = function() {
     $tw.utils.warning("Warning: Wiki folder '" + $tw.boot.wikiPath + "' does not exist or is missing a tiddlywiki.info file");
     return;
   }
-  // Initialise Bob on node
-  $tw.Bob.serverSide();
   // The single-file saver components
   if($tw.Bob.settings.enableBobSaver !== 'no') {
     let options = {
