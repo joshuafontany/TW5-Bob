@@ -211,6 +211,7 @@ function WSAdaptor(options) {
     this.isLoggedIn = false;
     this.isReadOnly = false;
     this.isAnonymous = true;
+    
     if (window.sessionStorage.getItem("ws-adaptor-session") !== null) {
       this.sessionId = window.sessionStorage.getItem("ws-adaptor-session");
     } else {

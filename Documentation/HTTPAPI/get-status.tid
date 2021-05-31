@@ -51,17 +51,18 @@ For example:
   "anonymous": true,
   "read_only": false,
   "session": {
-    "wikiName": "Root Wiki",
-    "url": "wss://127.0.0.1:8080"
     "id": "00000000-0000-0000-0000-000000000000",
-    "token": "00000000-0000-0000-0000-000000000000",
-    "expires": 1614052150748,
+    "url": "wss://127.0.0.1:8080",
+    "ip": "127.0.0.1"
+    "wikiName": "RootWiki",
     "authenticatedUsername": "00000000-0000-0000-0000-000000000000",
     "username": "GUEST",
     "access": 0,
     "isLoggedIn": false,
     "isReadOnly": true,
     "isAnonymous": true,
+    "token": "00000000-0000-0000-0000-000000000000",
+    "expires": 1614052150748,
   },
   "space": {
     "recipe": "default"

@@ -33,7 +33,7 @@ exports.handler = function(request,response,state) {
       session: null
     };
   if(state.queryParameters && state.queryParameters["wiki"] && state.queryParameters["session"]) {
-    data.session = $tw.Bob.wsManager.getSession(state.queryParameters["session"],{
+    let session = $tw.Bob.wsManager.getSession(state.queryParameters["session"],{
       url: state.urlInfo,
       ip: request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
       request.connection.remoteAddress,
@@ -47,9 +47,10 @@ exports.handler = function(request,response,state) {
     });
     // Set a new login token and login tokenEOL. Only valid for 60 seconds.
     // These will be replaced with a session token during the "handshake".
-    $tw.Bob.wsManager.refreshSession(data.session,1000*60)
+    $tw.Bob.wsManager.refreshSession(session,1000*60)
     // Log the session in this.authorizedUsers or this.anonymousUsers
-    $tw.Bob.wsManager.updateUser(data.session);
+    // $tw.Bob.wsManager.updateUser(session);
+    data.session = session.toJson();
   }
   let text = JSON.stringify(data);
   response.writeHead(200, {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Credentials": "true", "Access-Control-Allow-Headers": "*"});

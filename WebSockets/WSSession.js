@@ -174,6 +174,23 @@ const setupHeartbeat = (session) => {
     this.isAnonymous = options.isAnonymous; // User's anon state
   }
 
+  toJSON() {
+    return {
+      id: this.id,
+      url: this.url.toString(),
+      ip: this.ip,
+      wikiName: this.wikiName,
+      authenticatedUsername: this.authenticatedUsername,
+      username: this.username,
+      access: this.access,
+      isLoggedIn: this.isLoggedIn,
+      isReadOnly: this.isReadOnly,
+      isAnonymous: this.isAnonymous,
+      token: this.token,
+      expires: this.tokenEOL
+    };
+  }
+
   isReady () {
     return !!this.ws && this.ws.readyState == 1;
   }
