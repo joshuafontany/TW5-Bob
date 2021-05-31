@@ -87,7 +87,7 @@ module-type: library TEST
 
   // Create or get a new session
   WebSocketManager.prototype.getSession = function(sessionId,options) {
-    if(sessionId == uuid_NIL || !$tw.Bob.wsManager.hasSession(sessionId)) {
+    if(sessionId == uuid_NIL || !this.hasSession(sessionId)) {
         sessionId = uuid_v4()
     }
     map.setIfUndefined(this.sessions, sessionId, () => {
@@ -98,9 +98,11 @@ module-type: library TEST
   }
 
   WebSocketManager.prototype.refreshSession = function(session,timeout) {
-    let eol = new Date(session.tokenEOL).getTime() + timeout;
-    session.tokenEOL = new Date(eol).getTime();
-    session.token = uuid_v4();
+    if($tw.node && $tw.Bob.wsServer) {
+      let eol = new Date(session.tokenEOL).getTime() + timeout;
+      session.tokenEOL = new Date(eol).getTime();
+      session.token = uuid_v4();
+    }
   }
 
   WebSocketManager.prototype.hasSession = function(sessionId) {
