@@ -49,15 +49,6 @@ module-type: library TEST
     Admin: "admin"
   }
 
-  /*
-    This returns a new id for a message.
-    Messages from a client (usually the browser) have ids that start with c, 
-    messages from a server have ids that starts with s.
-  */
-    WebSocketManager.prototype.getMessageId = function(client) {
-    return !!client ? "c" + this.clientId++: "s" + this.serverId++;
-  }
-
   WebSocketManager.prototype.getHost = function(host) {
     host = new $tw.Bob.url(host || (!!document.location && document.location.href));
     // Websocket host
@@ -69,20 +60,6 @@ module-type: library TEST
     }
     host.protocol = protocol
     return host.toString();
-  }
-
-  WebSocketManager.prototype.verifyUpgrade = function(state) {
-    let userSession = this.getSession(state.sessionId);
-    // username, ip, & wikiName must match (token is tested in the 'handshake')
-    if(userSession 
-      && state.username == userSession.username
-      && state.ip == userSession.ip
-      && state.wikiName == userSession.wikiName
-    ) {
-      return state;
-    } else {
-      return null;
-    }
   }
 
   // Create or get a new session
@@ -136,7 +113,52 @@ module-type: library TEST
   }
 
   /*
-      Ticket methods
+    Message methods
+  */
+
+  /*
+    This returns a new id for a message.
+    Messages from a client (usually the browser) have ids that start with c, 
+    messages from a server have ids that starts with s.
+  */
+  WebSocketManager.prototype.getMessageId = function(client) {
+    return !!client ? "c" + this.clientId++: "s" + this.serverId++;
+  }
+  
+  WebSocketManager.prototype.handleMessage = function(eventData,session) {
+    let handler = session.client? $tw.Bob.wsManager.clientHandlers[eventData.type]: $tw.Bob.wsManager.serverHandlers[eventData.type];
+    // Make sure we have a handler for the message type
+    if(typeof handler === 'function') {
+      // If handshake, set the tokenRefresh before acking
+      if (session.client && eventData.type == "handshake" && !!eventData.tokenRefresh) {
+        session.token = eventData.tokenRefresh;
+        session.tokenEOL = eventData.tokenEOL;
+      }
+      // The following messages do not need to be acknowledged
+      let noAck = ['ack', 'ping', 'pong'];
+      if(eventData.id && noAck.indexOf(eventData.type) == -1) {
+        console.log(`['${eventData.sessionId}'] handle-${eventData.id}:`, eventData.type);
+        // Acknowledge the message
+        session.send({
+          id: 'ack' + eventData.id,
+          type: 'ack'
+        });
+      }
+      // Determine the wiki instance
+      let instance = $tw;
+      if($tw.node && $tw.Bob.Wikis.has(eventData.wikiName)) {
+          instance = $tw.Bob.Wikis.get(eventData.wikiName);
+      }
+      // Call the handler
+      handler.call(session,eventData,instance);
+    } else {
+      debugger;
+      console.error(`['${session.id}'] WS handleMessage error: No handler for message of type ${eventData.type}`);
+    }
+  }
+
+  /*
+    Ticket methods
   */
   WebSocketManager.prototype.hasTicket = function(messageId) {
     return this.tickets.has(messageId);

@@ -211,12 +211,7 @@ function WSAdaptor(options) {
     this.isLoggedIn = false;
     this.isReadOnly = false;
     this.isAnonymous = true;
-    
-    if (window.sessionStorage.getItem("ws-adaptor-session") !== null) {
-      this.sessionId = window.sessionStorage.getItem("ws-adaptor-session");
-    } else {
-      this.sessionId = require('./External/uuid/nil.js').default;
-    }
+    this.sessionId = window.sessionStorage.getItem("ws-adaptor-session") || require('./External/uuid/nil.js').default;
     //addHooks(this.clientId);
 }
 
@@ -295,12 +290,17 @@ WSAdaptor.prototype.getStatus = function(callback) {
 
         // Set the session id, setup the WS connection
         if(!!json.session) {
-          // Setup the connection url
-          json.session.url = new URL($tw.Bob.wsManager.getHost(self.host));
-          json.session.url.searchParams.append("wiki", $tw.wikiName);
-          json.session.url.searchParams.append("session", json.session.id);
+          // Set the WS Session id to sessionStorage here
+          self.sessionId = json.session.id;
+          window.sessionStorage.setItem("ws-adaptor-session", this.id);
           json.session.client = true;
-          self.session = $tw.Bob.wsManager.newSession(json.session).openConn();
+          let session = $tw.Bob.wsManager.getSession(json.session.id,json.session);
+          session.ip = json.session.ip;
+          // Setup the connection url
+          session.url = new $tw.Bob.url($tw.Bob.wsManager.getHost(self.host));
+          session.url.searchParams.append("wiki", $tw.wikiName);
+          session.url.searchParams.append("session", json.session.id);
+          session.connect();
         }
       }
       // Invoke the callback if present

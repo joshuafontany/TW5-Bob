@@ -42,7 +42,7 @@ $tw.Bob will always be at the root $tw object on both node and browser.
   exports.pong = function (data,instance) {
     // If this pong is part of a heartbeat then send another heartbeat
     if (data.id == "heartbeat") {
-      $tw.Bob.wsManager.heartbeat(data);
+      this.heartbeat(data);
     }
   }
 
@@ -59,12 +59,10 @@ $tw.Bob will always be at the root $tw object on both node and browser.
       // Update the settings
       $tw.Bob.settings = data.settings;
     }
-    if($tw.Bob.sessionId && $tw.Bob.sessionId == this.id) {
+    if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == this.id) {
       // Setup the local Ydoc for this client session
       let doc = $tw.Bob.Ydocs.get(this.wikiName);
       let provider = $tw.Bob.wsManager.initYProvider(this);
-      // Set the WS Session id to sessionStorage here
-      window.sessionStorage.setItem("ws-adaptor-session", this.id);
       // Clear the server warning
       if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Server Warning`)) {
         $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Server Warning`);
@@ -75,7 +73,7 @@ $tw.Bob will always be at the root $tw object on both node and browser.
       }
     }
     // Start a heartbeat
-    $tw.Bob.wsManager.heartbeat(data);
+    this.heartbeat(data);
     // Sync to the server
     if ($tw.Bob.wsManager.tickets.entries().length > 0) {
       $tw.Bob.wsManager.syncToServer(this.id);

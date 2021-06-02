@@ -22,7 +22,7 @@ const Bob = require('./Bob.js').Bob;
 exports.startup = function() {
   // Initialise Bob as a $tw object
   $tw.Bob = new Bob();
-  if (!!$tw.node) {
+  if(!!$tw.node) {
       // Initialise Bob on node
       $tw.Bob.serverSide();
   }

@@ -145,7 +145,7 @@ const messageListener = (session, doc, message) => {
  */
  closeConn = (session,docname) => {
   const doc = getYDoc($tw.Bob.Ydocs, docname)
-  if (doc.sessions.has(session.id)) {
+  if(doc.sessions.has(session.id)) {
     /**
      * @type {Set<number>}
      */

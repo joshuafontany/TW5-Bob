@@ -34,9 +34,6 @@ exports.handler = function(request,response,state) {
     };
   if(state.queryParameters && state.queryParameters["wiki"] && state.queryParameters["session"]) {
     let session = $tw.Bob.wsManager.getSession(state.queryParameters["session"],{
-      url: state.urlInfo,
-      ip: request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
-      request.connection.remoteAddress,
       wikiName: state.queryParameters["wiki"],
       authenticatedUsername: !data.anonymous? data.authenticatedUsername: uuid_v4(),
       username: data.username,
@@ -45,8 +42,12 @@ exports.handler = function(request,response,state) {
       isReadOnly: !!data.read_only,
       isAnonymous: !!data.anonymous
     });
+    // Log the current ip & url
+    session.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
+    request.connection.remoteAddress;
+    session.url = state.urlInfo;
+    console.log(`['${session.id}'] GET /api/status from IP: ${session.ip}, URL:${session.url}`);
     // Set a new login token and login tokenEOL. Only valid for 60 seconds.
-    // These will be replaced with a session token during the "handshake".
     $tw.Bob.wsManager.refreshSession(session,1000*60)
     // Log the session in this.authorizedUsers or this.anonymousUsers
     // $tw.Bob.wsManager.updateUser(session);

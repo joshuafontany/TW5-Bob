@@ -189,7 +189,7 @@ SimpleServer.prototype.verifyUpgrade = function(request) {
     var state = {};
     state.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
       request.connection.remoteAddress;
-    state.urlInfo = url.parse(request.url);
+    state.urlInfo = new $tw.Bob.url(request.url);
     state.queryParameters = querystring.parse(state.urlInfo.query);
     state.pathPrefix = request.pathPrefix || this.get("path-prefix") || "";
     // Get the principals authorized to access this resource
@@ -217,7 +217,13 @@ SimpleServer.prototype.verifyUpgrade = function(request) {
     state.loggedIn = !state.anonymous && state.username !== "";
     state.wikiName = state.queryParameters['wiki'];
     state.sessionId = state.queryParameters["session"];
-    return $tw.Bob.wsManager.verifyUpgrade(state);
+    if (tw.Bob.wsManager.hasSession(state.sessionId)) {
+      let session = $tw.Bob.wsManager.getSession(state.sessionId);
+      return state.username == session.username
+      && state.wikiName == session.wikiName
+    } else {
+      return false;
+    }
   } else {
     return false;
   }

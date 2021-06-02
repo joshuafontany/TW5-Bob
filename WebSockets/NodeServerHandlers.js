@@ -52,6 +52,8 @@ exports.handshake = function(data,instance) {
   if(session.tokenEOL <= new Date().getTime() + (1000*60*5)) {
     $tw.Bob.wsManager.refreshSession(this,1000*60*60);
   }
+  // Setup the serverside Y connection
+  $tw.Bob.wsManager.initYConnection(this);
   // Respond to the initial "handshake" message to initialise everything.
   let message = {
     type: 'handshake',        
@@ -62,8 +64,6 @@ exports.handshake = function(data,instance) {
     settings: $tw.Bob.wsManager.getViewableSettings(this.id),
   };
   this.sendMessage(message);
-  // Setup the serverside Y connection
-  $tw.Bob.wsManager.initYConnection(this);
   $tw.Bob.createStateTiddlers(data,instance);
 }
 

@@ -37,24 +37,27 @@ const setupWS = (session) => {
     session.connecting = true;
     session.connected = false;
     websocket.onmessage = event => {
-      session.lastMessageReceived = time.getUnixTime();
-      let message;
+      let parsed, eventData;
       try {
         if (typeof event == "string") {
-          message = JSON.parse(event);
+          parsed = JSON.parse(event);
         } else if (!!event.data && typeof event.data == "string") {
-          message = JSON.parse(event.data);
+          parsed = JSON.parse(event.data);
         }        
       } catch (e) {
         $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
       }
-      session.handleMessage(message);
-      session.emit('message', [message || event, session]);
+      eventData = parsed||event;
+      if(session.authenticateMessage(eventData)) {
+        session.lastMessageReceived = time.getUnixTime();
+        if(eventData.type == "y" ) {
+          session.emit('y', [eventData, session]);
+        } else {
+          session.emit('message', [eventData, session]);
+        }
+      }
     };
-    /**
-     * @param {any} error
-     */
-    const onclose = (error,event) => {
+    websocket.onclose = event => {
       console.log(`['${session.id}'] Closed socket to ${session.url.href}`);
       // Clear the ping timers
       clearTimeout(session.pingTimeout);
@@ -84,8 +87,9 @@ const setupWS = (session) => {
         }
       }
     };
-    websocket.onclose = event => onclose(null,event);
-    websocket.onerror = error => onclose(error);
+    websocket.onerror = error => {
+      console.log(`['${session.id}'] socket error:`, JSON.toString(error));
+    }
     websocket.onopen = () => {
       // Reset connection state
       session.lastMessageReceived = time.getUnixTime();
@@ -158,13 +162,16 @@ const setupHeartbeat = (session) => {
     this.ping = null;
     this.pingTimeout = null;
     this.config(options);
+    /**
+     * Setup message handlers
+     * @type {boolean}
+     */
+    this.on('message', $tw.Bob.wsManager.handleMessage);
   }
 
   config (options = {}) {
-    this.url = options.url; // The url obj used to connect via url.href
     this.binaryType = options.binaryType || "arraybuffer"; // websocket binaryType
     this.client = !!options.client; // Is this a "client" session?
-    this.ip = options.ip; // The ip address for the other end of the socket connection
     this.wikiName = options.wikiName || $tw.wikiName; // The name of the wiki for the session
     this.authenticatedUsername = options.authenticatedUsername; // The internal userid
     this.username = options.username; // The display username
@@ -177,7 +184,7 @@ const setupHeartbeat = (session) => {
   toJSON() {
     return {
       id: this.id,
-      url: this.url.toString(),
+      url: this.url.href || this.url.toString(),
       ip: this.ip,
       wikiName: this.wikiName,
       authenticatedUsername: this.authenticatedUsername,
@@ -189,6 +196,36 @@ const setupHeartbeat = (session) => {
       token: this.token,
       expires: this.tokenEOL
     };
+  }
+
+  destroy () {
+    // clear the ping timers
+    clearTimeout(this.pingTimeout);
+    clearTimeout(this.ping);
+    // clear the Y providers
+    this.yproviders.forEach((provider,docname) => {
+      provider.destroy();
+    });
+    this.disconnect();
+    super.destroy();
+  }
+
+  disconnect (err) {
+    this.shouldConnect = false;
+    if (this.ws !== null) {
+      this.ws.close(4023, `['${this.id}'] Websocket closed by session`, err);
+    }
+  }
+
+  connect () {
+    if(!this.client || !this.url) {
+      console.error(`['${this.id}'] WSSession connect error: no client url`)
+      return;
+    }
+    this.shouldConnect = true;
+    if (!this.connected && this.ws === null) {
+      setupWS(this);
+    }
   }
 
   isReady () {
@@ -255,35 +292,28 @@ const setupHeartbeat = (session) => {
     setupHeartbeat(this);
   }
 
-  destroy () {
-    // clear the ping timers
-    clearTimeout(this.pingTimeout);
-    clearTimeout(this.ping);
-    // clear the Y providers
-    this.yproviders.forEach((provider,docname) => {
-      provider.destroy();
-    });
-    this.disconnect();
-    super.destroy();
+  /**
+   * Authenticates a message
+   *
+   * @param {obj} eventData - the current event data
+   * @return {bool}
+   */
+  authenticateMessage (eventData) {
+    const authed = (
+      eventData.sessionId == this.id
+      && eventData.wikiName == this.wikiName 
+      && eventData.userid == this.userid  
+      && eventData.token == this.token
+      && new Date().getTime() <= this.tokenEOL
+    );
+    if(!authed) {
+      console.error(`['${this.id}'] WS authentication error: Unauthorized message of type ${eventData.type}`);
+      // kill the socket
+      this.ws.close(4023, `['${this.id}'] Invalid ws message`);
+    }
+    return authed;
   }
 
-  disconnect (err) {
-    this.shouldConnect = false;
-    if (this.ws !== null) {
-      this.ws.close(4023, `['${this.id}'] Websocket closed by session`, err);
-    }
-  }
-
-  connect () {
-    if(!this.client || !this.url) {
-      console.error(`['${this.id}'] WSSession connect error: no client url`)
-      return;
-    }
-    this.shouldConnect = true;
-    if (!this.connected && this.ws === null) {
-      setupWS(this);
-    }
-  }
 
   /**
    * Gets a Y.Doc provider
@@ -299,65 +329,6 @@ const setupHeartbeat = (session) => {
       return provider
     })
   }
-}
-
-// This makes sure that the token sent allows the action on the wiki.
-WebSocketSession.prototype.authenticateMessage = function(eventData) {
-  const authed = (
-    eventData.sessionId == this.id
-    && eventData.wikiName == this.wikiName 
-    && eventData.userid == this.userid  
-    && eventData.token == this.token
-    && new Date().getTime() <= this.tokenEOL
-  );
-  if(authed == false) {
-    console.error(`['${this.id}'] WS authentication error: Unauthorized message of type ${eventData.type}`);
-    // kill the socket
-    this.ws.close(4023, `['${this.id}'] Invalid ws message`);
-  }
-  return authed;
-}
-
-// The handle message function
-WebSocketSession.prototype.handleMessage = function(eventData) {
-    // Check authentication
-    const authenticated = this.authenticateMessage(eventData);
-    if (authenticated) {
-      let handler;
-      if(eventData.type == "y" ) {
-        handler = this.client? $tw.Bob.wsManager.yproviders.get(this.id).get(eventData.doc).handler: $tw.Bob.Ydocs.get(eventData.doc).handlers.get(this.id);
-      } else {
-        handler = this.client? $tw.Bob.wsManager.clientHandlers[eventData.type]: $tw.Bob.wsManager.serverHandlers[eventData.type];
-      }
-      // Make sure we have a handler for the message type
-      if(typeof handler === 'function') {
-        // If handshake, set the tokenRefresh before acking
-        if (this.client && eventData.type == "handshake" && !!eventData.tokenRefresh) {
-          this.token = eventData.tokenRefresh;
-          this.tokenEOL = eventData.tokenEOL;
-        }
-        // The following messages do not need to be acknowledged
-        let noAck = ['ack', 'ping', 'pong'];
-        if(eventData.id && noAck.indexOf(eventData.type) == -1) {
-          console.log(`['${eventData.sessionId}'] handle-${eventData.id}:`, eventData.type);
-          // Acknowledge the message
-          this.send({
-            id: 'ack' + eventData.id,
-            type: 'ack'
-          });
-        }
-        // Determine the wiki instance
-        let instance = $tw;
-        if($tw.node && $tw.Bob.Wikis.has(eventData.wikiName)) {
-            instance = $tw.Bob.Wikis.get(eventData.wikiName);
-        }
-        // Call the handler
-        handler.call(this,eventData,instance);
-      } else {
-        debugger;
-        console.error(`['${this.id}'] WS handleMessage error: No handler for message of type ${eventData.type}`);
-      }
-    }
 }
 
 /*

@@ -62,39 +62,45 @@ WebSocketServer.prototype.getUserAccess = function(username,wikiName) {
 
 /*
   This function handles incomming connections from client sessions.
-  It can support multiple client sessions, each with a unique sessionId. 
-  This function adds the message handler wrapper and the sessionId to
-  the client socket.
-  The message handler part is a generic wrapper that checks to see if we have a
-  handler function for the message type and if so it passes the message to the
-  handler, if not it prints an error to the console.
+  It can support multiple client sessions, each with a unique sessionId.
 
   Session objects are defined in $:/plugins/OokTech/Bob/WSSession.js
 */
 WebSocketServer.prototype.handleConnection = function(socket,request,state) {
-  $tw.Bob.logger.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`, {level:3});
-  let session = $tw.Bob.wsManager.getSession(state.sessionId);
-  // Event handlers
-  socket.on('close', function(event) {
-    $tw.Bob.logger.log(`['${session.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
-    $tw.Bob.wsManager.closeYConnections(session);
-  });
-  socket.on('message', function(event) {
-    let parsed;
-    try {
-      parsed = JSON.parse(event);
-    } catch (e) {
-      $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
-    }
-    let eventData = parsed || event;
-    if(eventData.sessionId && eventData.sessionId == session.id) {
-      session.handleMessage(eventData);
-    } else {
-      console.error(`['${sesion.id}'] handleMessage error: Invalid or missing session id`, JSON.stringify(eventData,null,4));
-      this.close(4023, `['${sesion.id}'] Websocket closed by server`);
-    }
-  });
-  session.initState(socket);
+  if($tw.Bob.wsManager.getSession(state.sessionId)) {
+    let session = $tw.Bob.wsManager.getSession(state.sessionId);
+    session.ip = state.ip;
+    session.url = state.urlInfo;
+    $tw.Bob.logger.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`, {level:3});
+    // Event handlers
+    socket.on('message', function(event) {
+      try {
+        if (typeof event == "string") {
+          parsed = JSON.parse(event);
+        } else if (!!event.data && typeof event.data == "string") {
+          parsed = JSON.parse(event.data);
+        }        
+      } catch (e) {
+        $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
+      }
+      eventData = parsed||event;
+      if(session.authenticateMessage(eventData)) {
+        session.lastMessageReceived = time.getUnixTime();
+        if(eventData.type == "y" ) {
+          session.emit('y', [eventData, session]);
+        } else {
+          session.emit('message', [eventData, session]);
+        }
+      }
+    });
+    socket.on('close', function(event) {
+      $tw.Bob.logger.log(`['${session.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
+      session.closeYProviders();
+    });
+    socket.on("error", function(error) {
+      console.log(`['${session.id}'] socket error:`, JSON.toString(error));
+    })
+  }
 }
 
 /*
