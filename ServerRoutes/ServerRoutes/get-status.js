@@ -37,7 +37,7 @@ exports.handler = function(request,response,state) {
       wikiName: state.queryParameters["wiki"],
       authenticatedUsername: !data.anonymous? data.authenticatedUsername: uuid_v4(),
       username: data.username,
-      access: this.getUserAccess((data.anonymous)? null: data.authenticatedUsername,state.queryParameters["wiki"]),
+      access: $tw.Bob.wsServer.getUserAccess((data.anonymous)? null: data.authenticatedUsername,state.queryParameters["wiki"]),
       isLoggedIn: !!data.authenticatedUsername,
       isReadOnly: !!data.read_only,
       isAnonymous: !!data.anonymous
@@ -46,12 +46,12 @@ exports.handler = function(request,response,state) {
     session.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
     request.connection.remoteAddress;
     session.url = state.urlInfo;
-    console.log(`['${session.id}'] GET /api/status from IP: ${session.ip}, URL:${session.url}`);
+    console.log(`['${session.id}'] GET ${session.url.href} from IP: ${session.ip}`);
     // Set a new login token and login tokenEOL. Only valid for 60 seconds.
     $tw.Bob.wsManager.refreshSession(session,1000*60)
     // Log the session in this.authorizedUsers or this.anonymousUsers
     // $tw.Bob.wsManager.updateUser(session);
-    data.session = session.toJson();
+    data.session = session.toJSON();
   }
   let text = JSON.stringify(data);
   response.writeHead(200, {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Credentials": "true", "Access-Control-Allow-Headers": "*"});

@@ -60,9 +60,7 @@ $tw.Bob will always be at the root $tw object on both node and browser.
       $tw.Bob.settings = data.settings;
     }
     if($tw.syncadaptor.sessionId && $tw.syncadaptor.sessionId == this.id) {
-      // Setup the local Ydoc for this client session
-      let doc = $tw.Bob.Ydocs.get(this.wikiName);
-      let provider = $tw.Bob.wsManager.initYProvider(this);
+      this.getProvider(this.wikiName);
       // Clear the server warning
       if($tw.wiki.tiddlerExists(`$:/plugins/OokTech/Bob/Server Warning`)) {
         $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Server Warning`);

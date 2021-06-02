@@ -42,12 +42,20 @@ messageHandlers[messageQueryAwareness] = (encoder, decoder, provider, emitSynced
   encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(provider.awareness, Array.from(provider.awareness.getStates().keys())));
 };
 
+messageHandlers[messageAuth] = (encoder, decoder, provider, emitSynced, messageType) => {
+  authProtocol.readAuthMessage(decoder, provider.doc, permissionDeniedHandler);
+};
+
 messageHandlers[messageAwareness] = (encoder, decoder, provider, emitSynced, messageType) => {
   awarenessProtocol.applyAwarenessUpdate(provider.awareness, decoding.readVarUint8Array(decoder), provider);
 };
 
-messageHandlers[messageAuth] = (encoder, decoder, provider, emitSynced, messageType) => {
-  authProtocol.readAuthMessage(decoder, provider.doc, permissionDeniedHandler);
+messageHandlers[messageSyncSubdoc] = (encoder, decoder, provider, emitSynced, messageType) => {
+  encoding.writeVarUint(encoder, messageSyncSubdoc);
+  const syncMessageType = syncProtocol.readSyncMessage(decoder, encoder, provider.doc, provider);
+  if (emitSynced && syncMessageType === syncProtocol.messageYjsSyncStep2 && !provider.synced) {
+    provider.synced = true;
+  }
 };
 
 /**

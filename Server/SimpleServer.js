@@ -148,7 +148,8 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
 	// Display the port number after we've started listening (the port number might have been specified as zero, or incremented, in which case we will get an assigned port)
 	this.httpServer.on("listening",function() {
 		var address = self.httpServer.address();
-		$tw.utils.log("Serving on " + self.protocol + "://" + address.address + ":" + address.port + prefix,"brown/orange");
+    self.httpServer.address = self.protocol + "://" + address.address + ":" + address.port + prefix;
+		$tw.utils.log("Serving on " + self.httpServer.address,"brown/orange");
 		$tw.utils.log("(press ctrl-C to exit)","red");
 	});
   this.httpServer.on('error', function(e) {
@@ -189,7 +190,7 @@ SimpleServer.prototype.verifyUpgrade = function(request) {
     var state = {};
     state.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
       request.connection.remoteAddress;
-    state.urlInfo = new $tw.Bob.url(request.url);
+    state.urlInfo = new $tw.Bob.url(request.url,this.httpServer.address);
     state.queryParameters = querystring.parse(state.urlInfo.query);
     state.pathPrefix = request.pathPrefix || this.get("path-prefix") || "";
     // Get the principals authorized to access this resource
@@ -217,7 +218,7 @@ SimpleServer.prototype.verifyUpgrade = function(request) {
     state.loggedIn = !state.anonymous && state.username !== "";
     state.wikiName = state.queryParameters['wiki'];
     state.sessionId = state.queryParameters["session"];
-    if (tw.Bob.wsManager.hasSession(state.sessionId)) {
+    if($tw.Bob.wsManager.hasSession(state.sessionId)) {
       let session = $tw.Bob.wsManager.getSession(state.sessionId);
       return state.username == session.username
       && state.wikiName == session.wikiName

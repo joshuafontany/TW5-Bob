@@ -64,10 +64,10 @@ module-type: library TEST
 
   // Create or get a new session
   WebSocketManager.prototype.getSession = function(sessionId,options) {
-    if(sessionId == uuid_NIL || !this.hasSession(sessionId)) {
+    if($tw.node && !options.client && (sessionId == uuid_NIL || !this.hasSession(sessionId))) {
         sessionId = uuid_v4()
     }
-    map.setIfUndefined(this.sessions, sessionId, () => {
+    return map.setIfUndefined(this.sessions, sessionId, () => {
       let session = new WebSocketSession(sessionId,options);
       this.sessions.set(sessionId, session);
       return session;
@@ -124,7 +124,7 @@ module-type: library TEST
   WebSocketManager.prototype.getMessageId = function(client) {
     return !!client ? "c" + this.clientId++: "s" + this.serverId++;
   }
-  
+
   WebSocketManager.prototype.handleMessage = function(eventData,session) {
     let handler = session.client? $tw.Bob.wsManager.clientHandlers[eventData.type]: $tw.Bob.wsManager.serverHandlers[eventData.type];
     // Make sure we have a handler for the message type
@@ -230,7 +230,7 @@ module-type: library TEST
   WebSocketManager.prototype.getUsersByAccessType = function(type, wikiName) {
     var usersByAccess = new Map();
     for (let [id, user] of this.authorizedUsers.entries()) {
-      if (this.getUserAccess(user.userid, wikiName) == type) {
+      if ($tw.Bob.wsServer.getUserAccess(user.userid, wikiName) == type) {
         usersByAccess.add(id, user);
       }
     }
@@ -241,7 +241,7 @@ module-type: library TEST
     let usersWithAccess = new Map(),
       types = [null, "readers", "writers", "admin"];
     for (let [id, user] of this.authorizedUsers.entries()) {
-      let access = this.getUserAccess(user.userid, wikiName);
+      let access = $tw.Bob.wsServer.getUserAccess(user.userid, wikiName);
       if (types.indexOf(access) >= types.indexOf(type)) {
         usersWithAccess.add(id, user);
       }

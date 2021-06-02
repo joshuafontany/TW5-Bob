@@ -95,7 +95,8 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
     });
     socket.on('close', function(event) {
       $tw.Bob.logger.log(`['${session.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
-      session.closeYProviders();
+      // Close the Y providers when disconnected
+      session.closeProviders();
     });
     socket.on("error", function(error) {
       console.log(`['${session.id}'] socket error:`, JSON.toString(error));

@@ -54,7 +54,7 @@ title: $:/plugins/OokTech/Bob/DefaultSettings
     "max": 100000,
     "decay": 1.5,
     "abort": 20
-  }
+  },
   "mimeMap": {
     ".aac": "audio/aac",
     ".avi": "video/x-msvideo",

@@ -13,7 +13,7 @@ A simple websocket session model.
 "use strict";
 
 const Yutils = require('./External/yjs/y-utils.cjs');
-const WebsocketProvider = require('./y-wsbob.cjs').WebsocketProvider
+const WebsocketProvider = require('./External/yjs/y-wsbob.cjs').WebsocketProvider
 const observable = require('./External/lib0/dist/observable.cjs');
 const time = require('./External/lib0/dist/time.cjs');
 const math = require('./External/lib0/dist/math.cjs');
@@ -70,9 +70,7 @@ const setupWS = (session) => {
         if (session.connected) {
           session.connected = false;
           // Close the Y providers when disconnected
-          session.yproviders.forEach((provider,docname) => {
-            provider.closeConn();
-          });
+          session.closeProviders();
           session.emit('disconnect', [{ type: 'disconnect', error: error, event: event }, session]);
         } else {
           session.unsuccessfulReconnects++;
@@ -145,6 +143,7 @@ const setupHeartbeat = (session) => {
     this.token = null; // Regenerating uuid_4()
     this.tokenEOL = null; // End-of-Life for this.token
     // Setup y-wsbob providers map
+    this.ydocs = new Map();
     this.yproviders = new Map();
     /**
      * @type {WebSocket?}
@@ -167,6 +166,7 @@ const setupHeartbeat = (session) => {
      * @type {boolean}
      */
     this.on('message', $tw.Bob.wsManager.handleMessage);
+    this.on('y', Yutils.handleMessage);
   }
 
   config (options = {}) {
@@ -314,7 +314,37 @@ const setupHeartbeat = (session) => {
     return authed;
   }
 
+  /**
+   * Opens all Y.Doc providers for this session
+   */
+   openProviders () {
+    if(this.client) {
+      this.yproviders.forEach((provider,docname) => {
+        provider.openConn();
+      });
+    } else {
+      this.yproviders.forEach((provider,docname) => {
+        Yutils.openConn(this,docname);
+      });
+    }
+  }
 
+  /**
+   * Closes all Y.Doc providers for this session
+   */
+  closeProviders () {
+    if(this.client) {
+      this.yproviders.forEach((provider,docname) => {
+        provider.closeConn();
+      });
+    } else {
+      this.yproviders.forEach((provider,docname) => {
+        Yutils.closeConn(this,docname);
+        this.yproviders.set(docname,false);
+      });
+    }
+  }
+  
   /**
    * Gets a Y.Doc provider
    *
@@ -322,12 +352,20 @@ const setupHeartbeat = (session) => {
    * @return {WebsocketProvider}
    */
   getProvider (docname) {
-    return map.setIfUndefined(this.yproviders, docname, () => {
-      const doc = $tw.Bob.getYDoc(docname)
-      const provider = new WebsocketProvider(session,doc)
-      this.yproviders.set(docname,provider)
-      return provider
-    })
+    if(this.client) {
+      return map.setIfUndefined(this.yproviders, docname, () => {
+        const doc = $tw.Bob.getYDoc(docname);
+        const provider = new WebsocketProvider(session,doc);
+        this.yproviders.set(docname,provider);
+        return provider;
+      })
+    } else {
+      return map.setIfUndefined(this.yproviders, docname, () => {
+        Yutils.openConn(this,docname);
+        this.yproviders.set(docname,true);
+        return true;
+      })
+    }
   }
 }
 

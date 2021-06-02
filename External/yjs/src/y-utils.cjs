@@ -89,7 +89,7 @@ class WSSharedDoc extends Y.Doc {
  * @return {WSSharedDoc || Y.doc}
  */
 const getYDoc = (store, docname, gc = true) => map.setIfUndefined(store, docname, () => {
-  const doc = !!$tw.node? new WSSharedDoc(docname): new Y.doc(docname)
+  const doc = !!$tw.node && !!$tw.Bob.wsServer? new WSSharedDoc(docname): new Y.Doc(docname)
   doc.gc = gc
   store.set(docname, doc)
   return doc
@@ -126,7 +126,7 @@ const messageListener = (session, doc, message) => {
  * @param {Uuid_v4} sessionId
  * @param {Uint8Array} m
  */
- const send = (doc, session, m) => {
+const send = (doc, session, m) => {
   try {
     let message = {
       type: "y",
@@ -143,7 +143,7 @@ const messageListener = (session, doc, message) => {
  * @param {WSSharedDoc} doc
  * @param {WSSession} session
  */
- closeConn = (session,docname) => {
+const closeConn = (session,docname) => {
   const doc = getYDoc($tw.Bob.Ydocs, docname)
   if(doc.sessions.has(session.id)) {
     /**
@@ -163,11 +163,10 @@ exports.closeConn = closeConn
  * @param {any} docname
  * @param {any} opts
  */
-openConn = (session, docname, { gc = true } = {}) => {
+const openConn = (session, docname, { gc = true } = {}) => {
   // get doc, initialize if it does not exist yet
   const doc = getYDoc($tw.Bob.Ydocs, docname, gc)
   doc.sessions.set(session.id, new Set())
-
   // listen and reply to y message events
   if(!doc.handlers.has(session.id)) {
     doc.handlers.set(session.id,(event) => {
@@ -189,5 +188,19 @@ openConn = (session, docname, { gc = true } = {}) => {
     send(doc, session, encoding.toUint8Array(encoder))
   }
 }
-
 exports.openConn = openConn
+
+/**
+ * @param {WSSession} session
+ * @param {any} docname
+ * @param {any} opts
+ */
+const handleMessage = (eventData,session) => {
+  // get doc, initialize if it does not exist yet
+  const doc = getYDoc($tw.Bob.Ydocs, eventData.doc)
+  if(doc.handlers.has(session.id)) {
+    let handler = doc.handlers.get(session.id)
+    handler(eventData)
+  }
+}
+exports.handleMessage = handleMessage

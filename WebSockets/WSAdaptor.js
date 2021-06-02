@@ -292,7 +292,7 @@ WSAdaptor.prototype.getStatus = function(callback) {
         if(!!json.session) {
           // Set the WS Session id to sessionStorage here
           self.sessionId = json.session.id;
-          window.sessionStorage.setItem("ws-adaptor-session", this.id);
+          window.sessionStorage.setItem("ws-adaptor-session", self.sessionId);
           json.session.client = true;
           let session = $tw.Bob.wsManager.getSession(json.session.id,json.session);
           session.ip = json.session.ip;

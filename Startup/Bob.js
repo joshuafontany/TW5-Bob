@@ -19,7 +19,7 @@ A core prototype to hand everything else onto.
     "Bob" is a websocket helper module for both server and client/browser.
     options: 
   */
-  function Bob(options) {debugger;
+  function Bob(options) {
     // Get the name for this wiki for websocket messages
     $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", "")) || "RootWiki";
     this.settings = {    // Setup the heartbeat settings placeholders (filled in by the 'handshake')

@@ -53,7 +53,7 @@ exports.handshake = function(data,instance) {
     $tw.Bob.wsManager.refreshSession(this,1000*60*60);
   }
   // Setup the serverside Y connection
-  $tw.Bob.wsManager.initYConnection(this);
+  this.getProvider(this.wikiName);
   // Respond to the initial "handshake" message to initialise everything.
   let message = {
     type: 'handshake',        
