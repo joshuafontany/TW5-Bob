@@ -204,10 +204,10 @@ let addHooks = function(connectionIndex) {
 }
 
 function WSAdaptor(options) {
-    this.logger = new $tw.utils.Logger("WSAdaptor");
     this.wiki = options.wiki;
     this.host = this.getHost();
     this.hasStatus = false;
+    this.logger = new $tw.utils.Logger("WSAdaptor");
     this.isLoggedIn = false;
     this.isReadOnly = false;
     this.isAnonymous = true;
@@ -264,7 +264,7 @@ WSAdaptor.prototype.getStatus = function(callback) {
     params = "?wiki=" + $tw.wikiName + "&session=" + this.sessionId;
   this.logger.log("Getting status");
 	$tw.utils.httpRequest({
-		url: this.host + "/status" + params,
+		url: this.host + "status" + params,
 		callback: function(err,data) {
 			self.hasStatus = true;
 			if(err) {
@@ -287,25 +287,46 @@ WSAdaptor.prototype.getStatus = function(callback) {
 				self.isAnonymous = !!json.anonymous;
 
 				isSseEnabled = !!json.sse_enabled;
+      }
+      // Get the wsSession and invoke the callback if present
+      self.getSession(self.isLoggedIn,json.username,self.isReadOnly,self.isAnonymous,isSseEnabled,callback);
+    }
+	});
+};
 
+WSAdaptor.prototype.getSession = function(isLoggedIn,username,isReadOnly,isAnonymous,isPollingDisabled,callback) {
+	// Get status
+	let self = this,
+    params = "?wiki=" + $tw.wikiName + "&session=" + this.sessionId;
+  this.logger.log("Getting ws-session");
+	$tw.utils.httpRequest({
+		url: this.host + "api/ws-session" + params,
+		callback: function(err,data) {
+			if(err) {
+				return callback(err);
+			}
+			// Decode the status JSON
+			let json = null;
+			try {
+				json = JSON.parse(data);
+			} catch (e) {
+			}
+			if(json.id) {
         // Set the session id, setup the WS connection
-        if(!!json.session) {
-          // Set the WS Session id to sessionStorage here
-          self.sessionId = json.session.id;
-          window.sessionStorage.setItem("ws-adaptor-session", self.sessionId);
-          json.session.client = true;
-          let session = $tw.Bob.wsManager.getSession(json.session.id,json.session);
-          session.ip = json.session.ip;
-          // Setup the connection url
-          session.url = new $tw.Bob.url($tw.Bob.wsManager.getHost(self.host));
-          session.url.searchParams.append("wiki", $tw.wikiName);
-          session.url.searchParams.append("session", json.session.id);
-          session.connect();
-        }
+        self.sessionId = json.id;
+        window.sessionStorage.setItem("ws-adaptor-session", self.sessionId);
+        json.client = true;
+        let session = $tw.Bob.wsManager.getSession(json.id,json);
+        session.ip = json.ip;
+        // Setup the connection url
+        session.url = new $tw.Bob.url($tw.Bob.wsManager.getHost(self.host));
+        session.url.searchParams.append("wiki", $tw.wikiName);
+        session.url.searchParams.append("session", json.id);
+        session.connect();
       }
       // Invoke the callback if present
       if(callback) {
-          callback(null,self.isLoggedIn,json.username,self.isReadOnly,self.isAnonymous,isSseEnabled);
+          callback(err,isLoggedIn,username,isReadOnly,isAnonymous,isPollingDisabled);
       }
     }
 	});

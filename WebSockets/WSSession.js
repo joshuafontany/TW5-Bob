@@ -59,7 +59,7 @@ const setupWS = (session) => {
       }
     };
     websocket.onclose = event => {
-      console.log(`['${session.id}'] Closed socket to ${session.url.href}`);
+      console.log(`['${session.id}'] Closed socket ${websocket.url}`);
       // Clear the ping timers
       clearTimeout(session.pingTimeout);
       clearTimeout(session.ping);
@@ -72,7 +72,7 @@ const setupWS = (session) => {
           session.connected = false;
           // Close the Y providers when disconnected
           session.closeProviders();
-          session.emit('disconnect', [{ type: 'disconnect', error: error, event: event }, session]);
+          session.emit('disconnect', [{ type: 'disconnect', event: event }, session]);
         } else {
           session.unsuccessfulReconnects++;
         }
@@ -90,6 +90,7 @@ const setupWS = (session) => {
       console.log(`['${session.id}'] socket error:`, error);
     }
     websocket.onopen = () => {
+      console.log(`['${session.id}'] Opened socket ${websocket.url}`);
       // Reset connection state
       session.lastMessageReceived = time.getUnixTime();
       session.connecting = false;

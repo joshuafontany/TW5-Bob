@@ -63,7 +63,7 @@ module-type: library TEST
   }
 
   // Create or get a new session
-  WebSocketManager.prototype.getSession = function(sessionId,options) {
+  WebSocketManager.prototype.getSession = function(sessionId,options = {}) {
     if($tw.node && !options.client && (sessionId == uuid_NIL || !this.hasSession(sessionId))) {
         sessionId = uuid_v4()
     }

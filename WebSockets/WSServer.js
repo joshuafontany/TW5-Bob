@@ -67,11 +67,11 @@ WebSocketServer.prototype.getUserAccess = function(username,wikiName) {
   Session objects are defined in $:/plugins/OokTech/Bob/WSSession.js
 */
 WebSocketServer.prototype.handleConnection = function(socket,request,state) {
-  if($tw.Bob.wsManager.getSession(state.sessionId)) {
+  if($tw.Bob.wsManager.hasSession(state.sessionId)) {
     let session = $tw.Bob.wsManager.getSession(state.sessionId);
     session.ip = state.ip;
     session.url = state.urlInfo;
-    $tw.Bob.logger.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`, {level:3});
+    console.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`);
     // Event handlers
     socket.on('message', function(event) {
       try {
@@ -81,7 +81,7 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
           parsed = JSON.parse(event.data);
         }        
       } catch (e) {
-        $tw.Bob.logger.error("WS handleMessage parse error: ", e, {level:1});
+        consoler.error("WS handleMessage parse error: ", e, {level:1});
       }
       eventData = parsed||event;
       if(session.authenticateMessage(eventData)) {
@@ -94,13 +94,15 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
       }
     });
     socket.on('close', function(event) {
-      $tw.Bob.logger.log(`['${session.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
+      consoler.log(`['${session.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
       // Close the Y providers when disconnected
       session.closeProviders();
+      session.emit('disconnect', [{ type: 'disconnect' }, session]);
     });
     socket.on("error", function(error) {
       console.log(`['${session.id}'] socket error:`, JSON.toString(error));
     })
+    session.emit('connect', [{ type: 'connect' }, session]);
   }
 }
 

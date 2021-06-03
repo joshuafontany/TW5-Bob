@@ -37,7 +37,7 @@ SimpleServer.prototype.defaultVariables["required-plugins"] = ["OokTech/Bob"];
 
 SimpleServer.prototype.addRoute = function(route) {
   // Find out if the route exists
-  let index = this.routes.findIndex((thisRoute) => thisRoute.path === route.path);
+  let index = this.routes.findIndex((thisRoute) => thisRoute.path.toString() === route.path.toString());
   if (index === -1) {
     // Push the new route if not found
     this.routes.push(route);
@@ -83,7 +83,7 @@ SimpleServer.prototype.findMatchingRoute = function(request,state) {
       request.params = [];
       for(let p=1; p<match.length; p++) {
         request.params.push(match[p]);
-      }debugger;
+      }
       return potentialRoute;
     }
   }
@@ -164,13 +164,11 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
     }
   });
   this.httpServer.on('upgrade', function(request,socket,head) {
-    debugger;
     if($tw.Bob.wsServer && request.headers.upgrade === 'websocket') {
       // Verify the client here
       let state = self.verifyUpgrade(request);
       if(state){
         $tw.Bob.wsServer.handleUpgrade(request,socket,head,function(ws) {
-          console.log("ws-server: upgrade request approved");
           $tw.Bob.wsServer.emit('connection',ws,request,state);
         });
       }
@@ -185,7 +183,6 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
 };
 
 SimpleServer.prototype.verifyUpgrade = function(request) {
-  debugger;
   if(request.url.indexOf("wiki=") !== -1
   && request.url.indexOf("session=") !== -1) {
     // Compose the state object
@@ -193,7 +190,6 @@ SimpleServer.prototype.verifyUpgrade = function(request) {
     state.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
       request.connection.remoteAddress;
     state.urlInfo = new $tw.Bob.url(request.url,this.httpServer.address);
-    state.queryParameters = querystring.parse(state.urlInfo.query);
     state.pathPrefix = request.pathPrefix || this.get("path-prefix") || "";
     // Get the principals authorized to access this resource
     var authorizationType = "readers";
@@ -218,12 +214,14 @@ SimpleServer.prototype.verifyUpgrade = function(request) {
     state.anonymous = !state.authenticatedUsername;
     state.readOnly = !this.isAuthorized("writers",state.authenticatedUsername);
     state.loggedIn = !state.anonymous && state.username !== "";
-    state.wikiName = state.queryParameters['wiki'];
-    state.sessionId = state.queryParameters["session"];
+    state.wikiName = state.urlInfo.searchParams.get('wiki');
+    state.sessionId = state.urlInfo.searchParams.get("session");
     if($tw.Bob.wsManager.hasSession(state.sessionId)) {
       let session = $tw.Bob.wsManager.getSession(state.sessionId);
-      return state.username == session.username
-      && state.wikiName == session.wikiName
+      if(state.username == session.username
+      && state.wikiName == session.wikiName) {
+        return state;
+      }
     } else {
       return false;
     }

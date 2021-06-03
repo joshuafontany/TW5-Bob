@@ -20,8 +20,6 @@ A core prototype to hand everything else onto.
     options: 
   */
   function Bob(options) {
-    // Get the name for this wiki for websocket messages
-    $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", "")) || "RootWiki";
     this.settings = {    // Setup the heartbeat settings placeholders (filled in by the 'handshake')
       "heartbeat": {
         "interval":1000, // default 1 sec heartbeats
@@ -55,6 +53,22 @@ A core prototype to hand everything else onto.
     let managerSerialized = JSON.parse("{}");
     this.wsManager = new WebSocketManager(managerSerialized);
   }
+
+  Bob.prototype.browserSide = function () {
+      // Get the name for this wiki for websocket messages
+      $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", ""));
+      // Set this wiki as loaded
+      $tw.Bob.Wikis.set($tw.wikiName,$tw);
+      // Setup the Ydocs for the wiki
+      let wikiDoc = $tw.Bob.getYDoc($tw.wikiName);
+  
+      // Attach the providers 
+  
+      // Awareness
+          
+      // Initialize the wiki subdocs
+  
+    };  
 
   // Tiddler methods
 
@@ -263,6 +277,8 @@ A core prototype to hand everything else onto.
       // Initialise the $tw.Bob.settings object & load the user settings
       this.settings = JSON.parse($tw.wiki.getTiddler('$:/plugins/OokTech/Bob/DefaultSettings').fields.text || "{}");
       this.loadSettings(this.settings, $tw.boot.wikiPath);
+      // Load the RootWiki
+      this.loadWiki("RootWiki");
     }
 
     // Settings Methods
