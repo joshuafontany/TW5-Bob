@@ -1,7 +1,7 @@
 /*\
-title: $:/plugins/OokTech/Bob/ServerRoutes/get-status.js
+title: $:/plugins/OokTech/Bob/Server/Routes/get-status.js
 type: application/javascript
-module-type: serverroute
+module-type: route
 
 GET /^\/api\/status\/?$/
 
@@ -16,7 +16,7 @@ Returns server status information
 
 exports.method = "GET";
 
-exports.path = /^\/api\/status\/?$/;
+exports.path = /^\/status$/;
 
 exports.handler = function(request,response,state) {
   // build the status objects

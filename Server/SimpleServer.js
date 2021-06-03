@@ -12,9 +12,8 @@ module-type: library
 "use strict";
 
 if($tw.node) {
-  const Server = require("$:/core/modules/server/server.js").Server,
-    querystring = require("querystring"),
-    url = require("url");
+  const Server = require("$:/core/modules/server/server.js").Server;
+  const querystring = require("querystring");
 
 /*
   A simple node server for Bob, extended from the core server module
@@ -27,7 +26,7 @@ function SimpleServer(options) {
   // Set the this.authorizationPrincipals['admin'] principles
   this.authorizationPrincipals['admin'] = this.get("admin").split(',').map($tw.utils.trim);
   // Add all the routes, this also adds authorization priciples for each wiki
-  this.addAllRoutes();
+  //this.addAllRoutes();
 }
 
 SimpleServer.prototype = Object.create(Server.prototype);
@@ -36,15 +35,16 @@ SimpleServer.prototype.constructor = SimpleServer;
 SimpleServer.prototype.defaultVariables = Server.prototype.defaultVariables;
 SimpleServer.prototype.defaultVariables["required-plugins"] = ["OokTech/Bob"];
 
-// Add methods to the Server prototype here.
-// Add route but make sure it isn't a duplicate. (Un-used?)
-SimpleServer.prototype.updateRoute = function(route) {
-  // Remove any routes that have the same path as the input
-  this.routes = this.routes.filter(function(thisRoute) {
-    return String(thisRoute.path) !== String(route.path);
-  });
-  // Push on the new route.
-  this.routes.push(route);
+SimpleServer.prototype.addRoute = function(route) {
+  // Find out if the route exists
+  let index = this.routes.findIndex((thisRoute) => thisRoute.path === route.path);
+  if (index === -1) {
+    // Push the new route if not found
+    this.routes.push(route);
+  } else {
+    // else replace the old route
+    this.routes[index] = route;
+  }
 }
 
 // This removes all but the root wiki from the routes
@@ -83,7 +83,7 @@ SimpleServer.prototype.findMatchingRoute = function(request,state) {
       request.params = [];
       for(let p=1; p<match.length; p++) {
         request.params.push(match[p]);
-      }
+      }debugger;
       return potentialRoute;
     }
   }
@@ -164,6 +164,7 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
     }
   });
   this.httpServer.on('upgrade', function(request,socket,head) {
+    debugger;
     if($tw.Bob.wsServer && request.headers.upgrade === 'websocket') {
       // Verify the client here
       let state = self.verifyUpgrade(request);
@@ -184,6 +185,7 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
 };
 
 SimpleServer.prototype.verifyUpgrade = function(request) {
+  debugger;
   if(request.url.indexOf("wiki=") !== -1
   && request.url.indexOf("session=") !== -1) {
     // Compose the state object

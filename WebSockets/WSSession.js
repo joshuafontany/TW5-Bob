@@ -17,6 +17,7 @@ const WebsocketProvider = require('./External/yjs/y-wsbob.cjs').WebsocketProvide
 const observable = require('./External/lib0/dist/observable.cjs');
 const time = require('./External/lib0/dist/time.cjs');
 const math = require('./External/lib0/dist/math.cjs');
+const random = require('./External/lib0/dist/random.cjs');
 
 /**
  * @param {WebSocketSession} session
@@ -78,7 +79,7 @@ const setupWS = (session) => {
         if ($tw.Bob.settings.reconnect.auto && session.unsuccessfulReconnects <= $tw.Bob.settings.reconnect.abort) {
           // Start with a very small reconnect timeout and increase timeout by
           // Math.round(Math.random() * (base = 1200) / 2 * Math.pow((decay = 1.5), unsuccessfulReconnects))
-          let delay = math.min(math.round(math.random() * $tw.Bob.settings.reconnect.base / 2 * math.pow($tw.Bob.settings.reconnect.decay, session.unsuccessfulReconnects)), $tw.Bob.settings.reconnect.max);
+          let delay = math.min(math.round(random.rand() * $tw.Bob.settings.reconnect.base / 2 * math.pow($tw.Bob.settings.reconnect.decay, session.unsuccessfulReconnects)), $tw.Bob.settings.reconnect.max);
           setTimeout(setupWS, delay, session);
         } else {
           session.emit('abort', [{ type: 'abort', error: error, event: event }, session]);
@@ -86,7 +87,7 @@ const setupWS = (session) => {
       }
     };
     websocket.onerror = error => {
-      console.log(`['${session.id}'] socket error:`, JSON.toString(error));
+      console.log(`['${session.id}'] socket error:`, error);
     }
     websocket.onopen = () => {
       // Reset connection state

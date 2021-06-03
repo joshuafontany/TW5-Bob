@@ -264,7 +264,7 @@ WSAdaptor.prototype.getStatus = function(callback) {
     params = "?wiki=" + $tw.wikiName + "&session=" + this.sessionId;
   this.logger.log("Getting status");
 	$tw.utils.httpRequest({
-		url: this.host + "api/status" + params,
+		url: this.host + "/status" + params,
 		callback: function(err,data) {
 			self.hasStatus = true;
 			if(err) {
