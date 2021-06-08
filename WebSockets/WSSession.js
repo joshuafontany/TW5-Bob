@@ -21,7 +21,6 @@ Unlike stated in the LICENSE file, it is not necessary to include the copyright 
 Object.defineProperty(exports, '__esModule', { value: true });
 
 require('./External/yjs/yjs.cjs');
-const bc = require('./External/lib0/dist/broadcastchannel.cjs');
 const time = require('./External/lib0/dist/time.cjs');
 const encoding = require('./External/lib0/dist/encoding.cjs');
 const decoding = require('./External/lib0/dist/decoding.cjs');
@@ -136,7 +135,7 @@ const setupWS = (session) => {
       if(session.authenticateMessage(eventData)) {
         session.lastMessageReceived = time.getUnixTime();
         if(eventData.type == "y" ) {
-          const encoder = readMessage(session, new Uint8Array(event.data), true);
+          const encoder = readMessage(session, new Uint8Array(event.y), true);
           if (encoding.length(encoder) > 1) {
             websocket.send(encoding.toUint8Array(encoder));
           }
@@ -204,13 +203,23 @@ const setupWS = (session) => {
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, messageSync);
       syncProtocol.writeSyncStep1(encoder, session.doc);
-      websocket.send(encoding.toUint8Array(encoder));
-      // broadcast local awareness state
+      let message = {
+        type: "y",
+        doc: session.doc.name,
+        y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoder)).values())
+      }
+      session.sendMessage(message);
+      // send local awareness state
       if (session.awareness.getLocalState() !== null) {
         const encoderAwarenessState = encoding.createEncoder();
         encoding.writeVarUint(encoderAwarenessState, messageAwareness);
         encoding.writeVarUint8Array(encoderAwarenessState, awarenessProtocol.encodeAwarenessUpdate(session.awareness, [session.doc.clientID]));
-        websocket.send(encoding.toUint8Array(encoderAwarenessState));
+        let message = {
+          type: "y",
+          doc: session.doc.name,
+          y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoderAwarenessState)).values())
+        }
+        session.sendMessage(message);
       }
     };
 
@@ -239,26 +248,6 @@ const setupHeartbeat = (session) => {
       });
     }, $tw.Bob.settings.heartbeat.interval); 
 }
-
-/**
- * @param {WebsocketSession} session
- * @param {ArrayBuffer} buf
- */
-const broadcastMessage = (session, buf) => {
-  if (session.connected) {
-    let message = {
-      type: "y",
-      doc: session.doc.name,
-      y: Base64.fromUint8Array(new Uint8Array(buf).values())
-    }
-    session.sendMessage(message);
-  }
-  if ($tw.browser && session.bcconnected) {
-    session.mux(() => {
-      bc.publish(session.bcChannel, buf);
-    });
-  }
-};
 
 /**
  *  A Yjs powered websocket session model
@@ -333,7 +322,7 @@ const broadcastMessage = (session, buf) => {
     this.isAnonymous = options.isAnonymous;
 
     /**
-     * Listens to Yjs updates and sends them to remote peers (ws and broadcastchannel)
+     * Listens to Yjs updates and sends them to remote peers
      * @param {Uint8Array} update
      * @param {any} origin
      */
@@ -342,7 +331,12 @@ const broadcastMessage = (session, buf) => {
         const encoder = encoding.createEncoder();
         encoding.writeVarUint(encoder, messageSync);
         syncProtocol.writeUpdate(encoder, update);
-        broadcastMessage(this,encoding.toUint8Array(encoder));
+        let message = {
+          type: "y",
+          doc: session.doc.name,
+          y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoder)).values())
+        }
+        session.sendMessage(message);
       }
     };
     this.doc.on('update',this._updateHandler);
@@ -355,29 +349,21 @@ const broadcastMessage = (session, buf) => {
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, messageAwareness);
       encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(awareness, changedClients));
-      broadcastMessage(this, encoding.toUint8Array(encoder));
+      let message = {
+        type: "y",
+        doc: session.doc.name,
+        y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoder)).values())
+      }
+      session.sendMessage(message);
+      
     };
     awareness.on('update', this._awarenessUpdateHandler);
 
     // Browser features
     if($tw.browser){
-      this.bcconnected = false;
-      this.mux = mutex.createMutex();
-      /**
-       * @param {ArrayBuffer} data
-       */
-      this._bcSubscriber = data => {
-        this.mux(() => {
-          const encoder = readMessage(this, new Uint8Array(data), false);
-          if (encoding.length(encoder) > 1) {
-            bc.publish(this.bcChannel, encoding.toUint8Array(encoder));
-          }
-        });
-      };
-
       // Awareness
       window.addEventListener('beforeunload',() => {
-        awarenessProtocol.removeAwarenessStates(this.awareness, [doc.clientID], 'window unload');
+        awarenessProtocol.removeAwarenessStates(this.awareness, [this.doc.clientID], 'window unload');
       });
     }
 

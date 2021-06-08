@@ -20,9 +20,13 @@ exports.path = /^\/api\/ws-session$/;
 
 exports.handler = function(request,response,state) {
   // build the session objects
-  let session;
+  let doc, session;
   if(state.queryParameters && state.queryParameters["wiki"] && state.queryParameters["session"]) {
-    session = $tw.Bob.getSession(state.queryParameters["session"],{
+    doc = $tw.Bob.getYDoc(state.queryParameters["wiki"]);
+    session = $tw.Bob.getSession(state.queryParameters["session"],doc,{
+      connect: false,
+      awareness: null,
+      client: false,
       wikiName: state.queryParameters["wiki"],
       authenticatedUsername: state.authenticatedUsername? state.authenticatedUsername: uuid_v4(),
       username: state.authenticatedUsername || state.server.get("anon-username") || "",

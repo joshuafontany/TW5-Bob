@@ -4,7 +4,7 @@ const zlib = require('zlib');
 
 const bufferUtil = require('./buffer-util');
 //const Limiter = require('./limiter');
-const Limiter = require('$:/plugins/OokTech/Bob/External/async-limiter/async-limiter.js');
+const Limiter = require('../../async-limiter/async-limiter.js');
 const { kStatusCode, NOOP } = require('./constants');
 
 const TRAILER = Buffer.from([0x00, 0x00, 0xff, 0xff]);

@@ -320,7 +320,8 @@ WebsocketAdaptor.prototype.getSession = function(isLoggedIn,username,isReadOnly,
         options.url = new $tw.Bob.url($tw.Bob.getHost(self.host));
         options.url.searchParams.append("wiki", $tw.wikiName);
         options.url.searchParams.append("session", options.id);
-        let session = $tw.Bob.getSession(options.id,$tw.Bob.getYDoc($tw.wikiName),options);
+        let doc = $tw.Bob.getYDoc($tw.wikiName);
+        let session = $tw.Bob.getSession(options.id,doc,options);
       }
       // Invoke the callback if present
       if(callback) {

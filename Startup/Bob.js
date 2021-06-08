@@ -12,6 +12,7 @@ A core prototype to hand everything else onto.
   /*global $tw: false */
   "use strict";
 
+  const WebsocketSession = require('./WSSession.js').WebsocketSession;
   const Y = require('./External/yjs/yjs.cjs');
   const syncProtocol = require('./External/yjs/y-protocols/sync.cjs');
   const authProtocol = require('./External/yjs/y-protocols/auth.cjs');
@@ -82,7 +83,7 @@ A core prototype to hand everything else onto.
       // Setup a Message Queue
       this.clientId = 0; // The current client message id
       this.serverId = 0; // The current server message id
-      this.tickets = new Map(options.tickets || []); // The message ticket queue
+      this.tickets = new Map(); // The message ticket queue
 
       // Load the client-messagehandlers
       this.clientHandlers = {};
@@ -442,58 +443,6 @@ A core prototype to hand everything else onto.
     }
 
     /*
-      Yjs methods
-    */
-
-    /**
-     * @param {WSSharedDoc} doc
-     * @param {any} session
-     */
-    closeConn (doc, session) {
-      if (doc.conns.has(session)) {
-        /**
-         * @type {Set<number>}
-         */
-        // @ts-ignore
-        const controlledIds = doc.sessions.get(session)
-        doc.sessions.delete(session)
-        awarenessProtocol.removeAwarenessStates(doc.awareness, Array.from(controlledIds), null)
-        if (doc.sessions.size === 0 && this.persistence !== null) {
-          // if persisted, we store state and destroy ydocument
-          this.persistence.writeState(doc.name, doc).then(() => {
-            doc.destroy()
-          })
-          this.ydocs.delete(doc.name)
-        }
-      }
-    }
-
-    /*
-      Yjs methods
-    */
-
-    /**
-     * Gets a Y.Doc by name, whether in memory or on disk
-     *
-     * @param {string} docname - the name of the Y.Doc to find or create
-     * @param {boolean} gc - whether to allow gc on the doc (applies only when created)
-     * @return {Y.Doc}
-     */
-    getYDoc (docname, gc = this.gcEnabled) {
-      map.setIfUndefined(this.Ydocs, docname, () => {
-        const doc = new Y.Doc(docname);
-        doc.gc = gc;
-        doc.name = docname;
-        if (this.persistence !== null) {
-          this.persistence.bindState(docname, doc);
-        }
-        this.Ydocs.set(docname, doc);
-        return doc;
-      })
-    }
-
-
-    /*
       Wiki methods
     */
 
@@ -530,6 +479,31 @@ A core prototype to hand everything else onto.
         return true;
       }
     };
+
+    /*
+      Yjs methods
+    */
+
+    /**
+     * Gets a Y.Doc by name, whether in memory or on disk
+     *
+     * @param {string} docname - the name of the Y.Doc to find or create
+     * @param {boolean} gc - whether to allow gc on the doc (applies only when created)
+     * @return {Y.Doc}
+     */
+    getYDoc (docname, gc = this.gcEnabled) {
+      return map.setIfUndefined(this.Ydocs, docname, () => {
+        const doc = new Y.Doc(docname);
+        doc.gc = gc;
+        doc.name = docname;
+        if (this.persistence !== null) {
+          this.persistence.bindState(docname, doc);
+        }
+        this.Ydocs.set(docname, doc);
+        return doc;
+      })
+    }
+
   }
 
   exports.Bob = Bob;
@@ -573,8 +547,15 @@ if($tw.node) {
     const encoder = encoding.createEncoder()
     encoding.writeVarUint(encoder, messageSync)
     syncProtocol.writeUpdate(encoder, update)
-    const message = encoding.toUint8Array(encoder)
-    doc.sessions.forEach((s, _) => send(doc, s, message))
+    const buf = encoding.toUint8Array(encoder)
+    doc.sessions.forEach((s, _) => {
+      let message = {
+        type: "y",
+        doc: s.doc.name,
+        y: Base64.fromUint8Array(new Uint8Array(buf).values())
+      }
+      s.sendMessage(message);
+    })
   }
 
   class WSSharedDoc extends Y.Doc {
@@ -613,39 +594,20 @@ if($tw.node) {
         const encoder = encoding.createEncoder()
         encoding.writeVarUint(encoder, messageAwareness)
         encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients))
-        const buff = encoding.toUint8Array(encoder)
+        const buf = encoding.toUint8Array(encoder)
         this.sessions.forEach((s, _) => {
-          send(this, s, buff)
+          let message = {
+            type: "y",
+            doc: s.doc.name,
+            y: Base64.fromUint8Array(new Uint8Array(buf).values())
+          }
+          s.sendMessage(message);
         })
       }
       this.awareness.on('update', awarenessChangeHandler)
       this.on('update', updateHandler)
     }
   }
-
-  /**
- * @param {any} session
- * @param {WSSharedDoc} doc
- * @param {Uint8Array} message
- */
- const messageListener = (session, doc, message) => {
-  const encoder = encoding.createEncoder()
-  const decoder = decoding.createDecoder(message)
-  const messageType = decoding.readVarUint(decoder)
-  switch (messageType) {
-    case messageSync:
-      encoding.writeVarUint(encoder, messageSync)
-      syncProtocol.readSyncMessage(decoder, encoder, doc, null)
-      if (encoding.length(encoder) > 1) {
-        send(doc, session, encoding.toUint8Array(encoder))
-      }
-      break
-    case messageAwareness: {
-      awarenessProtocol.applyAwarenessUpdate(doc.awareness, decoding.readVarUint8Array(decoder), session)
-      break
-    }
-  }
-}
    
   class BobServer extends Bob {
     constructor () {
@@ -1042,7 +1004,7 @@ if($tw.node) {
      * @return {WSSharedDoc}
      */
     getYDoc (docname, gc = this.gcEnabled) {
-      map.setIfUndefined(this.Ydocs, docname, () => {
+      return map.setIfUndefined(this.Ydocs, docname, () => {
         const doc = new WSSharedDoc(docname);
         doc.gc = gc;
         if (this.persistence !== null) {
@@ -1051,6 +1013,79 @@ if($tw.node) {
         this.Ydocs.set(docname, doc);
         return doc;
       })
+    }
+
+    /**
+     * @param {any} session
+     * @param {WSSharedDoc} doc
+     * @param {Uint8Array} message
+     */
+    messageListener (session, doc, message) {
+      const encoder = encoding.createEncoder()
+      const decoder = decoding.createDecoder(message)
+      const messageType = decoding.readVarUint(decoder)
+      switch (messageType) {
+        case messageSync:
+          encoding.writeVarUint(encoder, messageSync)
+          syncProtocol.readSyncMessage(decoder, encoder, doc, null)
+          if (encoding.length(encoder) > 1) {
+            const buf = encoding.toUint8Array(encoder)
+            let message = {
+              type: "y",
+              doc: session.doc.name,
+              y: Base64.fromUint8Array(new Uint8Array(buf).values())
+            }
+            session.sendMessage(message);
+          }
+          break
+        case messageAwareness: {
+          awarenessProtocol.applyAwarenessUpdate(doc.awareness, decoding.readVarUint8Array(decoder), session)
+          break
+        }
+        case messageAuth : {
+          break
+        }
+        case messageQueryAwareness : {
+          break
+        }
+        case messageSyncSubdoc : {
+          encoding.writeVarUint(encoder, messageSync)
+          syncProtocol.readSyncMessage(decoder, encoder, doc, null)
+          if (encoding.length(encoder) > 1) {
+            const buf = encoding.toUint8Array(encoder)
+            let message = {
+              type: "y",
+              doc: session.doc.name,
+              y: Base64.fromUint8Array(new Uint8Array(buf).values())
+            }
+            session.sendMessage(message);
+          }
+          break
+        }
+      }
+    }
+
+    /**
+     * @param {WSSharedDoc} doc
+     * @param {any} session
+     */
+    closeConn (doc, session) {
+      if (doc.sessions.has(session)) {
+        /**
+         * @type {Set<number>}
+         */
+        // @ts-ignore
+        const controlledIds = doc.sessions.get(session)
+        doc.sessions.delete(session)
+        awarenessProtocol.removeAwarenessStates(doc.awareness, Array.from(controlledIds), null)
+        if (doc.sessions.size === 0 && this.persistence !== null) {
+          // if persisted, we store state and destroy ydocument
+          this.persistence.writeState(doc.name, doc).then(() => {
+            doc.destroy()
+          })
+          this.ydocs.delete(doc.name)
+        }
+      }
     }
   }
   

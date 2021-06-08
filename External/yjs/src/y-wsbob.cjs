@@ -296,46 +296,7 @@ class WebsocketProvider extends observable_js.Observable {
     }
   }
 
-  connectBc () {
-    if (!this.bcconnected) {
-      bc.subscribe(this.bcChannel, this._bcSubscriber);
-      this.bcconnected = true;
-    }
-    // send sync step1 to bc
-    this.mux(() => {
-      // write sync step 1
-      const encoderSync = encoding.createEncoder();
-      encoding.writeVarUint(encoderSync, messageSync);
-      syncProtocol.writeSyncStep1(encoderSync, this.doc);
-      bc.publish(this.bcChannel, encoding.toUint8Array(encoderSync));
-      // broadcast local state
-      const encoderState = encoding.createEncoder();
-      encoding.writeVarUint(encoderState, messageSync);
-      syncProtocol.writeSyncStep2(encoderState, this.doc);
-      bc.publish(this.bcChannel, encoding.toUint8Array(encoderState));
-      // write queryAwareness
-      const encoderAwarenessQuery = encoding.createEncoder();
-      encoding.writeVarUint(encoderAwarenessQuery, messageQueryAwareness);
-      bc.publish(this.bcChannel, encoding.toUint8Array(encoderAwarenessQuery));
-      // broadcast local awareness state
-      const encoderAwarenessState = encoding.createEncoder();
-      encoding.writeVarUint(encoderAwarenessState, messageAwareness);
-      encoding.writeVarUint8Array(encoderAwarenessState, awarenessProtocol.encodeAwarenessUpdate(this.awareness, [this.doc.clientID]));
-      bc.publish(this.bcChannel, encoding.toUint8Array(encoderAwarenessState));
-    });
-  }
-
-  disconnectBc () {
-    // broadcast message with local awareness state set to null (indicating disconnect)
-    const encoder = encoding.createEncoder();
-    encoding.writeVarUint(encoder, messageAwareness);
-    encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(this.awareness, [this.doc.clientID], new Map()));
-    broadcastMessage(this, encoding.toUint8Array(encoder));
-    if (this.bcconnected) {
-      bc.unsubscribe(this.bcChannel, this._bcSubscriber);
-      this.bcconnected = false;
-    }
-  }
+v
 }
 
 exports.WebsocketProvider = WebsocketProvider;

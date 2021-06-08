@@ -78,6 +78,7 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
     console.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`);
     // Event handlers
     socket.on('message', function(event) {
+      let parsed, eventData;
       try {
         if (typeof event == "string") {
           parsed = JSON.parse(event);
@@ -91,7 +92,7 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
       if(session.authenticateMessage(eventData)) {
         session.lastMessageReceived = time.getUnixTime();
         if(eventData.type == "y" ) {
-          messageListener(session, doc, new Uint8Array(message));
+          $tw.Bob.messageListener(session, doc, new Uint8Array(eventData.y));
         } else {
           session.emit('message', [eventData, session]);
         }
@@ -99,7 +100,7 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
     });
     socket.on('close', function(event) {
       consoler.log(`['${session.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
-      // Close the WSSharedDoc sessions list when disconnected
+      // Close the WSSharedDoc session when disconnected
       $tw.Bob.closeConn(doc,session);
       session.emit('disconnect', [{ type: 'disconnect' }, session]);
     });
