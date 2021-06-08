@@ -216,8 +216,8 @@ SimpleServer.prototype.verifyUpgrade = function(request) {
     state.loggedIn = !state.anonymous && state.username !== "";
     state.wikiName = state.urlInfo.searchParams.get('wiki');
     state.sessionId = state.urlInfo.searchParams.get("session");
-    if($tw.Bob.wsManager.hasSession(state.sessionId)) {
-      let session = $tw.Bob.wsManager.getSession(state.sessionId);
+    if($tw.Bob.hasSession(state.sessionId)) {
+      let session = $tw.Bob.getSession(state.sessionId);
       if(state.username == session.username
       && state.wikiName == session.wikiName) {
         return state;

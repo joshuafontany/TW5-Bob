@@ -67,10 +67,14 @@ WebSocketServer.prototype.getUserAccess = function(username,wikiName) {
   Session objects are defined in $:/plugins/OokTech/Bob/WSSession.js
 */
 WebSocketServer.prototype.handleConnection = function(socket,request,state) {
-  if($tw.Bob.wsManager.hasSession(state.sessionId)) {
-    let session = $tw.Bob.wsManager.getSession(state.sessionId);
+  if($tw.Bob.hasSession(state.sessionId)) {
+    let session = $tw.Bob.getSession(state.sessionId);
     session.ip = state.ip;
     session.url = state.urlInfo;
+
+    let doc = session.doc;
+    doc.sessions.set(session, new Set())
+
     console.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`);
     // Event handlers
     socket.on('message', function(event) {
@@ -87,7 +91,7 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
       if(session.authenticateMessage(eventData)) {
         session.lastMessageReceived = time.getUnixTime();
         if(eventData.type == "y" ) {
-          session.emit('y', [eventData, session]);
+          messageListener(session, doc, new Uint8Array(message));
         } else {
           session.emit('message', [eventData, session]);
         }
@@ -95,8 +99,8 @@ WebSocketServer.prototype.handleConnection = function(socket,request,state) {
     });
     socket.on('close', function(event) {
       consoler.log(`['${session.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
-      // Close the Y providers when disconnected
-      session.closeProviders();
+      // Close the WSSharedDoc sessions list when disconnected
+      $tw.Bob.closeConn(doc,session);
       session.emit('disconnect', [{ type: 'disconnect' }, session]);
     });
     socket.on("error", function(error) {

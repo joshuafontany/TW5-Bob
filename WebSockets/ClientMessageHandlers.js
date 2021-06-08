@@ -73,8 +73,8 @@ $tw.Bob will always be at the root $tw object on both node and browser.
     // Start a heartbeat
     this.heartbeat(data);
     // Sync to the server
-    if ($tw.Bob.wsManager.tickets.entries().length > 0) {
-      $tw.Bob.wsManager.syncToServer(this.id);
+    if ($tw.Bob.tickets.entries().length > 0) {
+      $tw.Bob.syncToServer(this.id);
     }
     // This is an array of tiddler titles, each title is a string.
     const response = instance.wiki.allTitles();

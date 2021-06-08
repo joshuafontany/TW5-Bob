@@ -50,7 +50,7 @@ exports.pong = function(data,instance) {
 exports.handshake = function(data,instance) {
   // Refresh the session token, detroying the login token if neccessary
   if(session.tokenEOL <= new Date().getTime() + (1000*60*5)) {
-    $tw.Bob.wsManager.refreshSession(this,1000*60*60);
+    $tw.Bob.refreshSession(this,1000*60*60);
   }
   // Setup the serverside Y connection
   this.getProvider(this.wikiName);
@@ -61,7 +61,7 @@ exports.handshake = function(data,instance) {
     tokenRefresh: this.token, // Send the new token
     tokenEOL: this.tokenEOL, // and the new tokenEOL
     editingTiddlers: instance.wiki.getTiddlerText("$:/state/Bob/EditingTiddlers", ""), // send the current list of tiddlers being edited
-    settings: $tw.Bob.wsManager.getViewableSettings(this.id),
+    settings: $tw.Bob.getViewableSettings(this.id),
   };
   this.sendMessage(message);
   $tw.Bob.createStateTiddlers(data,instance);

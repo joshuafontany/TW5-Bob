@@ -3,7 +3,7 @@ title: $:/plugins/OokTech/Bob/WSSession.js
 type: application/javascript
 module-type: library
 
-A simple websocket session model.
+A Yjs powered websocket session model.
 
 \*/
 (function(){
@@ -12,31 +12,115 @@ A simple websocket session model.
 /*global $tw: false */
 "use strict";
 
-const Yutils = require('./External/yjs/y-utils.cjs');
-const WebsocketProvider = require('./External/yjs/y-wsbob.cjs').WebsocketProvider
-const observable = require('./External/lib0/dist/observable.cjs');
+/*
+Reference Yjs y-websocket.cjs
+
+Unlike stated in the LICENSE file, it is not necessary to include the copyright notice and permission notice when you copy code from this file.
+*/
+
+Object.defineProperty(exports, '__esModule', { value: true });
+
+require('./External/yjs/yjs.cjs');
+const bc = require('./External/lib0/dist/broadcastchannel.cjs');
 const time = require('./External/lib0/dist/time.cjs');
+const encoding = require('./External/lib0/dist/encoding.cjs');
+const decoding = require('./External/lib0/dist/decoding.cjs');
+const syncProtocol = require('./External/yjs/y-protocols/sync.cjs');
+const authProtocol = require('./External/yjs/y-protocols/auth.cjs');
+const awarenessProtocol = require('./External/yjs/y-protocols/awareness.cjs');
+const mutex = require('./External/lib0/dist/mutex.cjs');
+const observable_js = require('./External/lib0/dist/observable.cjs');
 const math = require('./External/lib0/dist/math.cjs');
 const random = require('./External/lib0/dist/random.cjs');
+const {Base64} = require('./External/js-base64/base64.js');
+
+// Y message handler flags
+const messageSync = 0;
+const messageAwareness = 1;
+const messageAuth = 2;
+const messageQueryAwareness = 3;
+const messageSyncSubdoc = 4;
 
 /**
- * @param {WebSocketSession} session
+ *                       encoder,          decoder,          session,          emitSynced, messageType
+ * @type {Array<function(encoding.Encoder, decoding.Decoder, WebsocketSession, boolean,    number):void>}
+ */
+const messageHandlers = [];
+
+messageHandlers[messageSync] = (encoder, decoder, session, emitSynced, messageType) => {
+  encoding.writeVarUint(encoder, messageSync);
+  const syncMessageType = syncProtocol.readSyncMessage(decoder, encoder, session.doc, session);
+  if (emitSynced && syncMessageType === syncProtocol.messageYjsSyncStep2 && !session.synced) {
+    session.synced = true;
+  }
+};
+
+messageHandlers[messageQueryAwareness] = (encoder, decoder, session, emitSynced, messageType) => {
+  encoding.writeVarUint(encoder, messageAwareness);
+  encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(session.awareness, Array.from(session.awareness.getStates().keys())));
+};
+
+messageHandlers[messageAuth] = (encoder, decoder, session, emitSynced, messageType) => {
+  authProtocol.readAuthMessage(decoder, session.doc, permissionDeniedHandler);
+};
+
+messageHandlers[messageAwareness] = (encoder, decoder, session, emitSynced, messageType) => {
+  awarenessProtocol.applyAwarenessUpdate(session.awareness, decoding.readVarUint8Array(decoder), session);
+};
+
+messageHandlers[messageSyncSubdoc] = (encoder, decoder, session, emitSynced, messageType) => {
+  encoding.writeVarUint(encoder, messageSyncSubdoc);
+  const syncMessageType = syncProtocol.readSyncMessage(decoder, encoder, session.doc, session);
+  if (emitSynced && syncMessageType === syncProtocol.messageYjsSyncStep2 && !session.synced) {
+    session.synced = true;
+  }
+};
+
+/**
+ * @param {WebsocketSession} session
+ * @param {string} reason
+ */
+const permissionDeniedHandler = (session, reason) => console.warn(`Permission denied to access ${session.url}.\n${reason}`);
+
+ /**
+  * @param {WebsocketSession} session
+  * @param {Uint8Array} buf
+  * @param {boolean} emitSynced
+  * @return {encoding.Encoder}
+  */
+const readMessage = (session, buf, emitSynced) => {
+  const decoder = decoding.createDecoder(buf);
+  const encoder = encoding.createEncoder();
+  const messageType = decoding.readVarUint(decoder);
+  const messageHandler = session.messageHandlers[messageType];
+  if (/** @type {any} */ (messageHandler)) {
+    messageHandler(encoder, decoder, session, emitSynced, messageType);
+  } else {
+    console.error('Unable to compute message');
+  }
+  return encoder
+};
+
+/**
+ * @param {WebsocketSession} session
  */
 const setupWS = (session) => {
   if (session.shouldConnect && session.ws === null) {
-        /**
+    /**
      * @type {any}
      */
     session.ping = null;
     session.pingTimeout = null;
+    /**
+     * @type {WebSocket}
+     */
     const websocket = new $tw.Bob.ws(session.url.href);
-    const binaryType = session.binaryType;
-    if (binaryType) {
-      websocket.binaryType = binaryType;
-    }
+    websocket.binaryType = session.binaryType || 'arraybuffer';
     session.ws = websocket;
     session.connecting = true;
     session.connected = false;
+    session.synced = false;
+
     websocket.onmessage = event => {
       let parsed, eventData;
       try {
@@ -52,7 +136,10 @@ const setupWS = (session) => {
       if(session.authenticateMessage(eventData)) {
         session.lastMessageReceived = time.getUnixTime();
         if(eventData.type == "y" ) {
-          session.emit('y', [eventData, session]);
+          const encoder = readMessage(session, new Uint8Array(event.data), true);
+          if (encoding.length(encoder) > 1) {
+            websocket.send(encoding.toUint8Array(encoder));
+          }
         } else {
           session.emit('message', [eventData, session]);
         }
@@ -63,31 +150,45 @@ const setupWS = (session) => {
       // Clear the ping timers
       clearTimeout(session.pingTimeout);
       clearTimeout(session.ping);
-      // Handle the websocket
-      if (session.ws !== null) {
-        // Test for reconnect
-        session.ws = null;
-        session.connecting = false;
-        if (session.connected) {
-          session.connected = false;
-          // Close the Y providers when disconnected
-          session.closeProviders();
-          session.emit('disconnect', [{ type: 'disconnect', event: event }, session]);
-        } else {
-          session.unsuccessfulReconnects++;
-        }
-        if ($tw.Bob.settings.reconnect.auto && session.unsuccessfulReconnects <= $tw.Bob.settings.reconnect.abort) {
-          // Start with a very small reconnect timeout and increase timeout by
-          // Math.round(Math.random() * (base = 1200) / 2 * Math.pow((decay = 1.5), unsuccessfulReconnects))
-          let delay = math.min(math.round(random.rand() * $tw.Bob.settings.reconnect.base / 2 * math.pow($tw.Bob.settings.reconnect.decay, session.unsuccessfulReconnects)), $tw.Bob.settings.reconnect.max);
-          setTimeout(setupWS, delay, session);
-        } else {
-          session.emit('abort', [{ type: 'abort', error: error, event: event }, session]);
-        }
+      // Handle the ws
+      session.ws = null;
+      session.connecting = false;
+      if (session.connected) {
+        session.connected = false;
+        session.synced = false;
+        // update awareness (all users except local left)
+        awarenessProtocol.removeAwarenessStates(
+          session.awareness,
+          Array.from(session.awareness.getStates().keys()).filter(client => client !== session.doc.clientID),
+          session);
+        session.emit('status', [{ 
+          status: 'disconnected', 
+          event: event 
+        },session]);
+      } else {
+        session.unsuccessfulReconnects++;
+      }
+      // Test for reconnect
+      if ($tw.Bob.settings.reconnect.auto && session.unsuccessfulReconnects <= $tw.Bob.settings.reconnect.abort) {
+        // Start with a very small reconnect timeout and increase timeout by
+        // Math.round(Math.random() * (base = 1200) / 2 * Math.pow((decay = 1.5), session.unsuccessfulReconnects))
+        let delay = math.min(
+        math.round(random.rand() * $tw.Bob.settings.reconnect.base / 2 * math.pow($tw.Bob.settings.reconnect.decay,session.unsuccessfulReconnects)),
+        $tw.Bob.settings.reconnect.max);
+        setTimeout(setupWS,delay,session);
+      } else {
+        session.emit('status', [{
+          status: 'aborted', 
+          event: event
+        },session]);
       }
     };
     websocket.onerror = error => {
       console.log(`['${session.id}'] socket error:`, error);
+      session.emit('status', [{
+        status: 'error', 
+        error: error
+      },session]);
     }
     websocket.onopen = () => {
       console.log(`['${session.id}'] Opened socket ${websocket.url}`);
@@ -96,17 +197,31 @@ const setupWS = (session) => {
       session.connecting = false;
       session.connected = true;
       session.unsuccessfulReconnects = 0;
-      // Open Y provider connections
-      session.yproviders.forEach((provider,docname) => {
-        provider.openConn();
-      });
-      session.emit('connect', [{ type: 'connect' }, session]);
+      session.emit('status', [{
+        status: 'connected'
+      },session]);
+      // always send sync step 1 when connected 
+      const encoder = encoding.createEncoder();
+      encoding.writeVarUint(encoder, messageSync);
+      syncProtocol.writeSyncStep1(encoder, session.doc);
+      websocket.send(encoding.toUint8Array(encoder));
+      // broadcast local awareness state
+      if (session.awareness.getLocalState() !== null) {
+        const encoderAwarenessState = encoding.createEncoder();
+        encoding.writeVarUint(encoderAwarenessState, messageAwareness);
+        encoding.writeVarUint8Array(encoderAwarenessState, awarenessProtocol.encodeAwarenessUpdate(session.awareness, [session.doc.clientID]));
+        websocket.send(encoding.toUint8Array(encoderAwarenessState));
+      }
     };
+
+    session.emit('status', [{
+      status: 'connecting'
+    },session]);
   }
 };
 
 /**
- * @param {WebSocketSession} session
+ * @param {WebsocketSession} session
  */
 const setupHeartbeat = (session) => {
     // Delay should be equal to the interval at which your server
@@ -126,66 +241,155 @@ const setupHeartbeat = (session) => {
 }
 
 /**
- *  A simple websocket session model
+ * @param {WebsocketSession} session
+ * @param {ArrayBuffer} buf
+ */
+const broadcastMessage = (session, buf) => {
+  if (session.connected) {
+    let message = {
+      type: "y",
+      doc: session.doc.name,
+      y: Base64.fromUint8Array(new Uint8Array(buf).values())
+    }
+    session.sendMessage(message);
+  }
+  if ($tw.browser && session.bcconnected) {
+    session.mux(() => {
+      bc.publish(session.bcChannel, buf);
+    });
+  }
+};
+
+/**
+ *  A Yjs powered websocket session model
  * @extends Observable<string>
  */
- class WebSocketSession extends observable.Observable {
+ class WebsocketSession extends observable_js.Observable {
   /**
    * @param {UUID_v4} sessionId
-   * @param {URL} url
-   * @param {object} [opts]
+   * @param {Y.doc} doc
+   * @param {object} [options]
+   * @param {boolean} [options.connect]
+   * @param {awarenessProtocol.Awareness} [options.awareness]
+   * @param {boolean} [options.client] Is this a "client" session?
+   * @param {URL} [options.url]
    * @param {'arraybuffer' | 'blob' | null} [opts.binaryType] Set `ws.binaryType`
+   * @param {string} [options.ip] The current IP address for the ws connection
+   * @param {string} [options.wikiName] The "room" name
+   * @param {string} [options.authenticatedUsername] The internal userid
+   * @param {string} [options.username] The display username
+   * @param {string} [options.access] The user-session's access level
+   * @param {boolean} [options.isLoggedIn] The user's login state
+   * @param {boolean} [options.isReadOnly] The User-session read-only state
+   * @param {boolean} [options.isAnonymous] The User's anon stat
    */
-  constructor (sessionId, options) {
+  constructor (sessionId,doc,options) {
     if (!sessionId) {
-      throw new Error("WebSocketSession Error: no session id provided in constructor.")
+      throw new Error("WebsocketSession Error: no session id provided in constructor.")
     }
+    if (!doc) {
+      throw new Error("WebsocketSession Error: no doc provided in constructor.")
+    }
+    let connect = options.connect || true,
+      awareness = options.awareness || new awarenessProtocol.Awareness(doc);
     super();
     this.id = sessionId;  // Required uuid_4()
     this.token = null; // Regenerating uuid_4()
     this.tokenEOL = null; // End-of-Life for this.token
-    // Setup y-wsbob providers map
-    this.ydocs = new Map();
-    this.yproviders = new Map();
+    this.doc = doc; // Required Y.doc reference
+    this.ping = null; // heartbeat
+    this.pingTimeout = null; // heartbeat timeout
+    this.awareness = awareness; // Y.doc awareness
+    this.connected = false;
+    this.connecting = false;
+    this.unsuccessfulReconnects = 0;
+    this.messageHandlers = messageHandlers.slice();
+    /**
+     * @type {boolean}
+     */
+    this._synced = false;
     /**
      * @type {WebSocket?}
      */
     this.ws = null; // The active websocket
-    this.connected = false;
-    this.connecting = false;
-    this.unsuccessfulReconnects = 0;
     this.lastMessageReceived = 0;
     /**
      * Whether to connect to other peers or not
      * @type {boolean}
      */
-    this.shouldConnect = true;
-    this.ping = null;
-    this.pingTimeout = null;
-    this.config(options);
-    /**
-     * Setup message handlers
-     * @type {boolean}
-     */
-    this.on('message', $tw.Bob.wsManager.handleMessage);
-    this.on('y', Yutils.handleMessage);
-  }
+    this.shouldConnect = connect;
 
-  config (options = {}) {
-    this.binaryType = options.binaryType || "arraybuffer"; // websocket binaryType
-    this.client = !!options.client; // Is this a "client" session?
-    this.wikiName = options.wikiName || $tw.wikiName; // The name of the wiki for the session
-    this.authenticatedUsername = options.authenticatedUsername; // The internal userid
-    this.username = options.username; // The display username
-    this.access = options.access, // The user-session's access level
-    this.isLoggedIn = options.isLoggedIn; // User's login state
-    this.isReadOnly = options.isReadOnly; // User-session + Wiki's read-only state
-    this.isAnonymous = options.isAnonymous; // User's anon state
+    // Config
+    this.client = !!options.client;
+    this.url = options.url;
+    this.binaryType = options.binaryType || "arraybuffer";
+    this.ip = options.ip;
+    this.wikiName = options.wikiName || $tw.wikiName;
+    this.authenticatedUsername = options.authenticatedUsername;
+    this.username = options.username;
+    this.access = options.access;
+    this.isLoggedIn = options.isLoggedIn;
+    this.isReadOnly = options.isReadOnly;
+    this.isAnonymous = options.isAnonymous;
+
+    /**
+     * Listens to Yjs updates and sends them to remote peers (ws and broadcastchannel)
+     * @param {Uint8Array} update
+     * @param {any} origin
+     */
+    this._updateHandler = (update,origin) => {
+      if (origin !== this) {
+        const encoder = encoding.createEncoder();
+        encoding.writeVarUint(encoder, messageSync);
+        syncProtocol.writeUpdate(encoder, update);
+        broadcastMessage(this,encoding.toUint8Array(encoder));
+      }
+    };
+    this.doc.on('update',this._updateHandler);
+    /**
+     * @param {any} changed
+     * @param {any} origin
+     */
+    this._awarenessUpdateHandler = ({ added, updated, removed },origin) => {
+      const changedClients = added.concat(updated).concat(removed);
+      const encoder = encoding.createEncoder();
+      encoding.writeVarUint(encoder, messageAwareness);
+      encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(awareness, changedClients));
+      broadcastMessage(this, encoding.toUint8Array(encoder));
+    };
+    awareness.on('update', this._awarenessUpdateHandler);
+
+    // Browser features
+    if($tw.browser){
+      this.bcconnected = false;
+      this.mux = mutex.createMutex();
+      /**
+       * @param {ArrayBuffer} data
+       */
+      this._bcSubscriber = data => {
+        this.mux(() => {
+          const encoder = readMessage(this, new Uint8Array(data), false);
+          if (encoding.length(encoder) > 1) {
+            bc.publish(this.bcChannel, encoding.toUint8Array(encoder));
+          }
+        });
+      };
+
+      // Awareness
+      window.addEventListener('beforeunload',() => {
+        awarenessProtocol.removeAwarenessStates(this.awareness, [doc.clientID], 'window unload');
+      });
+    }
+
+    if (connect) {
+      this.connect();
+    }
   }
 
   toJSON() {
     return {
       id: this.id,
+      client: this.client,
       url: this.url.href || this.url.toString(),
       ip: this.ip,
       wikiName: this.wikiName,
@@ -200,14 +404,25 @@ const setupHeartbeat = (session) => {
     };
   }
 
+  /**
+   * @type {boolean}
+   */
+  get synced () {
+    return this._synced
+  }
+  
+  set synced (state) {
+    if (this._synced !== state) {
+      this._synced = state;
+      this.emit('synced', [state,session]);
+      this.emit('sync', [state,session]);
+    }
+  }
+
   destroy () {
     // clear the ping timers
     clearTimeout(this.pingTimeout);
     clearTimeout(this.ping);
-    // clear the Y providers
-    this.yproviders.forEach((provider,docname) => {
-      provider.destroy();
-    });
     this.disconnect();
     super.destroy();
   }
@@ -258,10 +473,10 @@ const setupHeartbeat = (session) => {
    */
   sendMessage (message,callback) {
     let ticket;
-    if(message.id && $tw.Bob.wsManager.hasTicket(message.id)) {
-      ticket = $tw.Bob.wsManager.getTicket(message.id);
+    if(message.id && $tw.Bob.hasTicket(message.id)) {
+      ticket = $tw.Bob.getTicket(message.id);
     } else {
-      message.id = $tw.Bob.wsManager.getMessageId(this.client);
+      message.id = $tw.Bob.getMessageId(this.client);
       ticket = {
         id: message.id,
         message: JSON.stringify(message),
@@ -278,7 +493,7 @@ const setupHeartbeat = (session) => {
       // Waiting = true
       ticket.ack[this.id] = true;
     }
-    $tw.Bob.wsManager.setTicket(ticket);
+    $tw.Bob.setTicket(ticket);
     this.send(message);
   }
 
@@ -315,101 +530,8 @@ const setupHeartbeat = (session) => {
     }
     return authed;
   }
-
-  /**
-   * Opens all Y.Doc providers for this session
-   */
-   openProviders () {
-    if(this.client) {
-      this.yproviders.forEach((provider,docname) => {
-        provider.openConn();
-      });
-    } else {
-      this.yproviders.forEach((provider,docname) => {
-        Yutils.openConn(this,docname);
-      });
-    }
-  }
-
-  /**
-   * Closes all Y.Doc providers for this session
-   */
-  closeProviders () {
-    if(this.client) {
-      this.yproviders.forEach((provider,docname) => {
-        provider.closeConn();
-      });
-    } else {
-      this.yproviders.forEach((provider,docname) => {
-        Yutils.closeConn(this,docname);
-        this.yproviders.set(docname,false);
-      });
-    }
-  }
-  
-  /**
-   * Gets a Y.Doc provider
-   *
-   * @param {string} docname - the name of the Y.Doc provider to link to this session
-   * @return {WebsocketProvider}
-   */
-  getProvider (docname) {
-    if(this.client) {
-      return map.setIfUndefined(this.yproviders, docname, () => {
-        const doc = $tw.Bob.getYDoc(docname);
-        const provider = new WebsocketProvider(session,doc);
-        this.yproviders.set(docname,provider);
-        return provider;
-      })
-    } else {
-      return map.setIfUndefined(this.yproviders, docname, () => {
-        Yutils.openConn(this,docname);
-        this.yproviders.set(docname,true);
-        return true;
-      })
-    }
-  }
 }
 
-/*
-  This is the function for handling ack messages on both the server and
-  client.
-
-  It takes an ack message object as input and checks it against the tickets in
-  he message queue. If the queue has a ticket with an id that matches the ack
-  then the ticket's ack object is checked for any sessions waiting to be acklowledged.
-
-  If there is a truthy value in the session's ack state and it is a function, then
-  the callback function associated with the session is called. Finally the "waiting"
-  state for the session id is set to false. If all acks for the ticket are set to false 
-  than the ctime for that message is set to the current time so it can be properly
-  removed later.
-*/
-WebSocketSession.prototype.handleMessageAck = function(message,instance) {
-  let messageId = message.id.slice(3),
-    ticket = $tw.Bob.wsManager.getTicket(messageId);debugger;
-  if(ticket) {
-    // If there is a callback, call it
-    if(!!ticket.ack[this.id] && typeof ticket.ack[this.id] == "function") {
-      ticket.ack[this.id].call();
-    }
-    // Set the message as acknowledged (waiting == false).
-    ticket.ack[this.id] = false;
-    // Check if all the expected acks have been received
-    const keys = Object.keys(ticket.ack),
-      waiting = keys.filter(function(id) {
-      return !!ticket.ack[id];
-    });
-    // If not waiting on any acks then set the ctime.
-    if(!waiting.length && !ticket.ctime) {
-      ticket.ctime = Date.now();
-    }
-  } else {
-    console.log(`['${message.sessionId}'] WS handleMessageAck error: no message found for id ${messageId}`);
-    debugger;
-  }
-}
-
-exports.WebSocketSession = WebSocketSession;
+exports.WebsocketSession = WebsocketSession;
 
 })();

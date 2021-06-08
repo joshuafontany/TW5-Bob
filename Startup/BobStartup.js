@@ -17,31 +17,20 @@ exports.name = "BobStartup";
 exports.before = ["startup"];
 exports.synchronous = true;
 
-const Bob = require('./Bob.js').Bob;
-
 exports.startup = function() {
   // Initialise Bob as a $tw object
-  $tw.Bob = new Bob();
-  if(!!$tw.node) {
+  if($tw.node) {
+    const BobServer = require('./Bob.js').BobServer;
     // Initialise Bob on node
-    $tw.Bob.serverSide();
+    $tw.Bob = new BobServer();
+    // Load the RootWiki
+    $tw.Bob.loadWiki("RootWiki");
   } else {
+    const Bob = require('./Bob.js').Bob;
     // Initialise Bob in the browser
-    $tw.Bob.browserSide();
-    // Get the name for this wiki for websocket messages
-    $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", "")) || "RootWiki";
+    $tw.Bob = new Bob();
     // Set this wiki as loaded
-    $tw.Bob.Wikis.set($tw.wikiName,$tw);
-    // Setup the Ydocs for the wiki
-    let wikiDoc = $tw.Bob.getYDoc($tw.wikiName);
-
-    // Attach the providers 
-
-    // Awareness
-        
-    // Initialize the wiki subdocs
-
-
+    $tw.Bob.loadWiki($tw.wiki.getTiddlerText("$:/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", "")));
   }
 }
 

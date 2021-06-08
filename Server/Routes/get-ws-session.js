@@ -22,7 +22,7 @@ exports.handler = function(request,response,state) {
   // build the session objects
   let session;
   if(state.queryParameters && state.queryParameters["wiki"] && state.queryParameters["session"]) {
-    session = $tw.Bob.wsManager.getSession(state.queryParameters["session"],{
+    session = $tw.Bob.getSession(state.queryParameters["session"],{
       wikiName: state.queryParameters["wiki"],
       authenticatedUsername: state.authenticatedUsername? state.authenticatedUsername: uuid_v4(),
       username: state.authenticatedUsername || state.server.get("anon-username") || "",
@@ -37,9 +37,7 @@ exports.handler = function(request,response,state) {
     session.url = state.urlInfo;
     console.log(`['${session.id}'] IP: ${session.ip} GET ${session.url.href}`);
     // Set a new login token and login tokenEOL. Only valid for 60 seconds.
-    $tw.Bob.wsManager.refreshSession(session,1000*60)
-    // Log the session in this.authorizedUsers or this.anonymousUsers
-    // $tw.Bob.wsManager.updateUser(session);
+    $tw.Bob.refreshSession(session,1000*60)
   }
   let text = JSON.stringify(session.toJSON());
   response.writeHead(200, {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Credentials": "true", "Access-Control-Allow-Headers": "*"});

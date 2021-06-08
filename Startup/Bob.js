@@ -12,273 +12,688 @@ A core prototype to hand everything else onto.
   /*global $tw: false */
   "use strict";
 
-  const Yutils = require('./External/yjs/y-utils.cjs');
-  const WebSocketManager = require('./WSManager.js').WebSocketManager;
+  const Y = require('./External/yjs/yjs.cjs');
+  const syncProtocol = require('./External/yjs/y-protocols/sync.cjs');
+  const authProtocol = require('./External/yjs/y-protocols/auth.cjs');
+  const awarenessProtocol = require('./External/yjs/y-protocols/awareness.cjs');
+  const encoding = require('./External/lib0/dist/encoding.cjs');
+  const decoding = require('./External/lib0/dist/decoding.cjs');
+  const mutex = require('./External/lib0/dist/mutex.cjs');
+  const map = require('./External/lib0/dist/map.cjs');
+  const observable_js = require('./External/lib0/dist/observable.cjs');
+  const {Base64} = require('./External/js-base64/base64.js');
+  const { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('./External/uuid/index.js');
 
-  /*
-    "Bob" is a websocket helper module for both server and client/browser.
-    options: 
-  */
-  function Bob(options) {
-    this.settings = {    // Setup the heartbeat settings placeholders (filled in by the 'handshake')
-      "heartbeat": {
-        "interval":1000, // default 1 sec heartbeats
-        "timeout":5000 // default 5 second heartbeat timeout
-      },
-      "reconnect": {
-        "auto": true,
-        "initial": 1200, // small initial increment
-        "decay": 1.5, // exponential decay d^n (number-of-retries)
-        "max": 1000000, // maximum retry increment
-        "abort": 20 // failure after this many tries
-      }
+  // Polyfill because IE uses old javascript
+  if(!String.prototype.startsWith) {
+    String.prototype.startsWith = function(search, pos) {
+      return this.substr(!pos || pos < 0 ? 0 : +pos, search.length) === search;
     };
-    this.version = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob').fields.version;
-    this.ExcludeFilter = $tw.wiki.getTiddlerText('$:/plugins/OokTech/Bob/ExcludeSync');
-    // Wikis & Ydocs maps
-    this.Wikis = new Map();
-    this.Ydocs = new Map();
-    this.Yversion = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/External/yjs/yjs.cjs').fields.version;
-    // Logger
-    this.logger = {};
-    // Setup Websocket library
-    if($tw.node){
-      this.ws = require('./External/ws/ws.js');
-      this.url = require('url').URL;
-    } else {
-      this.ws = WebSocket;
-      this.url = URL;
-    }
-    // Always setup the WebSocketManager
-    let managerSerialized = JSON.parse("{}");
-    this.wsManager = new WebSocketManager(managerSerialized);
   }
 
-  Bob.prototype.browserSide = function () {
-      // Get the name for this wiki for websocket messages
-      $tw.wikiName = $tw.wiki.getTiddlerText("$:/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", ""));
-      // Set this wiki as loaded
-      $tw.Bob.Wikis.set($tw.wikiName,$tw);
-      // Setup the Ydocs for the wiki
-      let wikiDoc = $tw.Bob.getYDoc($tw.wikiName);
-  
-      // Attach the providers 
-  
-      // Awareness
-          
-      // Initialize the wiki subdocs
-  
-    };  
-
-  // Tiddler methods
-
   /*
-    This function takes two tiddler objects and returns a boolean value
-    indicating if they are the same or not.
+    "Bob 2.0" is a Yjs and websocket module for both server and client/browser. 
   */
-  Bob.prototype.tiddlerHasChanged = function (tiddler, otherTiddler) {
-    if (!otherTiddler) {
-      return true;
-    }
-    if (!tiddler) {
-      return true;
-    }
-    if (!otherTiddler.fields && tiddler.fields) {
-      return true;
-    }
-    if (!tiddler.fields && otherTiddler.fields) {
-      return true;
-    }
-    const hash1 = tiddler.hash || this.getTiddlerHash(tiddler);
-    const hash2 = otherTiddler.hash || this.getTiddlerHash(otherTiddler);
-    return hash1 !== hash2;
-  };
-
-  /*
-    This is a simple and fast hashing function that we can use to test if a
-    tiddler has changed or not.
-    This doesn't need to be at all secure, and doesn't even need to be that
-    robust against collisions, it just needs to make collisions rare for a very
-    easy value of rare, like 0.1% would be more than enough to make this very
-    useful, and this should be much better than that.
-
-    Remember that this just cares about collisions between one tiddler and its
-    previous state after an edit, not between all tiddlers in the wiki or
-    anything like that.
-  */
-  Bob.prototype.getTiddlerHash = function (tiddler) {
-    const tiddlerString = this.stableStringify(this.normalizeTiddler(tiddler))
-    let hash = 0;
-    if (tiddlerString.length === 0) {
-      return hash;
-    }
-    for (let i = 0; i < tiddlerString.length; i++) {
-      const char = tiddlerString.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32bit integer
-    }
-    return hash;
-  }
-
-  // This is a stable json stringify function from https://github.com/epoberezkin/fast-json-stable-stringify
-  Bob.prototype.stableStringify = function (data, opts) {
-    if (!opts) opts = {};
-    if (typeof opts === 'function') opts = { cmp: opts };
-    let cycles = (typeof opts.cycles === 'boolean') ? opts.cycles : false;
-
-    let cmp = opts.cmp && (function (f) {
-      return function (node) {
-        return function (a, b) {
-          const aobj = { key: a, value: node[a] };
-          const bobj = { key: b, value: node[b] };
-          return f(aobj, bobj);
-        };
-      };
-    })(opts.cmp);
-
-    let seen = [];
-    return (function stringify(node) {
-      if (node && node.toJSON && typeof node.toJSON === 'function') {
-        node = node.toJSON();
+  class Bob extends observable_js.Observable {
+    constructor () {
+      super();
+      // Access levels
+      this.accessLevels = {
+        Reader: "reader",
+        Writer: "writer",
+        Admin: "admin"
       }
-
-      if (node === undefined) return;
-      if (typeof node == 'number') return isFinite(node) ? '' + node : 'null';
-      if (typeof node !== 'object') return JSON.stringify(node);
-
-      let i, out;
-      if (Array.isArray(node)) {
-        out = '[';
-        for (i = 0; i < node.length; i++) {
-          if (i) out += ',';
-          out += stringify(node[i]) || 'null';
+      // Settings
+      this.settings = {    // Setup the heartbeat settings placeholders (filled in by the 'handshake')
+        "heartbeat": {
+          "interval":1000, // default 1 sec heartbeats
+          "timeout":5000 // default 5 second heartbeat timeout
+        },
+        "reconnect": {
+          "auto": true,
+          "initial": 1200, // small initial increment
+          "decay": 1.5, // exponential decay d^n (number-of-retries)
+          "max": 1000000, // maximum retry increment
+          "abort": 20 // failure after this many tries
         }
-        return out + ']';
-      }
-
-      if (node === null) return 'null';
-
-      if (seen.indexOf(node) !== -1) {
-        if (cycles) return JSON.stringify('__cycle__');
-        throw new TypeError('Converting circular structure to JSON');
-      }
-
-      let seenIndex = seen.push(node) - 1;
-      let keys = Object.keys(node).sort(cmp && cmp(node));
-      out = '';
-      for (i = 0; i < keys.length; i++) {
-        let key = keys[i];
-        let value = stringify(node[key]);
-
-        if (!value) continue;
-        if (out) out += ',';
-        out += JSON.stringify(key) + ':' + value;
-      }
-      seen.splice(seenIndex, 1);
-      return '{' + out + '}';
-    })(data);
-  };
-
-  /*
-    This normalizes a tiddler so that it can be compared to another tiddler to
-    determine if they are the same.
-
-    Any two tiddlers that have the same fields and content (including title)
-    will return exactly the same thing using this function.
-
-    Fields are included in alphabetical order, as defined by the javascript
-    array sort method.
-
-    The tag field gets sorted and the list field is interpreted as a string
-    array. If either field exists but it is an empty string it is replaced with
-    an empty array.
-
-    Date fields (modified and created) are stringified.
-  */
-  Bob.prototype.normalizeTiddler = function (tiddler) {
-    let newTid = {};
-    if (tiddler) {
-      if (tiddler.fields) {
-        let fields = Object.keys(tiddler.fields) || []
-        fields.sort()
-        fields.forEach(function (field) {
-          if (field === 'list' || field === 'tags') {
-            if (Array.isArray(tiddler.fields[field])) {
-              newTid[field] = tiddler.fields[field].slice()
-              if (field === 'tags') {
-                newTid[field] = newTid[field].sort()
-              }
-            } else if (tiddler.fields[field] === '') {
-              newTid[field] = []
-            } else {
-              newTid[field] = $tw.utils.parseStringArray(tiddler.fields[field]).slice()
-              if (field === 'tags') {
-                newTid[field] = newTid[field].sort()
-              }
-            }
-          } else if (field === 'modified' || field === 'created') {
-            if (typeof tiddler.fields[field] === 'object' && tiddler.fields[field] !== null) {
-              newTid[field] = $tw.utils.stringifyDate(tiddler.fields[field]);
-            } else {
-              newTid[field] = tiddler.fields[field]
-            }
-          } else {
-            newTid[field] = tiddler.fields[field]
-          }
-        })
-        if (typeof newTid.text === 'undefined' || !newTid.text) {
-          newTid.text = '';
-        }
-      }
-    }
-    return { fields: newTid }
-  }
-
-
-  /*
-  *
-  * Ydoc methods
-  */
-  Bob.prototype.getYDoc = function (docname, gc = true) {
-    return Yutils.getYDoc(this.Ydocs,docname,gc);
-  }
-
-  /*
-  * Node methods
-  */
-  if ($tw.node) {
-    const path = require('path');
-    const fs = require('fs');
-    const os = require('os');
-
-    // A polyfilL to make this work with older node installs
-
-    // START POLYFILL
-    const reduce = Function.bind.call(Function.call, Array.prototype.reduce);
-    const isEnumerable = Function.bind.call(Function.call, Object.prototype.propertyIsEnumerable);
-    const concat = Function.bind.call(Function.call, Array.prototype.concat);
-    const keys = Reflect.ownKeys;
-
-    if (!Object.values) {
-      Object.values = function values(O) {
-        return reduce(keys(O), (v, k) => concat(v, typeof k === 'string' && isEnumerable(O, k) ? [O[k]] : []), []);
       };
+      this.version = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob').fields.version;
+      this.ExcludeFilter = $tw.wiki.getTiddlerText('$:/plugins/OokTech/Bob/ExcludeSync');
+
+      // Logger
+      this.logger = {};
+
+      // Wikis
+      this.Wikis = new Map();
+
+      // Ydocs
+      this.Yversion = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/External/yjs/yjs.cjs').fields.version;
+      this.Ydocs = new Map();
+      // disable gc when using snapshots!
+      this.gcEnabled = $tw.node? (process.env.GC !== 'false' && process.env.GC !== '0'): true;
+      /**
+       * @type {{bindState: function(string,WSSharedDoc):void, writeState:function(string,WSSharedDoc):Promise<any>, provider: any}|null}
+       */
+      this.persistence = null;
+
+      // Sessions
+      this.sessions = new Map();
+
+      // Setup a Message Queue
+      this.clientId = 0; // The current client message id
+      this.serverId = 0; // The current server message id
+      this.tickets = new Map(options.tickets || []); // The message ticket queue
+
+      // Load the client-messagehandlers
+      this.clientHandlers = {};
+      $tw.modules.applyMethods("client-messagehandlers", this.clientHandlers);
+      // Reserve the server-messagehandlers
+      this.serverHandlers = null;
+
+      // Setup Websocket library
+      if($tw.node){
+        this.ws = require('./External/ws/ws.js');
+        this.url = require('url').URL;
+      } else if($tw.browser) {
+        this.ws = WebSocket;
+        this.url = URL;
+      }
     }
-    // END POLYFILL
 
     /*
-      Node init
+      Websocket Session methods
     */
-    Bob.prototype.serverSide = function () {
+
+    getHost (host) {
+      host = new this.url(host || (!!document.location && document.location.href));
+      // Websocket host
+      let protocol = null;
+      if(host.protocol == "http:") {
+        protocol = "ws:";
+      } else if(host.protocol == "https:") {
+        protocol = "wss:";
+      }
+      host.protocol = protocol
+      return host.toString();
+    }
+
+    // Create or get a new session
+    getSession (sessionId,doc,options = {}) {
+      if($tw.node && !options.client && (sessionId == uuid_NIL || !this.hasSession(sessionId))) {
+          sessionId = uuid_v4()
+      }
+      return map.setIfUndefined(this.sessions, sessionId, () => {
+        let session = new WebsocketSession(sessionId,doc,options);
+        session.on('message', this.handleMessage);
+        this.sessions.set(sessionId, session);
+        return session;
+      })
+    }
+
+    hasSession (sessionId) {
+      return this.sessions.has(sessionId);
+    }
+
+    deleteSession (sessionId) {
+      if (this.hasSession(sessionId)) {
+        this.sessions.delete(sessionId);
+      }
+    }
+
+    getSessionsByUserId (userid) {
+      var usersSessions = new Map();
+      for (let [id,session] of this.sessions.entries()) {
+        if (session.authenticatedUsername === userid) {
+          usersSessions.add(id,session);
+        }
+      }
+      return usersSessions;
+    }
+
+    getSessionsByWiki (wikiName) {
+      var wikiSessions = new Map();
+      for (let [id, session] of this.sessions.entries()) {
+        if (session.wikiName === wikiName) {
+          wikiSessions.add(id, session);
+        }
+      }
+      return wikiSessions;
+    }
+
+    /*
+      Message methods
+    */
+
+    /*
+      This returns a new id for a message.
+      Messages from a client (usually the browser) have ids that start with c, 
+      messages from a server have ids that starts with s.
+    */
+    getMessageId (client) {
+      return !!client ? "c" + this.clientId++: "s" + this.serverId++;
+    }
+
+    handleMessage (eventData,session) {
+      let handler = session.client? $tw.Bob.clientHandlers[eventData.type]: $tw.Bob.serverHandlers[eventData.type];
+      // Make sure we have a handler for the message type
+      if(typeof handler === 'function') {
+        // If handshake, set the tokenRefresh before acking
+        if (session.client && eventData.type == "handshake" && !!eventData.tokenRefresh) {
+          session.token = eventData.tokenRefresh;
+          session.tokenEOL = eventData.tokenEOL;
+        }
+        // The following messages do not need to be acknowledged
+        let noAck = ['ack', 'ping', 'pong'];
+        if(eventData.id && noAck.indexOf(eventData.type) == -1) {
+          console.log(`['${eventData.sessionId}'] handle-${eventData.id}:`, eventData.type);
+          // Acknowledge the message
+          session.send({
+            id: 'ack' + eventData.id,
+            type: 'ack'
+          });
+        }
+        // Determine the wiki instance
+        let instance = $tw;
+        if($tw.node && $tw.Bob.Wikis.has(eventData.wikiName)) {
+            instance = $tw.Bob.Wikis.get(eventData.wikiName);
+        }
+        // Call the handler
+        handler.call(session,eventData,instance);
+      } else {
+        debugger;
+        console.error(`['${session.id}'] WS handleMessage error: No handler for message of type ${eventData.type}`);
+      }
+    }
+
+    /*
+      This is the function for handling ack messages on both the server and
+      client.
+
+      It takes an ack message object as input and checks it against the tickets in
+      he message queue. If the queue has a ticket with an id that matches the ack
+      then the ticket's ack object is checked for any sessions waiting to be acklowledged.
+
+      If there is a truthy value in the session's ack state and it is a function, then
+      the callback function associated with the session is called. Finally the "waiting"
+      state for the session id is set to false. If all acks for the ticket are set to false 
+      than the ctime for that message is set to the current time so it can be properly
+      removed later.
+    */
+    handleMessageAck (message,instance) {
+      let messageId = message.id.slice(3),
+        ticket = $tw.Bob.getTicket(messageId);debugger;
+      if(ticket) {
+        // If there is a callback, call it
+        if(!!ticket.ack[this.id] && typeof ticket.ack[this.id] == "function") {
+          ticket.ack[this.id].call();
+        }
+        // Set the message as acknowledged (waiting == false).
+        ticket.ack[this.id] = false;
+        // Check if all the expected acks have been received
+        const keys = Object.keys(ticket.ack),
+          waiting = keys.filter(function(id) {
+          return !!ticket.ack[id];
+        });
+        // If not waiting on any acks then set the ctime.
+        if(!waiting.length && !ticket.ctime) {
+          ticket.ctime = Date.now();
+        }
+      } else {
+        console.log(`['${message.sessionId}'] WS handleMessageAck error: no message found for id ${messageId}`);
+        debugger;
+      }
+    }
+
+    /*
+      Ticket methods
+    */
+    hasTicket (messageId) {
+      return this.tickets.has(messageId);
+    }
+
+    getTicket (messageId) {
+      if (this.hasTicket(messageId)) {
+        return this.tickets.get(messageId);
+      } else {
+        return null;
+      }
+    }
+
+    setTicket (ticketData) {
+      if (ticketData.id) {
+        this.tickets.set(ticketData.id, ticketData);
+      }
+    }
+
+    deleteTicket (messageId) {
+      if (this.hasTicket(messageId)) {
+        this.tickets.delete(messageId);
+      }
+    }
+
+    /*
+        User methods
+    */
+    updateUser (sessionData) {
+      let user = null;
+      if (!!sessionData.isAnonymous) {
+        user = this.anonymousUsers.get(sessionData.userid) || this.newUser(sessionData);
+      } else {
+        user = this.authorizedUsers.get(sessionData.userid) || this.newUser(sessionData);
+      }
+      user.sessions.add(sessionData.id)
+    }
+
+    newUser (sessionData) {
+      let user = new WebSocketUser(sessionData);
+      if (user.isAnonymous) {
+        this.anonymousUsers.set(user.id, user);
+      } else {
+        this.authorizedUsers.set(user.id, user);
+      }
+      return user;
+    }
+
+    getUsersByAccessType (type, wikiName) {
+      var usersByAccess = new Map();
+      for (let [id, user] of this.authorizedUsers.entries()) {
+        if ($tw.Bob.wsServer.getUserAccess(user.userid, wikiName) == type) {
+          usersByAccess.add(id, user);
+        }
+      }
+      return usersByAccess;
+    }
+
+    getUsersWithAccess (type, wikiName) {
+      let usersWithAccess = new Map(),
+        types = [null, "readers", "writers", "admin"];
+      for (let [id, user] of this.authorizedUsers.entries()) {
+        let access = $tw.Bob.wsServer.getUserAccess(user.userid, wikiName);
+        if (types.indexOf(access) >= types.indexOf(type)) {
+          usersWithAccess.add(id, user);
+        }
+      }
+      return usersWithAccess;
+    }
+
+    getViewableSettings (sessionId) {
+      const tempSettings = {};
+      if (this.hasSession(sessionId)) {
+        let session = this.getSession(sessionId);
+        // section visible to anyone
+        tempSettings.API = $tw.Bob.settings.API;
+        tempSettings.heartbeat = $tw.Bob.settings.heartbeat;
+        tempSettings.reconnect = $tw.Bob.settings.reconnect;
+        // Federation stuff is visible because you don't have to login to want to see
+        // if federation is possible with a server
+        tempSettings.enableFederation = $tw.Bob.settings.enableFederation;
+        if (tempSettings.enableFederation == "yes") {
+          tempSettings.federation = $tw.Bob.settings.federation;
+        }
+        // Section visible by logged in people
+        if (session.isLoggedIn) {
+          tempSettings.backups = $tw.Bob.settings.backups;
+          tempSettings.disableBrowserAlerts = $tw.Bob.settings.disableBrowserAlerts;
+          tempSettings.editionLibrary = $tw.Bob.settings.editionLibrary;
+          tempSettings.enableFileServer = $tw.Bob.settings.enableFileServer;
+          tempSettings.excludePluginList = $tw.Bob.settings.excludePluginList;
+          tempSettings.fileURLPrefix = $tw.Bob.settings.fileURLPrefix;
+          tempSettings.includePluginList = $tw.Bob.settings.includePluginList;
+          tempSettings.mimeMap = $tw.Bob.settings.mimeMap;
+          tempSettings.namespacedWikis = $tw.Bob.settings.namespacedWikis;
+          tempSettings.perWikiFiles = $tw.Bob.settings.perWikiFiles;
+          tempSettings.pluginLibrary = $tw.Bob.settings.pluginLibrary;
+          tempSettings.profileOptions = $tw.Bob.settings.profileOptions;
+          tempSettings.saveMediaOnServer = $tw.Bob.settings.saveMediaOnServer;
+          tempSettings.themeLibrary = $tw.Bob.settings.themeLibrary;
+          tempSettings.tokenTTL = $tw.Bob.settings.tokenTTL;
+        }
+        // advanced section only visible to admins
+        if (session.isLoggedIn && session.access === 'admin') {
+          tempSettings.actions = $tw.Bob.settings.actions;
+          tempSettings.admin = $tw.Bob.settings.admin;
+          tempSettings.advanced = $tw.Bob.settings.advanced;
+          tempSettings.certPath = $tw.Bob.settings.certPath;
+          tempSettings.disableFileWatchers = $tw.Bob.settings.disableFileWatchers;
+          tempSettings.editions = $tw.Bob.settings.editions;
+          tempSettings.editionsPath = $tw.Bob.settings.editionsPath;
+          tempSettings.enableBobSaver = $tw.Bob.settings.enableBobSaver;
+          tempSettings.filePathRoot = $tw.Bob.settings.filePathRoot;
+          tempSettings['fed-wss'] = $tw.Bob.settings['fed-wss'];
+          tempSettings.httpsPort = $tw.Bob.settings.httpsPort;
+          tempSettings.languages = $tw.Bob.settings.languages;
+          tempSettings.languagesPath = $tw.Bob.settings.languagesPath;
+          tempSettings.logger = $tw.Bob.settings.logger;
+          tempSettings.plugins = $tw.Bob.settings.plugins;
+          tempSettings.pluginsPath = $tw.Bob.settings.pluginsPath;
+          tempSettings.profiles = $tw.Bob.settings.profiles;
+          tempSettings.reverseProxy = $tw.Bob.settings.reverseProxy;
+          tempSettings.rootWikiName = $tw.Bob.settings.rootWikiName;
+          tempSettings.saltRounds = $tw.Bob.settings.saltRounds;
+          tempSettings.saver = $tw.Bob.settings.saver;
+          tempSettings.scripts = $tw.Bob.settings.scripts;
+          tempSettings.servingFiles = $tw.Bob.settings.servingFiles;
+          tempSettings.server = $tw.Bob.settings.server;
+          tempSettings.serverInfo = $tw.Bob.settings.serverInfo;
+          tempSettings.serverKeyPath = $tw.Bob.settings.serverKeyPath;
+          tempSettings.serveWikiOnRoot = $tw.Bob.settings.serveWikiOnRoot;
+          tempSettings.suppressBrowser = $tw.Bob.settings.suppressBrowser;
+          tempSettings.themes = $tw.Bob.settings.themes;
+          tempSettings.themesPath = $tw.Bob.settings.themesPath;
+          tempSettings.tokenPrivateKeyPath = $tw.Bob.settings.tokenPrivateKeyPath;
+          tempSettings.useHTTPS = $tw.Bob.settings.useHTTPS;
+          tempSettings.wikiPathBase = $tw.Bob.settings.wikiPathBase;
+          tempSettings.wikiPermissionsPath = $tw.Bob.settings.wikiPermissionsPath;
+          tempSettings.wikisPath = $tw.Bob.settings.wikisPath;
+          tempSettings['ws-server'] = $tw.Bob.settings['ws-server'];
+        }
+        tempSettings.advanced = tempSettings.avanced || {};
+        tempSettings['ws-server'] = tempSettings['ws-server'] || {};
+        tempSettings['fed-wss'] = tempSettings['fed-wss'] || {};
+      }
+      return tempSettings;
+    }
+
+    /*
+      Sync methods
+    */
+
+    syncToServer (sessionId) {
+      /*
+      // The process here should be:
+    
+        Send the full list of changes from the browser to the server in a
+        special message
+        The server determines if any conflicts exist and marks the tiddlers as appropriate
+        If there are no conflicts than it just applies the changes from the browser/server
+        If there are than it marks the tiddler as needing resolution and both versions are made available
+        All connected browsers now see the tiddlers marked as in conflict and resolution is up to the people
+    
+        This message is sent to the server, once the server receives it it respons with a special ack for it, when the browser receives that it deletes the unsent tiddler
+    
+        What is a conflict?
+    
+        If both sides say to delete the same tiddler there is no conflict
+        If one side says save and the other delete there is a conflict
+        if both sides say save there is a conflict if the two saved versions
+        aren't the same.
+      */
+      // Get the tiddler with the info about local changes
+      const tiddler = this.wiki.getTiddler(`$:/plugins/OokTech/Bob/Sockets/${connectionIndex}/Unsent`);
+      let tiddlerHashes = {};
+      const allTitles = this.wiki.allTitles()
+      const list = this.wiki.filterTiddlers($tw.Bob.ExcludeFilter);
+      allTitles.forEach(function(tidTitle) {
+        if(list.indexOf(tidTitle) === -1) {
+          const tid = this.wiki.getTiddler(tidTitle);
+          tiddlerHashes[tidTitle] = $tw.utils.getTiddlerHash(tid);
+        }
+      })
+      // Ask the server for a listing of changes since the browser was disconnected
+      const message = {
+        type: 'syncChanges',
+        since: tiddler.fields.start,
+        changes: tiddler.fields.text,
+        hashes: tiddlerHashes,
+        wiki: $tw.wikiName
+      };
+      $tw.Bob.sendToServer(connectionIndex, message);
+      //this.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Sockets/${connectionIndex}/Unsent`);
+    }
+
+    /*
+      Yjs methods
+    */
+
+    /**
+     * @param {WSSharedDoc} doc
+     * @param {any} session
+     */
+    closeConn (doc, session) {
+      if (doc.conns.has(session)) {
+        /**
+         * @type {Set<number>}
+         */
+        // @ts-ignore
+        const controlledIds = doc.sessions.get(session)
+        doc.sessions.delete(session)
+        awarenessProtocol.removeAwarenessStates(doc.awareness, Array.from(controlledIds), null)
+        if (doc.sessions.size === 0 && this.persistence !== null) {
+          // if persisted, we store state and destroy ydocument
+          this.persistence.writeState(doc.name, doc).then(() => {
+            doc.destroy()
+          })
+          this.ydocs.delete(doc.name)
+        }
+      }
+    }
+
+    /*
+      Yjs methods
+    */
+
+    /**
+     * Gets a Y.Doc by name, whether in memory or on disk
+     *
+     * @param {string} docname - the name of the Y.Doc to find or create
+     * @param {boolean} gc - whether to allow gc on the doc (applies only when created)
+     * @return {Y.Doc}
+     */
+    getYDoc (docname, gc = this.gcEnabled) {
+      map.setIfUndefined(this.Ydocs, docname, () => {
+        const doc = new Y.Doc(docname);
+        doc.gc = gc;
+        doc.name = docname;
+        if (this.persistence !== null) {
+          this.persistence.bindState(docname, doc);
+        }
+        this.Ydocs.set(docname, doc);
+        return doc;
+      })
+    }
+
+
+    /*
+      Wiki methods
+    */
+
+    loadWiki (wikiName,cb) {
+      if(wikiName && !this.Wikis.has(wikiName)) {
+        try{
+          // Get the name for this wiki for websocket messages
+          $tw.wikiName = wikiName;
+          // Setup the Ydocs for the wiki
+          let wikiDoc = this.getYDoc($tw.wikiName);
+
+          // Attach the providers 
+
+          // Awareness
+              
+          // Initialize the wiki subdocs
+
+
+          // Set this wiki as loaded
+          this.Wikis.set($tw.wikiName,$tw);
+          $tw.hooks.invokeHook('wiki-loaded',wikiName);
+        } catch (err) {
+          if (typeof cb === 'function') {
+            cb(err);
+          } else {
+            console.error(err);
+            return err;
+          }
+        }
+      }
+      if (typeof cb === 'function') {
+        cb(null, true);
+      } else {
+        return true;
+      }
+    };
+  }
+
+  exports.Bob = Bob;
+
+/*
+ * Node classes
+ */ 
+if($tw.node) {
+  const path = require('path');
+  const fs = require('fs');
+  const os = require('os');
+
+  // A polyfilL to make this work with older node installs
+
+  // START POLYFILL
+  const reduce = Function.bind.call(Function.call, Array.prototype.reduce);
+  const isEnumerable = Function.bind.call(Function.call, Object.prototype.propertyIsEnumerable);
+  const concat = Function.bind.call(Function.call, Array.prototype.concat);
+  const keys = Reflect.ownKeys;
+
+  if (!Object.values) {
+    Object.values = function values(O) {
+      return reduce(keys(O), (v, k) => concat(v, typeof k === 'string' && isEnumerable(O, k) ? [O[k]] : []), []);
+    };
+  }
+  // END POLYFILL
+
+  // Y message handler flags
+  const messageSync = 0;
+  const messageAwareness = 1;
+  const messageAuth = 2;
+  const messageQueryAwareness = 3;
+  const messageSyncSubdoc = 4;
+
+  /**
+ * @param {Uint8Array} update
+ * @param {WSSession} origin
+ * @param {WSSharedDoc} doc
+ */
+  const updateHandler = (update, origin, doc) => {
+    const encoder = encoding.createEncoder()
+    encoding.writeVarUint(encoder, messageSync)
+    syncProtocol.writeUpdate(encoder, update)
+    const message = encoding.toUint8Array(encoder)
+    doc.sessions.forEach((s, _) => send(doc, s, message))
+  }
+
+  class WSSharedDoc extends Y.Doc {
+    /**
+     * @param {string} name
+     */
+    constructor (name) {
+      super({ gc: $tw.Bob.gcEnabled })
+      this.name = name
+      this.mux = mutex.createMutex()
+      /**
+       * Maps from session to set of controlled user ids & session/doc specific handlers. Delete all user ids from awareness, and clear handlers when this session is closed
+       * @type {Map<Object, Set<number>>}
+       */
+      this.sessions = new Map()
+      this.handlers = new Map()
+      /**
+       * @type {awarenessProtocol.Awareness}
+       */
+      this.awareness = new awarenessProtocol.Awareness(this)
+      this.awareness.setLocalState(null)
+      /**
+       * @param {{ added: Array<number>, updated: Array<number>, removed: Array<number> }} changes
+       * @param {Object | null} origin Origin is the connection that made the change
+       */
+      const awarenessChangeHandler = ({ added, updated, removed }, origin) => {
+        const changedClients = added.concat(updated, removed)
+        if (origin !== null) {
+          const connControlledIDs = /** @type {Set<number>} */ (this.sessions.get(origin))
+          if (connControlledIDs !== undefined) {
+            added.forEach(clientID => { connControlledIDs.add(clientID) })
+            removed.forEach(clientID => { connControlledIDs.delete(clientID) })
+          }
+        }
+        // broadcast awareness update
+        const encoder = encoding.createEncoder()
+        encoding.writeVarUint(encoder, messageAwareness)
+        encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients))
+        const buff = encoding.toUint8Array(encoder)
+        this.sessions.forEach((s, _) => {
+          send(this, s, buff)
+        })
+      }
+      this.awareness.on('update', awarenessChangeHandler)
+      this.on('update', updateHandler)
+    }
+  }
+
+  /**
+ * @param {any} session
+ * @param {WSSharedDoc} doc
+ * @param {Uint8Array} message
+ */
+ const messageListener = (session, doc, message) => {
+  const encoder = encoding.createEncoder()
+  const decoder = decoding.createDecoder(message)
+  const messageType = decoding.readVarUint(decoder)
+  switch (messageType) {
+    case messageSync:
+      encoding.writeVarUint(encoder, messageSync)
+      syncProtocol.readSyncMessage(decoder, encoder, doc, null)
+      if (encoding.length(encoder) > 1) {
+        send(doc, session, encoding.toUint8Array(encoder))
+      }
+      break
+    case messageAwareness: {
+      awarenessProtocol.applyAwarenessUpdate(doc.awareness, decoding.readVarUint8Array(decoder), session)
+      break
+    }
+  }
+}
+   
+  class BobServer extends Bob {
+    constructor () {
+      super();
       // Initialise the scriptQueue objects ???
       this.scriptQueue = {};
       this.scriptActive = {};
       this.childproc = false;
+
       // Initialise the $tw.Bob.settings object & load the user settings
       this.settings = JSON.parse($tw.wiki.getTiddler('$:/plugins/OokTech/Bob/DefaultSettings').fields.text || "{}");
-      this.loadSettings(this.settings, $tw.boot.wikiPath);
-      // Load the RootWiki
-      this.loadWiki("RootWiki");
+      this.loadSettings(this.settings,$tw.boot.wikiPath);
+
+      // Ydocs
+      if (typeof persistenceDir === 'string') {
+        console.info('Persisting Y documents to "' + persistenceDir + '"')
+        // @ts-ignore
+        const LeveldbPersistence = require('y-leveldb').LeveldbPersistence
+        const ldb = new LeveldbPersistence(persistenceDir)
+        this.persistence = {
+          provider: ldb,
+          bindState: async (docName, ydoc) => {
+            const persistedYdoc = await ldb.getYDoc(docName)
+            const newUpdates = Y.encodeStateAsUpdate(ydoc)
+            ldb.storeUpdate(docName, newUpdates)
+            Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(persistedYdoc))
+            ydoc.on('update', update => {
+              ldb.storeUpdate(docName, update)
+            })
+          },
+          writeState: async (docName, ydoc) => {}
+        }
+      }
+
+      // Load the server-messagehandlers modules
+      this.serverHandlers = {};
+      $tw.modules.applyMethods("server-messagehandlers", this.serverHandlers);
+    }
+
+    /*
+      Session methods
+    */
+    refreshSession (session,timeout) {
+      if($tw.node && $tw.Bob.wsServer) {
+        let eol = new Date(session.tokenEOL).getTime() + timeout;
+        session.tokenEOL = new Date(eol).getTime();
+        session.token = uuid_v4();
+      }
     }
 
     // Settings Methods
@@ -288,7 +703,7 @@ A core prototype to hand everything else onto.
       This function modifies the input settings object with the properties in the
       json file at newSettingsPath
     */
-    Bob.prototype.loadSettings = function (settings, bootPath) {
+    loadSettings (settings, bootPath) {
       const newSettingsPath = path.join(bootPath, 'settings', 'settings.json');
       let newSettings;
       if (typeof $tw.ExternalServer !== 'undefined') {
@@ -337,7 +752,7 @@ A core prototype to hand everything else onto.
       in the local settings.
       Changes to the settings are later saved to the local settings.
     */
-    Bob.prototype.updateSettings = function (globalSettings, localSettings) {
+    updateSettings (globalSettings, localSettings) {
       /*
       Walk though the properties in the localSettings, for each property set the global settings equal to it, 
       but only for singleton properties. Don't set something like 
@@ -366,7 +781,7 @@ A core prototype to hand everything else onto.
       in the form name: path and puts them in the form name: {path: path}, and
       recursively walks through all the wiki entries.
     */
-    Bob.prototype.updateSettingsWikiPaths = function (inputObj) {
+    updateSettingsWikiPaths (inputObj) {
       let self = this;
       Object.keys(inputObj).forEach(function (entry) {
         if (typeof inputObj[entry] === 'string') {
@@ -380,7 +795,7 @@ A core prototype to hand everything else onto.
     /*
       Creates initial settings tiddlers for the wiki.
     */
-    Bob.prototype.createStateTiddlers = function (data, instance) {
+    createStateTiddlers (data,instance) {
       // Create the $:/ServerIP tiddler
       let pluginTiddlers = {
         "$:/state/Bob/ServerIP": {
@@ -423,7 +838,7 @@ A core prototype to hand everything else onto.
           }
         }
       };
-      this.wsManager.getSession(data.sessionId).sendMessage(message);
+      this.getSession(data.sessionId).sendMessage(message);
     }
 
     // Wiki methods
@@ -431,15 +846,15 @@ A core prototype to hand everything else onto.
     /*
       This function loads a tiddlywiki instance, starts the given wiki and calls any callback.
     */
-    Bob.prototype.loadWiki = function (wikiName, cb) {
+    loadWiki (wikiName,cb) {
       const settings = this.getWikiSettings(wikiName);
       let wikiPath = this.wikiExists(settings.path);
       // Make sure it isn't loaded already
-      if (!!wikiPath && !this.Wikis.has(wikiName)) {
+      if(!!wikiPath && !this.Wikis.has(wikiName)) {
         try {
           let instance = (wikiName == 'RootWiki') ? $tw : require("./boot.js").TiddlyWiki();
           if (wikiName == 'RootWiki') {
-
+            // We've already booted
           } else {
               // Pass the command line arguments to the boot kernel
               instance.boot.argv = ["+plugins/" + settings.syncadaptor, wikiPath];
@@ -493,7 +908,7 @@ A core prototype to hand everything else onto.
     /*
       Return the resolved filePathRoot
     */
-    Bob.prototype.getFilePathRoot = function () {
+    getFilePathRoot () {
       const currPath = path.parse(process.argv[0]).name !== 'node' ? path.dirname(process.argv[0]) : process.cwd();
       let basePath = '';
       this.settings.filePathRoot = this.settings.filePathRoot || './files';
@@ -509,7 +924,7 @@ A core prototype to hand everything else onto.
     /*
       Return the resolved basePath
     */
-    Bob.prototype.getBasePath = function () {
+    getBasePath () {
       const currPath = path.parse(process.argv[0]).name !== 'node' ? path.dirname(process.argv[0]) : process.cwd();
       let basePath = '';
       this.settings.wikiPathBase = this.settings.wikiPathBase || 'cwd';
@@ -526,7 +941,7 @@ A core prototype to hand everything else onto.
     /*
       Given a wiki name this generates the path for the wiki.
     */
-    Bob.prototype.generateWikiPath = function (wikiName) {
+    generateWikiPath (wikiName) {
       const basePath = this.getBasePath();
       return path.resolve(basePath, this.settings.wikisPath, wikiName);
     }
@@ -536,7 +951,7 @@ A core prototype to hand everything else onto.
       listed this returns undefined.
       This can be used to determine if a wiki is listed or not.
     */
-    Bob.prototype.getWikiPath = function (wikiName) {
+    getWikiPath (wikiName) {
       let wikiSettings = this.getWikiSettings(wikiName), wikiPath = undefined;
       if (wikiSettings) {
         wikiPath = wikiSettings.path;
@@ -554,7 +969,7 @@ A core prototype to hand everything else onto.
       if the wiki isn't listed this returns undefined.
       This can be used to determine if a wiki is listed or not.
     */
-    Bob.prototype.getWikiSettings = function (wikiName) {
+    getWikiSettings (wikiName) {
       let wikiSettings = undefined;
       if (wikiName == 'RootWiki') {
         wikiSettings = {
@@ -595,7 +1010,7 @@ A core prototype to hand everything else onto.
       This checks to make sure there is a tiddlwiki.info file in a wiki folder
       If so, the full wikipath is returned, else false is returned.
     */
-    Bob.prototype.wikiExists = function (wikiFolder) {
+    wikiExists (wikiFolder) {
       let exists = false;
       // Make sure that the wiki actually exists
       if (wikiFolder) {
@@ -615,16 +1030,31 @@ A core prototype to hand everything else onto.
       return exists? wikiFolder: false;
     }
 
-    // End Node methods
-  } else {
-    // Polyfill because IE uses old javascript
-    if(!String.prototype.startsWith) {
-      String.prototype.startsWith = function(search, pos) {
-        return this.substr(!pos || pos < 0 ? 0 : +pos, search.length) === search;
-      };
+    /*
+      Yjs methods
+    */
+
+    /**
+     * Gets a Y.Doc by name, whether in memory or on disk
+     *
+     * @param {string} docname - the name of the Y.Doc to find or create
+     * @param {boolean} gc - whether to allow gc on the doc (applies only when created)
+     * @return {WSSharedDoc}
+     */
+    getYDoc (docname, gc = this.gcEnabled) {
+      map.setIfUndefined(this.Ydocs, docname, () => {
+        const doc = new WSSharedDoc(docname);
+        doc.gc = gc;
+        if (this.persistence !== null) {
+          this.persistence.bindState(docname, doc);
+        }
+        this.Ydocs.set(docname, doc);
+        return doc;
+      })
     }
   }
-
-  exports.Bob = Bob;
+  
+  exports.BobServer = BobServer;
+}
 
 })();
