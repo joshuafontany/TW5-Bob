@@ -54,17 +54,17 @@ messageHandlers[messageSync] = (encoder, decoder, session, emitSynced, messageTy
   }
 };
 
-messageHandlers[messageQueryAwareness] = (encoder, decoder, session, emitSynced, messageType) => {
-  encoding.writeVarUint(encoder, messageAwareness);
-  encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(session.awareness, Array.from(session.awareness.getStates().keys())));
+messageHandlers[messageAwareness] = (encoder, decoder, session, emitSynced, messageType) => {
+  awarenessProtocol.applyAwarenessUpdate(session.awareness, decoding.readVarUint8Array(decoder), session);
 };
 
 messageHandlers[messageAuth] = (encoder, decoder, session, emitSynced, messageType) => {
   authProtocol.readAuthMessage(decoder, session.doc, permissionDeniedHandler);
 };
 
-messageHandlers[messageAwareness] = (encoder, decoder, session, emitSynced, messageType) => {
-  awarenessProtocol.applyAwarenessUpdate(session.awareness, decoding.readVarUint8Array(decoder), session);
+messageHandlers[messageQueryAwareness] = (encoder, decoder, session, emitSynced, messageType) => {
+  encoding.writeVarUint(encoder, messageAwareness);
+  encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(session.awareness, Array.from(session.awareness.getStates().keys())));
 };
 
 messageHandlers[messageSyncSubdoc] = (encoder, decoder, session, emitSynced, messageType) => {
@@ -81,13 +81,13 @@ messageHandlers[messageSyncSubdoc] = (encoder, decoder, session, emitSynced, mes
  */
 const permissionDeniedHandler = (session, reason) => console.warn(`Permission denied to access ${session.url}.\n${reason}`);
 
- /**
-  * @param {WebsocketSession} session
-  * @param {Uint8Array} buf
-  * @param {boolean} emitSynced
-  * @return {encoding.Encoder}
-  */
-const readMessage = (session, buf, emitSynced) => {
+/**
+ * @param {WebsocketSession} session
+ * @param {Uint8Array} buf
+ * @param {boolean} emitSynced
+ * @return {encoding.Encoder}
+ */
+const readMessage = (session,buf,emitSynced) => {
   const decoder = decoding.createDecoder(buf);
   const encoder = encoding.createEncoder();
   const messageType = decoding.readVarUint(decoder);
@@ -135,9 +135,15 @@ const setupWS = (session) => {
       if(session.authenticateMessage(eventData)) {
         session.lastMessageReceived = time.getUnixTime();
         if(eventData.type == "y" ) {
-          const encoder = readMessage(session, new Uint8Array(event.y), true);
+          const encoder = readMessage(session,new Uint8Array(event.y),true);
           if (encoding.length(encoder) > 1) {
-            websocket.send(encoding.toUint8Array(encoder));
+            const buf = encoding.toUint8Array(encoder)
+            let message = {
+              type: "y",
+              doc: session.doc.name,
+              y: Base64.fromUint8Array(buf)
+            }
+            session.sendMessage(message);
           }
         } else {
           session.emit('message', [eventData, session]);
@@ -172,8 +178,9 @@ const setupWS = (session) => {
         // Start with a very small reconnect timeout and increase timeout by
         // Math.round(Math.random() * (base = 1200) / 2 * Math.pow((decay = 1.5), session.unsuccessfulReconnects))
         let delay = math.min(
-        math.round(random.rand() * $tw.Bob.settings.reconnect.base / 2 * math.pow($tw.Bob.settings.reconnect.decay,session.unsuccessfulReconnects)),
-        $tw.Bob.settings.reconnect.max);
+          math.round(random.rand() * $tw.Bob.settings.reconnect.base / 2 * math.pow($tw.Bob.settings.reconnect.decay,session.unsuccessfulReconnects)),
+          $tw.Bob.settings.reconnect.max
+        );
         setTimeout(setupWS,delay,session);
       } else {
         session.emit('status', [{
@@ -199,28 +206,6 @@ const setupWS = (session) => {
       session.emit('status', [{
         status: 'connected'
       },session]);
-      // always send sync step 1 when connected 
-      const encoder = encoding.createEncoder();
-      encoding.writeVarUint(encoder, messageSync);
-      syncProtocol.writeSyncStep1(encoder, session.doc);
-      let message = {
-        type: "y",
-        doc: session.doc.name,
-        y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoder)).values())
-      }
-      session.sendMessage(message);
-      // send local awareness state
-      if (session.awareness.getLocalState() !== null) {
-        const encoderAwarenessState = encoding.createEncoder();
-        encoding.writeVarUint(encoderAwarenessState, messageAwareness);
-        encoding.writeVarUint8Array(encoderAwarenessState, awarenessProtocol.encodeAwarenessUpdate(session.awareness, [session.doc.clientID]));
-        let message = {
-          type: "y",
-          doc: session.doc.name,
-          y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoderAwarenessState)).values())
-        }
-        session.sendMessage(message);
-      }
     };
 
     session.emit('status', [{
@@ -279,12 +264,12 @@ const setupHeartbeat = (session) => {
     if (!doc) {
       throw new Error("WebsocketSession Error: no doc provided in constructor.")
     }
-    let connect = options.connect || true,
-      awareness = options.awareness || new awarenessProtocol.Awareness(doc);
+    let awareness = !!options.awareness || new awarenessProtocol.Awareness(doc),
+      connect = typeof options.connect !== 'undefined' && typeof options.connect !== 'null' ? options.connect : true;
     super();
     this.id = sessionId;  // Required uuid_4()
     this.token = null; // Regenerating uuid_4()
-    this.tokenEOL = null; // End-of-Life for this.token
+    this.tokenEOL = Date.now(); // End-of-Life for this.token
     this.doc = doc; // Required Y.doc reference
     this.ping = null; // heartbeat
     this.pingTimeout = null; // heartbeat timeout
@@ -331,12 +316,13 @@ const setupHeartbeat = (session) => {
         const encoder = encoding.createEncoder();
         encoding.writeVarUint(encoder, messageSync);
         syncProtocol.writeUpdate(encoder, update);
+        const buf = encoding.toUint8Array(encoder);
         let message = {
           type: "y",
-          doc: session.doc.name,
-          y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoder)).values())
+          doc: this.doc.name,
+          y: Base64.fromUint8Array(buf)
         }
-        session.sendMessage(message);
+        this.sendMessage(message);
       }
     };
     this.doc.on('update',this._updateHandler);
@@ -349,15 +335,76 @@ const setupHeartbeat = (session) => {
       const encoder = encoding.createEncoder();
       encoding.writeVarUint(encoder, messageAwareness);
       encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(awareness, changedClients));
+      const buf = encoding.toUint8Array(encoder);
       let message = {
         type: "y",
-        doc: session.doc.name,
-        y: Base64.fromUint8Array(new Uint8Array(encoding.toUint8Array(encoder)).values())
+        doc: this.doc.name,
+        y: Base64.fromUint8Array(buf)
       }
-      session.sendMessage(message);
+      this.sendMessage(message);
       
     };
     awareness.on('update', this._awarenessUpdateHandler);
+
+    if (options.client) {
+      // Client handshakes treat the session as the session
+      this.on('handshake', function(status,session){
+        // send sync step 1
+        const encoder = encoding.createEncoder()
+        encoding.writeVarUint(encoder, messageSync)
+        syncProtocol.writeSyncStep1(encoder, session.doc)
+        const mbuf = encoding.toUint8Array(encoder)
+        let message = {
+          type: "y",
+          doc: session.doc.name,
+          y: Base64.fromUint8Array(mbuf)
+        }
+        session.sendMessage(message);
+
+        // broadcast local awareness state
+        if (session.awareness.getLocalState() !== null) {
+          const encoderAwarenessState = encoding.createEncoder();
+          encoding.writeVarUint(encoderAwarenessState, messageAwareness);
+          encoding.writeVarUint8Array(encoderAwarenessState, awarenessProtocol.encodeAwarenessUpdate(session.awareness, [session.doc.clientID]));
+          const abuf = encoding.toUint8Array(encoderAwarenessState)
+          let message = {
+            type: "y",
+            doc: session.doc.name,
+            y: Base64.fromUint8Array(abuf)
+          }
+          session.sendMessage(message);
+        }
+      })
+    } else {
+      // Server handshakes treat the doc as the privider
+      this.on('handshake', function(status,session){
+        // send sync step 1
+        const encoder = encoding.createEncoder()
+        encoding.writeVarUint(encoder, messageSync)
+        syncProtocol.writeSyncStep1(encoder, doc)
+        const mbuf = encoding.toUint8Array(encoder)
+        let message = {
+          type: "y",
+          doc: session.doc.name,
+          y: Base64.fromUint8Array(mbuf)
+        }
+        session.sendMessage(message);
+
+        const awarenessStates = doc.awareness.getStates()
+        if (awarenessStates.size > 0) {
+          const encoder = encoding.createEncoder()
+          encoding.writeVarUint(encoder, messageAwareness)
+          encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(doc.awareness, Array.from(awarenessStates.keys())))
+          const abuf = encoding.toUint8Array(encoder)
+          let message = {
+            type: "y",
+            doc: session.doc.name,
+            y: Base64.fromUint8Array(abuf)
+          }
+          session.sendMessage(message);
+        }
+      })
+    }
 
     // Browser features
     if($tw.browser){
@@ -400,8 +447,8 @@ const setupHeartbeat = (session) => {
   set synced (state) {
     if (this._synced !== state) {
       this._synced = state;
-      this.emit('synced', [state,session]);
-      this.emit('sync', [state,session]);
+      this.emit('synced', [state,this]);
+      this.emit('sync', [state,this]);
     }
   }
 
@@ -414,9 +461,13 @@ const setupHeartbeat = (session) => {
   }
 
   disconnect (err) {
-    this.shouldConnect = false;
-    if (this.ws !== null) {
-      this.ws.close(4023, `['${this.id}'] Websocket closed by session`, err);
+    if(this.client){
+      this.shouldConnect = false;
+      if (this.isReady()) {
+        this.ws.close(1000, `['${this.id}'] Websocket closed by the client`, err);
+      }
+    } else {
+      $tw.Bob.closeWSConnection(this,this.doc,err);
     }
   }
 
@@ -440,16 +491,20 @@ const setupHeartbeat = (session) => {
    */
   send (message) {
     if(this.isReady()) {
-      message = $tw.utils.extend({
-        wikiName: this.wikiName,
-        sessionId: this.id,
-        token: this.token,
-        userid: this.userid
-      },message);
-      if (["ack", "ping", "pong"].indexOf(message.type) == -1) {
-        console.log(`['${message.sessionId}'] send-${message.id}:`, message.type);
+      try {
+        message = $tw.utils.extend({
+          wikiName: this.wikiName,
+          sessionId: this.id,
+          token: this.token,
+          userid: this.userid
+        },message);
+        if (["ack", "ping", "pong"].indexOf(message.type) == -1) {
+          console.log(`['${message.sessionId}'] send-${message.id}:`, message.type);
+        }
+        this.ws.send(JSON.stringify(message), err => { err != null && this.disconnect(err) });
+      } catch (err) {
+        this.disconnect(err);
       }
-      this.ws.send(JSON.stringify(message), err => { err != null && this.disconnect(err) });
     }
   }
 
@@ -502,14 +557,14 @@ const setupHeartbeat = (session) => {
    * @return {bool}
    */
   authenticateMessage (eventData) {
-    const authed = (
+    let authed = (
       eventData.sessionId == this.id
       && eventData.wikiName == this.wikiName 
-      && eventData.userid == this.userid  
+      && eventData.authenticatedUsername == this.authenticatedUsername  
       && eventData.token == this.token
-      && new Date().getTime() <= this.tokenEOL
     );
-    if(!authed) {
+    authed = authed && new Date().getTime() <= this.tokenEOL;
+    if(!authed) {debugger;
       console.error(`['${this.id}'] WS authentication error: Unauthorized message of type ${eventData.type}`);
       // kill the socket
       this.ws.close(4023, `['${this.id}'] Invalid ws message`);

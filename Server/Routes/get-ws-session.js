@@ -34,7 +34,7 @@ exports.handler = function(request,response,state) {
       isLoggedIn: !!state.authenticatedUsername,
       isReadOnly: !state.server.isAuthorized("writers",state.authenticatedUsername),
       isAnonymous: !state.authenticatedUsername,
-    });
+    });debugger;
     // Log the current ip & url
     session.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
     request.connection.remoteAddress;

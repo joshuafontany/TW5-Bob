@@ -547,12 +547,12 @@ if($tw.node) {
     const encoder = encoding.createEncoder()
     encoding.writeVarUint(encoder, messageSync)
     syncProtocol.writeUpdate(encoder, update)
-    const buf = encoding.toUint8Array(encoder)
+    const mbuf = encoding.toUint8Array(encoder)
     doc.sessions.forEach((s, _) => {
       let message = {
         type: "y",
         doc: s.doc.name,
-        y: Base64.fromUint8Array(new Uint8Array(buf).values())
+        y: Base64.fromUint8Array(mbuf)
       }
       s.sendMessage(message);
     })
@@ -594,12 +594,12 @@ if($tw.node) {
         const encoder = encoding.createEncoder()
         encoding.writeVarUint(encoder, messageAwareness)
         encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients))
-        const buf = encoding.toUint8Array(encoder)
+        const abuf = encoding.toUint8Array(encoder)
         this.sessions.forEach((s, _) => {
           let message = {
             type: "y",
             doc: s.doc.name,
-            y: Base64.fromUint8Array(new Uint8Array(buf).values())
+            y: Base64.fromUint8Array(abuf)
           }
           s.sendMessage(message);
         })
@@ -608,7 +608,7 @@ if($tw.node) {
       this.on('update', updateHandler)
     }
   }
-   
+
   class BobServer extends Bob {
     constructor () {
       super();
@@ -650,11 +650,170 @@ if($tw.node) {
     /*
       Session methods
     */
+    /**
+     * @param {WebsocketSession} session
+     * @param {int} timeout
+     */
     refreshSession (session,timeout) {
       if($tw.node && $tw.Bob.wsServer) {
         let eol = new Date(session.tokenEOL).getTime() + timeout;
         session.tokenEOL = new Date(eol).getTime();
         session.token = uuid_v4();
+      }
+    }
+
+    /**
+     * @param {WebSocket} socket
+     * @param {UPGRADE} request
+     * @param {$tw server state} state
+      This function handles incomming connections from client sessions.
+      It can support multiple client sessions, each with a unique sessionId.
+
+      Session objects are defined in $:/plugins/OokTech/Bob/WSSession.js
+     */
+    handleWSConnection (socket,request,state) {
+      if($tw.Bob.hasSession(state.sessionId)) {
+        let session = $tw.Bob.getSession(state.sessionId);
+        session.ip = state.ip;
+        session.url = state.urlInfo;
+        session.ws = socket;
+    
+        let doc = session.doc;
+        doc.sessions.set(session, new Set())
+    
+        console.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`);
+        // Event handlers
+        socket.on('message', function(event) {
+          let parsed, eventData;
+          try {
+            if (typeof event == "string") {
+              parsed = JSON.parse(event);
+            } else if (!!event.data && typeof event.data == "string") {
+              parsed = JSON.parse(event.data);
+            }        
+          } catch (e) {
+            consoler.error("WS handleMessage parse error: ", e, {level:1});
+          }
+          eventData = parsed||event;
+          if(session.authenticateMessage(eventData)) {
+            session.lastMessageReceived = time.getUnixTime();
+            if(eventData.type == "y" ) {
+              $tw.Bob.messageListener(session, doc, new Uint8Array(eventData.y));
+            } else {
+              session.emit('message', [eventData, session]);
+            }
+          }
+        });
+        socket.on('close', function(event) {
+          console.log(`['${session.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
+          // Close the WSSharedDoc session when disconnected
+          this.closeWSConnection(doc,session);
+          session.emit('disconnect', [{ type: 'disconnect' }, session]);
+        });
+        socket.on("error", function(error) {
+          console.log(`['${session.id}'] socket error:`, JSON.toString(error));
+        })
+
+        session.emit('connect', [{ type: 'connect' }, session]);
+      }
+    }
+
+    /**
+     * @param {WSSharedDoc} doc
+     * @param {WebsocketSession} session
+     */
+    closeWSConnection (doc,session,err) {
+      if (doc.sessions.has(session)) {
+        /**
+         * @type {Set<number>}
+         */
+        // @ts-ignore
+        const controlledIds = doc.sessions.get(session)
+        doc.sessions.delete(session)
+        awarenessProtocol.removeAwarenessStates(doc.awareness, Array.from(controlledIds), null)
+        if (doc.sessions.size === 0 && this.persistence !== null) {
+          // if persisted, we store state and destroy ydocument
+          this.persistence.writeState(doc.name, doc).then(() => {
+            doc.destroy()
+          })
+          this.ydocs.delete(doc.name)
+        }
+      }
+      if (session.isReady()) {
+        session.ws.close(1000, `['${this.id}'] Websocket closed by the server`, err);
+      }
+    }
+
+    /*
+      Yjs methods
+    */
+
+    /**
+     * Gets a Y.Doc by name, whether in memory or on disk
+     *
+     * @param {string} docname - the name of the Y.Doc to find or create
+     * @param {boolean} gc - whether to allow gc on the doc (applies only when created)
+     * @return {WSSharedDoc}
+     */
+    getYDoc (docname,gc = this.gcEnabled) {
+      return map.setIfUndefined(this.Ydocs, docname, () => {
+        const doc = new WSSharedDoc(docname);
+        doc.gc = gc;
+        if (this.persistence !== null) {
+          this.persistence.bindState(docname, doc);
+        }
+        this.Ydocs.set(docname, doc);
+        return doc;
+      })
+    }
+
+    /**
+     * @param {any} session
+     * @param {WSSharedDoc} doc
+     * @param {Uint8Array} message
+     */
+    messageListener (session,doc,message) {
+      const encoder = encoding.createEncoder()
+      const decoder = decoding.createDecoder(message)
+      const messageType = decoding.readVarUint(decoder)
+      switch (messageType) {
+        case messageSync:
+          encoding.writeVarUint(encoder, messageSync)
+          syncProtocol.readSyncMessage(decoder, encoder, doc, null)
+          if (encoding.length(encoder) > 1) {
+            const buf = encoding.toUint8Array(encoder)
+            let message = {
+              type: "y",
+              doc: session.doc.name,
+              y: Base64.fromUint8Array(buf)
+            }
+            session.sendMessage(message);
+          }
+          break
+        case messageAwareness: {
+          awarenessProtocol.applyAwarenessUpdate(doc.awareness, decoding.readVarUint8Array(decoder), session)
+          break
+        }
+        case messageAuth : {
+          break
+        }
+        case messageQueryAwareness : {
+          break
+        }
+        case messageSyncSubdoc : {
+          encoding.writeVarUint(encoder, messageSync)
+          syncProtocol.readSyncMessage(decoder, encoder, doc, null)
+          if (encoding.length(encoder) > 1) {
+            const buf = encoding.toUint8Array(encoder)
+            let message = {
+              type: "y",
+              doc: session.doc.name,
+              y: Base64.fromUint8Array(buf)
+            }
+            session.sendMessage(message);
+          }
+          break
+        }
       }
     }
 
@@ -665,7 +824,7 @@ if($tw.node) {
       This function modifies the input settings object with the properties in the
       json file at newSettingsPath
     */
-    loadSettings (settings, bootPath) {
+    loadSettings (settings,bootPath) {
       const newSettingsPath = path.join(bootPath, 'settings', 'settings.json');
       let newSettings;
       if (typeof $tw.ExternalServer !== 'undefined') {
@@ -714,7 +873,7 @@ if($tw.node) {
       in the local settings.
       Changes to the settings are later saved to the local settings.
     */
-    updateSettings (globalSettings, localSettings) {
+    updateSettings (globalSettings,localSettings) {
       /*
       Walk though the properties in the localSettings, for each property set the global settings equal to it, 
       but only for singleton properties. Don't set something like 
@@ -992,101 +1151,6 @@ if($tw.node) {
       return exists? wikiFolder: false;
     }
 
-    /*
-      Yjs methods
-    */
-
-    /**
-     * Gets a Y.Doc by name, whether in memory or on disk
-     *
-     * @param {string} docname - the name of the Y.Doc to find or create
-     * @param {boolean} gc - whether to allow gc on the doc (applies only when created)
-     * @return {WSSharedDoc}
-     */
-    getYDoc (docname, gc = this.gcEnabled) {
-      return map.setIfUndefined(this.Ydocs, docname, () => {
-        const doc = new WSSharedDoc(docname);
-        doc.gc = gc;
-        if (this.persistence !== null) {
-          this.persistence.bindState(docname, doc);
-        }
-        this.Ydocs.set(docname, doc);
-        return doc;
-      })
-    }
-
-    /**
-     * @param {any} session
-     * @param {WSSharedDoc} doc
-     * @param {Uint8Array} message
-     */
-    messageListener (session, doc, message) {
-      const encoder = encoding.createEncoder()
-      const decoder = decoding.createDecoder(message)
-      const messageType = decoding.readVarUint(decoder)
-      switch (messageType) {
-        case messageSync:
-          encoding.writeVarUint(encoder, messageSync)
-          syncProtocol.readSyncMessage(decoder, encoder, doc, null)
-          if (encoding.length(encoder) > 1) {
-            const buf = encoding.toUint8Array(encoder)
-            let message = {
-              type: "y",
-              doc: session.doc.name,
-              y: Base64.fromUint8Array(new Uint8Array(buf).values())
-            }
-            session.sendMessage(message);
-          }
-          break
-        case messageAwareness: {
-          awarenessProtocol.applyAwarenessUpdate(doc.awareness, decoding.readVarUint8Array(decoder), session)
-          break
-        }
-        case messageAuth : {
-          break
-        }
-        case messageQueryAwareness : {
-          break
-        }
-        case messageSyncSubdoc : {
-          encoding.writeVarUint(encoder, messageSync)
-          syncProtocol.readSyncMessage(decoder, encoder, doc, null)
-          if (encoding.length(encoder) > 1) {
-            const buf = encoding.toUint8Array(encoder)
-            let message = {
-              type: "y",
-              doc: session.doc.name,
-              y: Base64.fromUint8Array(new Uint8Array(buf).values())
-            }
-            session.sendMessage(message);
-          }
-          break
-        }
-      }
-    }
-
-    /**
-     * @param {WSSharedDoc} doc
-     * @param {any} session
-     */
-    closeConn (doc, session) {
-      if (doc.sessions.has(session)) {
-        /**
-         * @type {Set<number>}
-         */
-        // @ts-ignore
-        const controlledIds = doc.sessions.get(session)
-        doc.sessions.delete(session)
-        awarenessProtocol.removeAwarenessStates(doc.awareness, Array.from(controlledIds), null)
-        if (doc.sessions.size === 0 && this.persistence !== null) {
-          // if persisted, we store state and destroy ydocument
-          this.persistence.writeState(doc.name, doc).then(() => {
-            doc.destroy()
-          })
-          this.ydocs.delete(doc.name)
-        }
-      }
-    }
   }
   
   exports.BobServer = BobServer;

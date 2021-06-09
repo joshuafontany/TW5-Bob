@@ -322,6 +322,29 @@ WebsocketAdaptor.prototype.getSession = function(isLoggedIn,username,isReadOnly,
         options.url.searchParams.append("session", options.id);
         let doc = $tw.Bob.getYDoc($tw.wikiName);
         let session = $tw.Bob.getSession(options.id,doc,options);
+        session.on("handshake",function(event){
+              $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Server Warning`);
+        });
+        session.on("disconnected",function(status){
+          // Add a message that the wiki isn't connected yet
+          const text = "<div style='position:fixed;bottom:0px;width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>''WARNING: The connection to server hasn't been established yet.''</div>";
+          const warningTiddler = {
+            title: '$:/plugins/OokTech/Bob/Server Warning',
+            text: text,
+            tags: '$:/tags/PageTemplate'
+          };
+          $tw.wiki.addTiddler(new $tw.Tiddler(warningTiddler));
+        });
+        session.on("abort",function(status){
+          // Add a message that the wiki isn't connected yet
+          const text = "<div style='position:fixed;bottom:0px;width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>''WARNING: The connection to server hasn't been established yet.''</div>";
+          const warningTiddler = {
+            title: '$:/plugins/OokTech/Bob/Server Warning',
+            text: text,
+            tags: '$:/tags/PageTemplate'
+          };
+          $tw.wiki.addTiddler(new $tw.Tiddler(warningTiddler));
+        });
       }
       // Invoke the callback if present
       if(callback) {

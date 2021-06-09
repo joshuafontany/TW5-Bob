@@ -64,7 +64,13 @@ exports.handshake = function(data,instance) {
     settings: $tw.Bob.getViewableSettings(this.id),
   };
   this.sendMessage(message);
+  
   $tw.Bob.createStateTiddlers(data,instance);
+
+  // Notify listeners
+  this.emit("handshake",[{
+    status: 'handshake'
+  },this]);
 }
 
   if(false) { // disable federation stuff now
