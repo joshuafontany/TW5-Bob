@@ -18,7 +18,7 @@ This handles messages sent to the node process.
   The session handles incoming acks
 */
 exports.ack = function(data,instance) {
-    this.handleMessageAck(data,instance);
+    $tw.Bob.handleMessageAck(data,instance);
 }
 
 /* REQUIRED
@@ -49,11 +49,9 @@ exports.pong = function(data,instance) {
 */
 exports.handshake = function(data,instance) {
   // Refresh the session token, detroying the login token if neccessary
-  if(session.tokenEOL <= new Date().getTime() + (1000*60*5)) {
+  if(this.tokenEOL <= new Date().getTime() + (1000*60*5)) {
     $tw.Bob.refreshSession(this,1000*60*60);
   }
-  // Setup the serverside Y connection
-  this.getProvider(this.wikiName);
   // Respond to the initial "handshake" message to initialise everything.
   let message = {
     type: 'handshake',        
@@ -67,8 +65,9 @@ exports.handshake = function(data,instance) {
   
   $tw.Bob.createStateTiddlers(data,instance);
 
+  console.log(`['${this.id}'] server-handshake`);
   // Notify listeners
-  this.emit("handshake",[{
+  this.emit('handshake',[{
     status: 'handshake'
   },this]);
 }

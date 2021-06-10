@@ -21,7 +21,7 @@ $tw.Bob will always be at the root $tw object on both node and browser.
   The session handles incoming acks
 */
 exports.ack = function (data,instance) {
-  this.handleMessageAck(data,instance);
+  $tw.Bob.handleMessageAck(data,instance);
 }
 
 /* REQUIRED MESSAGE HANDLER
@@ -55,34 +55,9 @@ exports.pong = function (data,instance) {
   update the client access token.
 */
 exports.handshake = function (data,instance) {
+  // Update the settings
   if(data.settings) {
-    // Update the settings
     $tw.Bob.settings = data.settings;
-  }
-
-  // send sync step 1
-  const encoder = encoding.createEncoder()
-  encoding.writeVarUint(encoder, messageSync)
-  syncProtocol.writeSyncStep1(encoder, doc)
-  const mbuf = encoding.toUint8Array(encoder)
-  let message = {
-    type: "y",
-    doc: session.doc.name,
-    y: Base64.fromUint8Array(mbuf)
-  }
-  session.sendMessage(message);
-  const awarenessStates = doc.awareness.getStates()
-  if (awarenessStates.size > 0) {
-    const encoder = encoding.createEncoder()
-    encoding.writeVarUint(encoder, messageAwareness)
-    encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(doc.awareness, Array.from(awarenessStates.keys())))
-    const abuf = encoding.toUint8Array(encoder)
-    let message = {
-      type: "y",
-      doc: session.doc.name,
-      y: Base64.fromUint8Array(abuf)
-    }
-    session.sendMessage(message);
   }
 
   // Start a heartbeat
@@ -93,8 +68,9 @@ exports.handshake = function (data,instance) {
     $tw.Bob.syncToServer(this.id);
   }
 
+  console.log(`['${this.id}'] client-handshake`);
   // Notify listeners
-  this.emit("handshake",[{
+  this.emit('handshake',[{
     status: 'handshake'
   },this]);
 }

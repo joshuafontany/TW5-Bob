@@ -17,6 +17,7 @@ A core prototype to hand everything else onto.
   const syncProtocol = require('./External/yjs/y-protocols/sync.cjs');
   const authProtocol = require('./External/yjs/y-protocols/auth.cjs');
   const awarenessProtocol = require('./External/yjs/y-protocols/awareness.cjs');
+  const time = require('./External/lib0/dist/time.cjs');
   const encoding = require('./External/lib0/dist/encoding.cjs');
   const decoding = require('./External/lib0/dist/decoding.cjs');
   const mutex = require('./External/lib0/dist/mutex.cjs');
@@ -141,10 +142,10 @@ A core prototype to hand everything else onto.
       }
     }
 
-    getSessionsByUserId (userid) {
+    getSessionsByUser (authenticatedUsername) {
       var usersSessions = new Map();
       for (let [id,session] of this.sessions.entries()) {
-        if (session.authenticatedUsername === userid) {
+        if (session.authenticatedUsername === authenticatedUsername) {
           usersSessions.add(id,session);
         }
       }
@@ -178,11 +179,6 @@ A core prototype to hand everything else onto.
       let handler = session.client? $tw.Bob.clientHandlers[eventData.type]: $tw.Bob.serverHandlers[eventData.type];
       // Make sure we have a handler for the message type
       if(typeof handler === 'function') {
-        // If handshake, set the tokenRefresh before acking
-        if (session.client && eventData.type == "handshake" && !!eventData.tokenRefresh) {
-          session.token = eventData.tokenRefresh;
-          session.tokenEOL = eventData.tokenEOL;
-        }
         // The following messages do not need to be acknowledged
         let noAck = ['ack', 'ping', 'pong'];
         if(eventData.id && noAck.indexOf(eventData.type) == -1) {
@@ -222,7 +218,7 @@ A core prototype to hand everything else onto.
     */
     handleMessageAck (message,instance) {
       let messageId = message.id.slice(3),
-        ticket = $tw.Bob.getTicket(messageId);debugger;
+        ticket = $tw.Bob.getTicket(messageId);
       if(ticket) {
         // If there is a callback, call it
         if(!!ticket.ack[this.id] && typeof ticket.ack[this.id] == "function") {
@@ -270,51 +266,6 @@ A core prototype to hand everything else onto.
       if (this.hasTicket(messageId)) {
         this.tickets.delete(messageId);
       }
-    }
-
-    /*
-        User methods
-    */
-    updateUser (sessionData) {
-      let user = null;
-      if (!!sessionData.isAnonymous) {
-        user = this.anonymousUsers.get(sessionData.userid) || this.newUser(sessionData);
-      } else {
-        user = this.authorizedUsers.get(sessionData.userid) || this.newUser(sessionData);
-      }
-      user.sessions.add(sessionData.id)
-    }
-
-    newUser (sessionData) {
-      let user = new WebSocketUser(sessionData);
-      if (user.isAnonymous) {
-        this.anonymousUsers.set(user.id, user);
-      } else {
-        this.authorizedUsers.set(user.id, user);
-      }
-      return user;
-    }
-
-    getUsersByAccessType (type, wikiName) {
-      var usersByAccess = new Map();
-      for (let [id, user] of this.authorizedUsers.entries()) {
-        if ($tw.Bob.wsServer.getUserAccess(user.userid, wikiName) == type) {
-          usersByAccess.add(id, user);
-        }
-      }
-      return usersByAccess;
-    }
-
-    getUsersWithAccess (type, wikiName) {
-      let usersWithAccess = new Map(),
-        types = [null, "readers", "writers", "admin"];
-      for (let [id, user] of this.authorizedUsers.entries()) {
-        let access = $tw.Bob.wsServer.getUserAccess(user.userid, wikiName);
-        if (types.indexOf(access) >= types.indexOf(type)) {
-          usersWithAccess.add(id, user);
-        }
-      }
-      return usersWithAccess;
     }
 
     getViewableSettings (sessionId) {
@@ -548,9 +499,10 @@ if($tw.node) {
     encoding.writeVarUint(encoder, messageSync)
     syncProtocol.writeUpdate(encoder, update)
     const mbuf = encoding.toUint8Array(encoder)
-    doc.sessions.forEach((s, _) => {
+    doc.sessions.forEach((_, s) => {
       let message = {
-        type: "y",
+        type: 'y',
+        flag: messageSync,
         doc: s.doc.name,
         y: Base64.fromUint8Array(mbuf)
       }
@@ -595,9 +547,10 @@ if($tw.node) {
         encoding.writeVarUint(encoder, messageAwareness)
         encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients))
         const abuf = encoding.toUint8Array(encoder)
-        this.sessions.forEach((s, _) => {
+        this.sessions.forEach((_, s) => {
           let message = {
-            type: "y",
+            type: 'y',
+            flag: messageAwareness,
             doc: s.doc.name,
             y: Base64.fromUint8Array(abuf)
           }
@@ -674,9 +627,13 @@ if($tw.node) {
     handleWSConnection (socket,request,state) {
       if($tw.Bob.hasSession(state.sessionId)) {
         let session = $tw.Bob.getSession(state.sessionId);
+        // Reset the connection state
         session.ip = state.ip;
         session.url = state.urlInfo;
         session.ws = socket;
+        session.connecting = false;
+        session.connected = true;
+        session.synced = false;
     
         let doc = session.doc;
         doc.sessions.set(session, new Set())
@@ -698,7 +655,7 @@ if($tw.node) {
           if(session.authenticateMessage(eventData)) {
             session.lastMessageReceived = time.getUnixTime();
             if(eventData.type == "y" ) {
-              $tw.Bob.messageListener(session, doc, new Uint8Array(eventData.y));
+              $tw.Bob.messageListener(session,eventData);debugger;
             } else {
               session.emit('message', [eventData, session]);
             }
@@ -706,8 +663,11 @@ if($tw.node) {
         });
         socket.on('close', function(event) {
           console.log(`['${session.id}'] Closed socket ${socket._socket._peername.address}:${socket._socket._peername.port}  (code ${socket._closeCode})`);
+          session.connecting = false;
+          session.connected = false;
+          session.synced = false;
           // Close the WSSharedDoc session when disconnected
-          this.closeWSConnection(doc,session);
+          $tw.Bob.closeWSConnection(doc,session,event);
           session.emit('disconnect', [{ type: 'disconnect' }, session]);
         });
         socket.on("error", function(error) {
@@ -722,7 +682,7 @@ if($tw.node) {
      * @param {WSSharedDoc} doc
      * @param {WebsocketSession} session
      */
-    closeWSConnection (doc,session,err) {
+    closeWSConnection (doc,session,event) {
       if (doc.sessions.has(session)) {
         /**
          * @type {Set<number>}
@@ -740,7 +700,7 @@ if($tw.node) {
         }
       }
       if (session.isReady()) {
-        session.ws.close(1000, `['${this.id}'] Websocket closed by the server`, err);
+        session.ws.close(1000, `['${this.id}'] Websocket closed by the server`,event);
       }
     }
 
@@ -769,10 +729,11 @@ if($tw.node) {
 
     /**
      * @param {any} session
-     * @param {WSSharedDoc} doc
-     * @param {Uint8Array} message
+     * @param {Websocket Message} eventData
      */
-    messageListener (session,doc,message) {
+    messageListener (session,eventData) {
+      let doc = eventData.doc == session.wikiName? session.doc : session.getSubDoc(eventData.doc);
+      let message = Base64.toUint8Array(eventData.y);
       const encoder = encoding.createEncoder()
       const decoder = decoding.createDecoder(message)
       const messageType = decoding.readVarUint(decoder)
@@ -783,7 +744,8 @@ if($tw.node) {
           if (encoding.length(encoder) > 1) {
             const buf = encoding.toUint8Array(encoder)
             let message = {
-              type: "y",
+              type: 'y',
+              flag: messageSync,
               doc: session.doc.name,
               y: Base64.fromUint8Array(buf)
             }
@@ -798,20 +760,6 @@ if($tw.node) {
           break
         }
         case messageQueryAwareness : {
-          break
-        }
-        case messageSyncSubdoc : {
-          encoding.writeVarUint(encoder, messageSync)
-          syncProtocol.readSyncMessage(decoder, encoder, doc, null)
-          if (encoding.length(encoder) > 1) {
-            const buf = encoding.toUint8Array(encoder)
-            let message = {
-              type: "y",
-              doc: session.doc.name,
-              y: Base64.fromUint8Array(buf)
-            }
-            session.sendMessage(message);
-          }
           break
         }
       }
@@ -959,7 +907,7 @@ if($tw.node) {
           }
         }
       };
-      this.getSession(data.sessionId).sendMessage(message);
+      //this.getSession(data.sessionId).sendMessage(message);
     }
 
     // Wiki methods
