@@ -171,11 +171,11 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
         $tw.Bob.wsServer.handleUpgrade(request,socket,head,function(ws) {
           $tw.Bob.wsServer.emit('connection',ws,request,state);
         });
+      } else {
+        console.log(`['${sesion.id}'] ws-server: upgrade request denied`);
+        socket.close(4099, `Invalid upgrade request`);
+        return;
       }
-    } else {
-      console.log(`['${sesion.id}'] ws-server: upgrade request denied`);
-      socket.close(4023, `['${sesion.id}'] Websocket closed by server`);
-      return;
     }
   });
 	// Listen

@@ -287,8 +287,16 @@ WebsocketAdaptor.prototype.getStatus = function(callback) {
 
 				isSseEnabled = !!json.sse_enabled;
       }
-      // Get the wsSession and invoke the callback if present
-      self.getSession(self.isLoggedIn,json.username,self.isReadOnly,self.isAnonymous,isSseEnabled,callback);
+      if(!$tw.Bob.hasSession(self.sessionId)){
+        // Init the wsSession and invoke the callback if present
+        self.getSession(self.isLoggedIn,json.username,self.isReadOnly,self.isAnonymous,isSseEnabled,callback);
+      } else {
+        // Invoke the callback if present
+        if(callback) {
+          callback(null,self.isLoggedIn,json.username,self.isReadOnly,self.isAnonymous,isSseEnabled);
+        }
+      }
+
     }
 	});
 };
@@ -309,6 +317,7 @@ WebsocketAdaptor.prototype.getSession = function(isLoggedIn,username,isReadOnly,
 			try {
 				options = JSON.parse(data);
 			} catch (e) {
+        
 			}
 			if(options.id) {
         // Set the session id, setup the WS connection

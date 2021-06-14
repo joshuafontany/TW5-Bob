@@ -22,9 +22,8 @@ exports.ack = function(data,instance) {
 }
 
 /* REQUIRED
-  This responds to a ping from the browser. This is used to check and make sure
-  that the browser and server are connected.
-  It also echos back any data that was sent. This is used by the heartbeat to
+  This responds to a ping from a client.
+  It echos back any data that was sent. This is used by the heartbeat to
   make sure that the server and browser are still connected.
 */
 exports.ping = function(data,instance) {
@@ -34,9 +33,8 @@ exports.ping = function(data,instance) {
 }
 
 /*
-  This handles the pong response of a ping. In the browser it is used as the heartbeat
-  to ensure that the connection to the server is still live. How do we use this in the
-  server? Server to server communication?
+  This handles the pong response of a ping.
+  How do we use this in the server? Server to server communication?
 */
 exports.pong = function(data,instance) {
   // Who did we ping?
@@ -49,9 +47,7 @@ exports.pong = function(data,instance) {
 */
 exports.handshake = function(data,instance) {
   // Refresh the session token, detroying the login token if neccessary
-  if(this.tokenEOL <= new Date().getTime() + (1000*60*5)) {
-    $tw.Bob.refreshSession(this,1000*60*60);
-  }
+  $tw.Bob.refreshSession(this,1000*60*1);
   // Respond to the initial "handshake" message to initialise everything.
   let message = {
     type: 'handshake',        
@@ -63,9 +59,6 @@ exports.handshake = function(data,instance) {
   };
   this.sendMessage(message);
   
-  $tw.Bob.createStateTiddlers(data,instance);
-
-  console.log(`['${this.id}'] server-handshake`);
   // Notify listeners
   this.emit('handshake',[{
     status: 'handshake'

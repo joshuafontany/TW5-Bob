@@ -110,17 +110,16 @@ const setupWS = (session) => {
          if (session.client && eventData.type == "handshake" && !!eventData.tokenRefresh) {
           session.token = eventData.tokenRefresh;
           session.tokenEOL = eventData.tokenEOL;
-          session.handshake = true;
         }
         if(eventData.type == "y" ) {
-          let doc = eventData.doc == session.wikiName? session.doc : session.getSubDoc(eventData.doc);
+          let eventDoc = eventData.doc == session.wikiName? session.doc : session.getSubDoc(eventData.doc);
           let buf = Base64.toUint8Array(eventData.y);
           const encoder = encoding.createEncoder();
           const decoder = decoding.createDecoder(buf);
           const messageType = decoding.readVarUint(decoder);
           const messageHandler = session.messageHandlers[messageType];
           if (/** @type {any} */ (messageHandler)) {
-            messageHandler(encoder, decoder, session, doc, true, messageType);
+            messageHandler(encoder, decoder, session, eventDoc, true, messageType);
           } else {
             console.error('Unable to compute message');
           }
@@ -150,7 +149,7 @@ const setupWS = (session) => {
       if (session.connected) {
         session.connected = false;
         session.synced = false;
-        // update awareness (all users except local left)
+        // update awareness (all users except local are null)
         awarenessProtocol.removeAwarenessStates(
           session.awareness,
           Array.from(session.awareness.getStates().keys()).filter(client => client !== session.doc.clientID),
@@ -191,12 +190,12 @@ const setupWS = (session) => {
       session.connecting = false;
       session.connected = true;
       session.unsuccessfulReconnects = 0;
-      const message = {
-        type: 'handshake'
-      };
-      session.sendMessage(message, function(){
-        console.log(`['${session.id}'] Handshake ack recieved from ${session.url.href}`);;
-      });
+      session.sendMessage(
+        { type: 'handshake' }, 
+        function() {
+          console.log(`['${session.id}'] Handshake ack recieved from ${session.url.href}`);;
+        }
+      );
 
       session.emit('status', [{
         status: 'connected'
@@ -259,14 +258,14 @@ const setupHeartbeat = (session) => {
     if (!doc) {
       throw new Error("WebsocketSession Error: no doc provided in constructor.")
     }
-    let awareness = !!options.awareness || new awarenessProtocol.Awareness(doc),
+    let awareness = options.client? options.awareness || new awarenessProtocol.Awareness(doc): null,
       connect = typeof options.connect !== 'undefined' && typeof options.connect !== 'null' ? options.connect : true;
     super();
     this.id = sessionId;  // Required uuid_4()
-    this.doc = doc; // Required Y.doc reference
+    this.awareness = awareness; // Y.doc awareness
+    this.doc = null;
     this.ping = null; // heartbeat
     this.pingTimeout = null; // heartbeat timeout
-    this.awareness = awareness; // Y.doc awareness
     this.connected = false;
     this.connecting = false;
     this.unsuccessfulReconnects = 0;
@@ -296,58 +295,65 @@ const setupHeartbeat = (session) => {
     this.isLoggedIn = options.isLoggedIn;
     this.isReadOnly = options.isReadOnly;
     this.token = options.token || null; // Regenerating uuid_4()
-    this.tokenEOL = options.tokenEOL || Date.now(); // End-of-Life for this.token
+    this.tokenEOL = options.tokenEOL || time.getUnixTime(); // End-of-Life for this.token
     this.url = options.url;
     this.username = options.username;
     this.wikiName = options.wikiName || $tw.wikiName;
     
+    if(options.client) {
+      this.doc = doc; // Required Y.doc reference
+      // Browser features
+      if($tw.browser){
+        // Awareness
+        window.addEventListener('beforeunload',() => {
+          awarenessProtocol.removeAwarenessStates(awareness, [this.doc.clientID], 'window unload');
+        });
+      }
 
-
-    /**
-     * Listens to Yjs updates and sends them to remote peers
-     * @param {Uint8Array} update
-     * @param {any} origin
-     */
-    this._updateHandler = (update,origin) => {
-      if (origin !== this) {
+      /**
+       * Listens to Yjs updates and sends them to remote peers
+       * @param {Uint8Array} update
+       * @param {any} origin
+       */
+      this._updateHandler = (update,origin) => {
+        if (origin !== this) {
+          const encoder = encoding.createEncoder();
+          encoding.writeVarUint(encoder, messageSync);
+          syncProtocol.writeUpdate(encoder, update);
+          const buf = encoding.toUint8Array(encoder);
+          let message = {
+            type: 'y',
+            flag: messageSync,
+            doc: this.doc.name,
+            y: Base64.fromUint8Array(buf)
+          }
+          this.sendMessage(message);
+        }
+      };
+      this.doc.on('update',this._updateHandler);
+      /**
+       * @param {any} changed
+       * @param {any} origin
+       */
+      this._awarenessUpdateHandler = ({ added, updated, removed },origin) => {
+        const changedClients = added.concat(updated).concat(removed);
         const encoder = encoding.createEncoder();
-        encoding.writeVarUint(encoder, messageSync);
-        syncProtocol.writeUpdate(encoder, update);
+        encoding.writeVarUint(encoder, messageAwareness);
+        encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(awareness, changedClients));
         const buf = encoding.toUint8Array(encoder);
         let message = {
           type: 'y',
-          flag: messageSync,
+          flag: messageAwareness,
           doc: this.doc.name,
           y: Base64.fromUint8Array(buf)
         }
         this.sendMessage(message);
-      }
-    };
-    this.doc.on('update',this._updateHandler);
-    /**
-     * @param {any} changed
-     * @param {any} origin
-     */
-    this._awarenessUpdateHandler = ({ added, updated, removed },origin) => {
-      const changedClients = added.concat(updated).concat(removed);
-      const encoder = encoding.createEncoder();
-      encoding.writeVarUint(encoder, messageAwareness);
-      encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(awareness, changedClients));
-      const buf = encoding.toUint8Array(encoder);
-      let message = {
-        type: 'y',
-        flag: messageAwareness,
-        doc: this.doc.name,
-        y: Base64.fromUint8Array(buf)
-      }
-      this.sendMessage(message);
-      
-    };
-    awareness.on('update', this._awarenessUpdateHandler);
+        
+      };
+      awareness.on('update', this._awarenessUpdateHandler);
 
-    if (options.client) {
       // Client handshakes treat the session as the doc/awareness provider
-      this.on('handshake', function(status,session){
+      this.on('handshake', function(status,session) {
         // send sync step 1
         const encoder = encoding.createEncoder()
         encoding.writeVarUint(encoder, messageSync)
@@ -377,7 +383,8 @@ const setupHeartbeat = (session) => {
       })
     } else {
       // Server handshakes treat the doc as the provider
-      this.on('handshake', function(status,session){
+      this.on('handshake', function(status,session) {
+        let doc = $tw.Bob.getYDoc(session.wikiName)
         // send sync step 1
         const encoder = encoding.createEncoder()
         encoding.writeVarUint(encoder, messageSync)
@@ -386,7 +393,7 @@ const setupHeartbeat = (session) => {
         let message = {
           type: 'y',
           flag: messageSync,
-          doc: session.doc.name,
+          doc: doc.name,
           y: Base64.fromUint8Array(mbuf)
         }
         session.sendMessage(message);
@@ -399,7 +406,7 @@ const setupHeartbeat = (session) => {
           let message = {
             type: 'y',
             flag: messageAwareness,
-            doc: session.doc.name,
+            doc: doc.name,
             y: Base64.fromUint8Array(abuf)
           }
           session.sendMessage(message);
@@ -407,15 +414,7 @@ const setupHeartbeat = (session) => {
       })
     }
 
-    // Browser features
-    if($tw.browser){
-      // Awareness
-      window.addEventListener('beforeunload',() => {
-        awarenessProtocol.removeAwarenessStates(this.awareness, [this.doc.clientID], 'window unload');
-      });
-    }
-
-    if (connect) {
+    if (options.client && connect) {
       this.connect();
     }
   }
@@ -529,7 +528,7 @@ const setupHeartbeat = (session) => {
       ticket = {
         id: message.id,
         message: JSON.stringify(message),
-        qtime: Date.now(),
+        qtime: time.getUnixTime(),
         ctime: null,
         ack: {}
       };
@@ -571,26 +570,19 @@ const setupHeartbeat = (session) => {
       && eventData.authenticatedUsername == this.authenticatedUsername  
       && eventData.token == this.token
     );
-    let now = new Date().getTime();
-    if(!(authed && now <= this.tokenEOL)) {debugger
+    if(!authed) {
       console.error(`['${this.id}'] WS authentication error: Unauthorized message of type ${eventData.type}`);
       // kill the socket
-      this.ws.close(4023, `['${this.id}'] Invalid ws message`);
+      this.ws.close(4023, `Unauthorized message`);
     }
-    return authed && now <= this.tokenEOL;;
+    let eol = time.getUnixTime() > this.tokenEOL;
+    if(eol) {
+      console.error(`['${this.id}'] WS authentication error: Token expired`);
+      // kill the socket
+      this.ws.close(4023, `Expired token`);
+    }
+    return authed && !eol;
   }
-
-  /**
-   * Gets a subdoc and loads it
-   *
-   * @param {obj} eventData - the current event data
-   * @return {bool}
-   */
-  getSubDoc (eventData) {
-
-
-   }
-
 }
 
 exports.WebsocketSession = WebsocketSession;

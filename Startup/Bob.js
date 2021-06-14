@@ -233,7 +233,7 @@ A core prototype to hand everything else onto.
         });
         // If not waiting on any acks then set the ctime.
         if(!waiting.length && !ticket.ctime) {
-          ticket.ctime = Date.now();
+          ticket.ctime = time.getUnixTime();
         }
       } else {
         console.log(`['${message.sessionId}'] WS handleMessageAck error: no message found for id ${messageId}`);
@@ -503,11 +503,12 @@ if($tw.node) {
       let message = {
         type: 'y',
         flag: messageSync,
-        doc: s.doc.name,
+        doc: doc.name,
         y: Base64.fromUint8Array(mbuf)
       }
       s.sendMessage(message);
     })
+    debugger;
   }
 
   class WSSharedDoc extends Y.Doc {
@@ -551,7 +552,7 @@ if($tw.node) {
           let message = {
             type: 'y',
             flag: messageAwareness,
-            doc: s.doc.name,
+            doc: this.name,
             y: Base64.fromUint8Array(abuf)
           }
           s.sendMessage(message);
@@ -635,7 +636,7 @@ if($tw.node) {
         session.connected = true;
         session.synced = false;
     
-        let doc = session.doc;
+        let doc = $tw.Bob.getYDoc(session.wikiName);
         doc.sessions.set(session, new Set())
     
         console.log(`['${state.sessionId}'] Opened socket ${socket._socket._peername.address}:${socket._socket._peername.port}`);
@@ -655,7 +656,37 @@ if($tw.node) {
           if(session.authenticateMessage(eventData)) {
             session.lastMessageReceived = time.getUnixTime();
             if(eventData.type == "y" ) {
-              $tw.Bob.messageListener(session,eventData);debugger;
+              let eventDoc = eventData.doc == session.wikiName? doc : session.getSubDoc(eventData.doc);
+              let message = Base64.toUint8Array(eventData.y);
+              const encoder = encoding.createEncoder()
+              const decoder = decoding.createDecoder(message)
+              const messageType = decoding.readVarUint(decoder)
+              switch (messageType) {
+                case messageSync:
+                  encoding.writeVarUint(encoder, messageSync)
+                  syncProtocol.readSyncMessage(decoder, encoder, eventDoc, null)
+                  if (encoding.length(encoder) > 1) {
+                    const buf = encoding.toUint8Array(encoder)
+                    let message = {
+                      type: 'y',
+                      flag: messageSync,
+                      doc: eventDoc.name,
+                      y: Base64.fromUint8Array(buf)
+                    }
+                    session.sendMessage(message);
+                  }
+                  break
+                case messageAwareness: {
+                  awarenessProtocol.applyAwarenessUpdate(eventDoc.awareness, decoding.readVarUint8Array(decoder), session)
+                  break
+                }
+                case messageAuth : {
+                  break
+                }
+                case messageQueryAwareness : {
+                  break
+                }
+              }
             } else {
               session.emit('message', [eventData, session]);
             }
@@ -668,13 +699,22 @@ if($tw.node) {
           session.synced = false;
           // Close the WSSharedDoc session when disconnected
           $tw.Bob.closeWSConnection(doc,session,event);
-          session.emit('disconnect', [{ type: 'disconnect' }, session]);
+          session.emit('status', [{ 
+            status: 'disconnected', 
+            event: event 
+          },session]);
         });
         socket.on("error", function(error) {
-          console.log(`['${session.id}'] socket error:`, JSON.toString(error));
+          console.log(`['${session.id}'] socket error:`, error);
+          session.emit('status', [{
+            status: 'error', 
+            error: error
+          },session]);
         })
 
-        session.emit('connect', [{ type: 'connect' }, session]);
+        session.emit('status', [{
+          status: 'connected'
+        },session]);
       }
     }
 
@@ -725,44 +765,6 @@ if($tw.node) {
         this.Ydocs.set(docname, doc);
         return doc;
       })
-    }
-
-    /**
-     * @param {any} session
-     * @param {Websocket Message} eventData
-     */
-    messageListener (session,eventData) {
-      let doc = eventData.doc == session.wikiName? session.doc : session.getSubDoc(eventData.doc);
-      let message = Base64.toUint8Array(eventData.y);
-      const encoder = encoding.createEncoder()
-      const decoder = decoding.createDecoder(message)
-      const messageType = decoding.readVarUint(decoder)
-      switch (messageType) {
-        case messageSync:
-          encoding.writeVarUint(encoder, messageSync)
-          syncProtocol.readSyncMessage(decoder, encoder, doc, null)
-          if (encoding.length(encoder) > 1) {
-            const buf = encoding.toUint8Array(encoder)
-            let message = {
-              type: 'y',
-              flag: messageSync,
-              doc: session.doc.name,
-              y: Base64.fromUint8Array(buf)
-            }
-            session.sendMessage(message);
-          }
-          break
-        case messageAwareness: {
-          awarenessProtocol.applyAwarenessUpdate(doc.awareness, decoding.readVarUint8Array(decoder), session)
-          break
-        }
-        case messageAuth : {
-          break
-        }
-        case messageQueryAwareness : {
-          break
-        }
-      }
     }
 
     // Settings Methods

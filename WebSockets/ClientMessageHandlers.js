@@ -25,12 +25,12 @@ exports.ack = function (data,instance) {
 }
 
 /* REQUIRED MESSAGE HANDLER
-  This handles a ping from the server. The server and browser make sure they
+  This handles a ping from a server. The server and browser make sure they
   are connected by sending pings periodically. Pings from servers are not
   used in the heartbeat. The pong response echos back whatever was sent.
 */
 exports.ping = function (data,instance) {
-  // When the server receives a ping it sends back a pong.
+  // When the client receives a ping it sends back a pong.
   let message = $tw.utils.extend(data, { type: 'pong' });
   this.send(message);
 }
@@ -68,7 +68,6 @@ exports.handshake = function (data,instance) {
     $tw.Bob.syncToServer(this.id);
   }
 
-  console.log(`['${this.id}'] client-handshake`);
   // Notify listeners
   this.emit('handshake',[{
     status: 'handshake'

@@ -64,7 +64,7 @@ Command.prototype.execute = function() {
   });
 	$tw.hooks.invokeHook("th-server-command-post-start",httpServer,$tw.Bob.server,"tiddlywiki");
   //$tw.Bob.logger.log('TiddlyWiki version', $tw.version, 'with Bob version', $tw.Bob.version, {level:0})
-  console.log('TiddlyWiki version', $tw.version, 'with Bob version', $tw.Bob.version);
+  console.log(`TiddlyWiki v${$tw.version} with Bob v${$tw.Bob.version}`);
   return null;
 };
 
