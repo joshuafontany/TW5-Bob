@@ -172,8 +172,8 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
           $tw.Bob.wsServer.emit('connection',ws,request,state);
         });
       } else {
-        console.log(`['${sesion.id}'] ws-server: upgrade request denied`);
-        socket.close(4099, `Invalid upgrade request`);
+        console.log(`ws-server: upgrade denied GET ${request.url}`);
+        //socket.close(4023, `Invalid upgrade request`);
         return;
       }
     }
@@ -184,7 +184,7 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
 
 SimpleServer.prototype.verifyUpgrade = function(request) {
   if(request.url.indexOf("wiki=") !== -1
-  && request.url.indexOf("session=") !== -1) {
+  && request.url.indexOf("session=") !== -1) {debugger;
     // Compose the state object
     var state = {};
     state.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:

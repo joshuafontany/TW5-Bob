@@ -27,6 +27,7 @@ exports.ack = function(data,instance) {
   make sure that the server and browser are still connected.
 */
 exports.ping = function(data,instance) {
+  
   // When the server receives a ping it sends back a pong.
   let message = $tw.utils.extend(data,{type: 'pong'});
   this.send(message);
@@ -46,15 +47,12 @@ exports.pong = function(data,instance) {
   Once confirmed, the client will start a heartbeat and connect Y providers.
 */
 exports.handshake = function(data,instance) {
-  // Refresh the session token, detroying the login token if neccessary
-  $tw.Bob.refreshSession(this,1000*60*1);
+  // Refresh the session to expire in 60 minutes
+  $tw.Bob.refreshSession(this,1000*60*60);
   // Respond to the initial "handshake" message to initialise everything.
   let message = {
-    type: 'handshake',        
-    token: data.token, // Use the old token one last time
-    tokenRefresh: this.token, // Send the new token
-    tokenEOL: this.tokenEOL, // and the new tokenEOL
-    editingTiddlers: instance.wiki.getTiddlerText("$:/state/Bob/EditingTiddlers", ""), // send the current list of tiddlers being edited
+    type: 'handshake',
+    expires: this.expires,
     settings: $tw.Bob.getViewableSettings(this.id),
   };
   this.sendMessage(message);

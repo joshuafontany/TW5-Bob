@@ -33,7 +33,7 @@ The JSON data returned comprises the following properties:
 ** ''url'' - the server endpoint URL of the session
 ** ''id'' - the UUID the session
 ** ''token'' - the current auth token for the session
-** ''tokenEOL'' - when the current auth token expires
+** ''expires'' - when the current auth token expires
 ** ''authenticatedUsername'' - the authenticatedUsername or UUID of the currently authenticated user
 ** ''username'' - the username of the currently authenticated user
 ** ''access'' - the access level of the currently authenticated user

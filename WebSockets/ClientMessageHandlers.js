@@ -55,11 +55,13 @@ exports.pong = function (data,instance) {
   update the client access token.
 */
 exports.handshake = function (data,instance) {
+  // Set the session expiration
+  this.expires = data.expires;
+  
   // Update the settings
   if(data.settings) {
     $tw.Bob.settings = data.settings;
   }
-
   // Start a heartbeat
   this.heartbeat(data);
 

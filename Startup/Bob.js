@@ -49,7 +49,7 @@ A core prototype to hand everything else onto.
       this.settings = {    // Setup the heartbeat settings placeholders (filled in by the 'handshake')
         "heartbeat": {
           "interval":1000, // default 1 sec heartbeats
-          "timeout":5000 // default 5 second heartbeat timeout
+          "timeout":10000 // default 10 second heartbeat timeout
         },
         "reconnect": {
           "auto": true,
@@ -119,17 +119,29 @@ A core prototype to hand everything else onto.
       return host.toString();
     }
 
-    // Create or get a new session
-    getSession (sessionId,doc,options = {}) {
-      if($tw.node && !options.client && (sessionId == uuid_NIL || !this.hasSession(sessionId))) {
-          sessionId = uuid_v4()
+    // Create a new session
+    createSession (options) {debugger;
+      if(!options.client){
+        if(options.id == uuid_NIL || !this.hasSession(options.id) || (
+          this.hasSession(options.id) && time.getUnixTime() > this.getSession(options.id).expires
+        )) {
+          options.id = uuid_v4();
+        }
       }
-      return map.setIfUndefined(this.sessions, sessionId, () => {
-        let session = new WebsocketSession(sessionId,doc,options);
+      if(!this.hasSession(options.id)) {
+        let session = new WebsocketSession(options);
         session.on('message', this.handleMessage);
-        this.sessions.set(sessionId, session);
+        this.sessions.set(options.id, session);
         return session;
-      })
+      } else {
+        return this.getSession(options.id); 
+      }      
+    }
+
+    getSession (sessionId) {
+      if(this.hasSession(sessionId)) {
+        return this.sessions.get(sessionId)
+      }
     }
 
     hasSession (sessionId) {
@@ -610,9 +622,8 @@ if($tw.node) {
      */
     refreshSession (session,timeout) {
       if($tw.node && $tw.Bob.wsServer) {
-        let eol = new Date(session.tokenEOL).getTime() + timeout;
-        session.tokenEOL = new Date(eol).getTime();
-        session.token = uuid_v4();
+        let eol = new Date(session.expires).getTime() + timeout;
+        session.expires = new Date(eol).getTime();
       }
     }
 

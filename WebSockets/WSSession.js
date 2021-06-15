@@ -106,10 +106,9 @@ const setupWS = (session) => {
       eventData = parsed||event;
       if(session.authenticateMessage(eventData)) {
         session.lastMessageReceived = time.getUnixTime();
-         // If handshake, set the tokenRefresh before acking
-         if (session.client && eventData.type == "handshake" && !!eventData.tokenRefresh) {
-          session.token = eventData.tokenRefresh;
-          session.tokenEOL = eventData.tokenEOL;
+        // If handshake, set the tokenRefresh before acking
+        if(session.client && eventData.type == "handshake") {
+          session.expires = eventData.expires;
         }
         if(eventData.type == "y" ) {
           let eventDoc = eventData.doc == session.wikiName? session.doc : session.getSubDoc(eventData.doc);
@@ -190,6 +189,7 @@ const setupWS = (session) => {
       session.connecting = false;
       session.connected = true;
       session.unsuccessfulReconnects = 0;
+
       session.sendMessage(
         { type: 'handshake' }, 
         function() {
@@ -213,7 +213,7 @@ const setupWS = (session) => {
  */
 const setupHeartbeat = (session) => {
     // Delay should be equal to the interval at which your server
-    // sends out pings plus a conservative assumption of the latency.  
+    // sends out pings plus a conservative assumption of the latency (10s).  
     session.pingTimeout = setTimeout(function() {
       if(session.isReady()) {
         session.ws.close(4000, `['${session.ws.id}'] Websocket closed by heartbeat, last message received ${session.lastMessageReceived}`);
@@ -234,9 +234,9 @@ const setupHeartbeat = (session) => {
  */
  class WebsocketSession extends observable_js.Observable {
   /**
-   * @param {UUID_v4} sessionId
-   * @param {Y.doc} doc
    * @param {object} [options]
+   * @param {UUID_v4} [options.id]
+   * @param {Y.doc} [options.doc]
    * @param {string} [options.access] The user-session's access level
    * @param {string} [options.authenticatedUsername] The internal user id
    * @param {boolean} [options.connect]
@@ -251,19 +251,18 @@ const setupHeartbeat = (session) => {
    * @param {boolean} [options.isReadOnly] The User-session read-only state
    * @param {boolean} [options.isAnonymous] The User's anon stat
    */
-  constructor (sessionId,doc,options) {
-    if (!sessionId) {
-      throw new Error("WebsocketSession Error: no session id provided in constructor.")
+  constructor (options) {
+    if (!options.id) {
+      throw new Error("WebsocketSession Error: no options.id provided in constructor.")
     }
-    if (!doc) {
-      throw new Error("WebsocketSession Error: no doc provided in constructor.")
+    if (options.client && !options.doc) {
+      throw new Error("WebsocketSession Error: no options.doc provided in constructor.")
     }
-    let awareness = options.client? options.awareness || new awarenessProtocol.Awareness(doc): null,
-      connect = typeof options.connect !== 'undefined' && typeof options.connect !== 'null' ? options.connect : true;
     super();
-    this.id = sessionId;  // Required uuid_4()
-    this.awareness = awareness; // Y.doc awareness
+    this.id = options.id;  // Required uuid_4()
     this.doc = null;
+    this.awareness = null;
+
     this.ping = null; // heartbeat
     this.pingTimeout = null; // heartbeat timeout
     this.connected = false;
@@ -279,11 +278,6 @@ const setupHeartbeat = (session) => {
      */
     this.ws = null; // The active websocket
     this.lastMessageReceived = 0;
-    /**
-     * Whether to connect to other peers or not
-     * @type {boolean}
-     */
-    this.shouldConnect = connect;
 
     // Config
     this.access = options.access;
@@ -294,14 +288,70 @@ const setupHeartbeat = (session) => {
     this.isAnonymous = options.isAnonymous;
     this.isLoggedIn = options.isLoggedIn;
     this.isReadOnly = options.isReadOnly;
-    this.token = options.token || null; // Regenerating uuid_4()
-    this.tokenEOL = options.tokenEOL || time.getUnixTime(); // End-of-Life for this.token
+    this.expires = options.expires || time.getUnixTime();
     this.url = options.url;
     this.username = options.username;
     this.wikiName = options.wikiName || $tw.wikiName;
+
+    this.on('handshake', function(status,session) {
+      let doc = session.client? session.doc: $tw.Bob.getYDoc(session.wikiName)
+      // send sync step 1
+      const encoder = encoding.createEncoder()
+      encoding.writeVarUint(encoder, messageSync)
+      syncProtocol.writeSyncStep1(encoder, doc)
+      const mbuf = encoding.toUint8Array(encoder)
+      let message = {
+        type: 'y',
+        flag: messageSync,
+        doc: doc.name,
+        y: Base64.fromUint8Array(mbuf)
+      }
+      session.sendMessage(message);
+      if(session.client) {
+        // broadcast local awareness state
+        if (session.awareness.getLocalState() !== null) {
+          const encoderAwarenessState = encoding.createEncoder();
+          encoding.writeVarUint(encoderAwarenessState, messageAwareness);
+          encoding.writeVarUint8Array(encoderAwarenessState, awarenessProtocol.encodeAwarenessUpdate(session.awareness, [session.doc.clientID]));
+          const abuf = encoding.toUint8Array(encoderAwarenessState)
+          let message = {
+            type: 'y',
+            flag: messageAwareness,
+            doc: session.doc.name,
+            y: Base64.fromUint8Array(abuf)
+          }
+          session.sendMessage(message);
+        }
+      } else {
+        // broadcast the doc awareness states
+        const awarenessStates = doc.awareness.getStates()
+        if (awarenessStates.size > 0) {
+          const encoder = encoding.createEncoder()
+          encoding.writeVarUint(encoder, messageAwareness)
+          encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(doc.awareness, Array.from(awarenessStates.keys())))
+          const abuf = encoding.toUint8Array(encoder)
+          let message = {
+            type: 'y',
+            flag: messageAwareness,
+            doc: doc.name,
+            y: Base64.fromUint8Array(abuf)
+          }
+          session.sendMessage(message);
+        }
+      }
+    })
     
-    if(options.client) {
-      this.doc = doc; // Required Y.doc reference
+    if(this.client) {
+      let awareness = options.client? options.awareness || new awarenessProtocol.Awareness(options.doc): null,
+        connect = typeof options.connect !== 'undefined' && typeof options.connect !== 'null' ? options.connect : true;
+      this.doc = options.doc; // Required Y.doc reference
+      this.awareness = awareness; // Y.doc awareness
+      /**
+       * Whether to connect to other peers or not
+       * @type {boolean}
+       */
+      this.shouldConnect = connect;
+
       // Browser features
       if($tw.browser){
         // Awareness
@@ -352,70 +402,9 @@ const setupHeartbeat = (session) => {
       };
       awareness.on('update', this._awarenessUpdateHandler);
 
-      // Client handshakes treat the session as the doc/awareness provider
-      this.on('handshake', function(status,session) {
-        // send sync step 1
-        const encoder = encoding.createEncoder()
-        encoding.writeVarUint(encoder, messageSync)
-        syncProtocol.writeSyncStep1(encoder, session.doc)
-        const mbuf = encoding.toUint8Array(encoder)
-        let message = {
-          type: 'y',
-          flag: messageSync,
-          doc: session.doc.name,
-          y: Base64.fromUint8Array(mbuf)
-        }
-        session.sendMessage(message);
-        // broadcast local awareness state
-        if (session.awareness.getLocalState() !== null) {
-          const encoderAwarenessState = encoding.createEncoder();
-          encoding.writeVarUint(encoderAwarenessState, messageAwareness);
-          encoding.writeVarUint8Array(encoderAwarenessState, awarenessProtocol.encodeAwarenessUpdate(session.awareness, [session.doc.clientID]));
-          const abuf = encoding.toUint8Array(encoderAwarenessState)
-          let message = {
-            type: 'y',
-            flag: messageAwareness,
-            doc: session.doc.name,
-            y: Base64.fromUint8Array(abuf)
-          }
-          session.sendMessage(message);
-        }
-      })
-    } else {
-      // Server handshakes treat the doc as the provider
-      this.on('handshake', function(status,session) {
-        let doc = $tw.Bob.getYDoc(session.wikiName)
-        // send sync step 1
-        const encoder = encoding.createEncoder()
-        encoding.writeVarUint(encoder, messageSync)
-        syncProtocol.writeSyncStep1(encoder, doc)
-        const mbuf = encoding.toUint8Array(encoder)
-        let message = {
-          type: 'y',
-          flag: messageSync,
-          doc: doc.name,
-          y: Base64.fromUint8Array(mbuf)
-        }
-        session.sendMessage(message);
-        const awarenessStates = doc.awareness.getStates()
-        if (awarenessStates.size > 0) {
-          const encoder = encoding.createEncoder()
-          encoding.writeVarUint(encoder, messageAwareness)
-          encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(doc.awareness, Array.from(awarenessStates.keys())))
-          const abuf = encoding.toUint8Array(encoder)
-          let message = {
-            type: 'y',
-            flag: messageAwareness,
-            doc: doc.name,
-            y: Base64.fromUint8Array(abuf)
-          }
-          session.sendMessage(message);
-        }
-      })
-    }
-
-    if (options.client && connect) {
-      this.connect();
+      if (connect) {
+        this.connect();
+      }
     }
   }
 
@@ -430,8 +419,7 @@ const setupHeartbeat = (session) => {
       isAnonymous: this.isAnonymous,
       isLoggedIn: this.isLoggedIn,
       isReadOnly: this.isReadOnly,
-      token: this.token,
-      tokenEOL: this.tokenEOL,
+      expires: this.expires,
       url: this.url.href || this.url.toString(),
       username: this.username,
       wikiName: this.wikiName
@@ -468,7 +456,8 @@ const setupHeartbeat = (session) => {
         this.ws.close(1000, `['${this.id}'] Websocket closed by the client`, err);
       }
     } else {
-      $tw.Bob.closeWSConnection(this,this.doc,err);
+      let doc = $tw.Bob.getYDoc(this.wikiName);
+      $tw.Bob.closeWSConnection(doc,this,err);
     }
   }
 
@@ -496,7 +485,6 @@ const setupHeartbeat = (session) => {
         message = $tw.utils.extend({
           wikiName: this.wikiName,
           sessionId: this.id,
-          token: this.token,
           authenticatedUsername: this.authenticatedUsername
         },message);
         if (["ack", "ping", "pong"].indexOf(message.type) == -1) {
@@ -567,19 +555,13 @@ const setupHeartbeat = (session) => {
     let authed = (
       eventData.sessionId == this.id
       && eventData.wikiName == this.wikiName 
-      && eventData.authenticatedUsername == this.authenticatedUsername  
-      && eventData.token == this.token
+      && eventData.authenticatedUsername == this.authenticatedUsername
     );
-    if(!authed) {
-      console.error(`['${this.id}'] WS authentication error: Unauthorized message of type ${eventData.type}`);
+    let eol = time.getUnixTime() > this.expires;
+    if(!authed || eol) {
+      console.error(`['${this.id}'] WS authentication error`);
       // kill the socket
-      this.ws.close(4023, `Unauthorized message`);
-    }
-    let eol = time.getUnixTime() > this.tokenEOL;
-    if(eol) {
-      console.error(`['${this.id}'] WS authentication error: Token expired`);
-      // kill the socket
-      this.ws.close(4023, `Expired token`);
+      this.ws.close(4023, `Invalid session`);
     }
     return authed && !eol;
   }
