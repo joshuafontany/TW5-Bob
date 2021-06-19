@@ -184,7 +184,7 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
 
 SimpleServer.prototype.verifyUpgrade = function(request) {
   if(request.url.indexOf("wiki=") !== -1
-  && request.url.indexOf("session=") !== -1) {debugger;
+  && request.url.indexOf("session=") !== -1) {
     // Compose the state object
     var state = {};
     state.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:

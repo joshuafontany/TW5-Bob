@@ -57,7 +57,7 @@ exports.pong = function (data,instance) {
 exports.handshake = function (data,instance) {
   // Set the session expiration
   this.expires = data.expires;
-  
+
   // Update the settings
   if(data.settings) {
     $tw.Bob.settings = data.settings;
@@ -71,9 +71,7 @@ exports.handshake = function (data,instance) {
   }
 
   // Notify listeners
-  this.emit('handshake',[{
-    status: 'handshake'
-  },this]);
+  this.emit('handshake',[this]);
 }
 
 /*
@@ -375,7 +373,7 @@ exports.updateConnections = function (data) {
 */
 exports.updateSettings = function (data) {
     // Ask the server for its status
-    fetch('/api/status', {credentials: 'include', headers: {'x-wiki-name': $tw.wikiName}})
+    fetch('/satus', {credentials: 'include', headers: {'x-wiki-name': $tw.wikiName}})
     .then(response => response.json())
     .then(function(data) {
       function doThisLevel (inputObject, currentName) {

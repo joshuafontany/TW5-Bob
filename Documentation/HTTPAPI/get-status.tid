@@ -1,7 +1,7 @@
 title: $:/plugins/OokTech/Bob/Documentation/HTTPAPI/get-status
 tags: [[HTTP API]]
 verb: GET
-route: /api/status
+route: /satus
 response: A JSON object containing status information about the server
 parameters:
 description: get server status information
@@ -9,7 +9,7 @@ description: get server status information
 Get server status information
 
 ```
-GET /api/status
+GET /satus
 ```
 
 Parameters:

@@ -27,7 +27,7 @@ exports.ack = function(data,instance) {
   make sure that the server and browser are still connected.
 */
 exports.ping = function(data,instance) {
-  
+
   // When the server receives a ping it sends back a pong.
   let message = $tw.utils.extend(data,{type: 'pong'});
   this.send(message);
@@ -58,9 +58,7 @@ exports.handshake = function(data,instance) {
   this.sendMessage(message);
   
   // Notify listeners
-  this.emit('handshake',[{
-    status: 'handshake'
-  },this]);
+  this.emit('handshake',[this]);
 }
 
   if(false) { // disable federation stuff now

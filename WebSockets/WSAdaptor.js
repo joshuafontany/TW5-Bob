@@ -223,7 +223,7 @@ WebsocketAdaptor.prototype.name = "wsadaptor";
 WebsocketAdaptor.prototype.supportsLazyLoading = true;
 
 WebsocketAdaptor.prototype.isReady = function() {
-  return this.hasStatus && this.session && this.session.isReady();
+  return $tw.Bob.Ydocs.has($tw.wikiname);
 }
 
 WebsocketAdaptor.prototype.getHost = function() {
@@ -253,6 +253,11 @@ WebsocketAdaptor.prototype.getTiddlerInfo = function(tiddler, options) {
   return {};
 }
 
+WebsocketAdaptor.prototype.getTiddlerRevision = function(title) {
+	var tiddler = this.wiki.getTiddler(title);
+	return null //tiddler.fields.revision;
+};
+
 /*
 Get the current status of the user
 */
@@ -263,7 +268,7 @@ WebsocketAdaptor.prototype.getStatus = function(callback) {
     params = "?wiki=" + $tw.wikiName + "&session=" + this.sessionId;
   this.logger.log("Getting status");
 	$tw.utils.httpRequest({
-		url: this.host + "api/status" + params,
+		url: this.host + "status" + params,
 		callback: function(err,data) {
 			self.hasStatus = true;
 			if(err) {
@@ -288,53 +293,41 @@ WebsocketAdaptor.prototype.getStatus = function(callback) {
 				isSseEnabled = !!json.sse_enabled;
 
         if(json.session) {
-          let options = json.session;
           // Set the session id, setup the WS connection
-          self.sessionId = options.id;
-          window.sessionStorage.setItem("ws-adaptor-session", options.id);
-          // Setup the connection url
-          options.client = true;
-          options.connect = true;
-          options.url = new $tw.Bob.url($tw.Bob.getHost(self.host));
-          options.url.searchParams.append("wiki", $tw.wikiName);
-          options.url.searchParams.append("session", options.id);
-          options.doc = $tw.Bob.getYDoc($tw.wikiName);
-          let session = $tw.Bob.createSession(options);
-          session.on("handshake",function(status) {
-                $tw.wiki.deleteTiddler(`$:/plugins/OokTech/Bob/Server Warning`);
-          });
-          session.on("disconnected",function(status) {
-            // Add a message that the wiki isn't connected yet
-            const text = "<div style='position:fixed;bottom:0px;width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>''WARNING: The connection to server hasn't been established yet.''</div>";
-            const warningTiddler = {
-              title: '$:/plugins/OokTech/Bob/Server Warning',
-              text: text,
-              tags: '$:/tags/PageTemplate'
-            };
-            $tw.wiki.addTiddler(new $tw.Tiddler(warningTiddler));
-  
-            if(status.event.code == 4023) {
-              //Invalid session
-              self.sessionId = require('./External/uuid/nil.js').default;
-              setTimeout(function() {
-                // Get the login status
-                $tw.syncer.getStatus(function(err,isLoggedIn) {
-                  // Do a sync from the server
-                  $tw.syncer.syncFromServer();
-                });
-              }, 1000);
-            }
-          });
-          session.on("abort",function(status) {
-            // Add a message that the wiki isn't connected yet
-            const text = "<div style='position:fixed;bottom:0px;width:100%;background-color:red;height:1.5em;max-height:100px;text-align:center;vertical-align:center;color:white;'>''WARNING: The connection to server hasn't been established yet.''</div>";
-            const warningTiddler = {
-              title: '$:/plugins/OokTech/Bob/Server Warning',
-              text: text,
-              tags: '$:/tags/PageTemplate'
-            };
-            $tw.wiki.addTiddler(new $tw.Tiddler(warningTiddler));
-          });
+          self.sessionId = json.session.id;
+          window.sessionStorage.setItem("ws-adaptor-session", self.sessionId);
+          if($tw.Bob.hasSession(json.session.id)){
+            $tw.Bob.getSession(json.session.id).connect()
+          } else {
+            // Setup the connection url
+            json.session.client = true;
+            json.session.connect = true;
+            json.session.url = new $tw.Bob.url($tw.Bob.getHost(self.host));
+            json.session.url.searchParams.append("wiki", $tw.wikiName);
+            json.session.url.searchParams.append("session", json.session.id);
+            json.session.doc = $tw.Bob.getYDoc($tw.wikiName);
+            let session = $tw.Bob.createSession(json.session);
+            session.on("status",function(event,session) {
+              if(!session.isReady()) {
+                $tw.syncer.displayError(`['${session.id}'] Session disconencted - displaying alert`,$tw.language.getString("Error/XMLHttpRequest") + ": 0");
+              }
+              if(event.status == "error" || (!!event.code && event.code == 4023)){
+                //Invalid session or connection rejected
+                self.sessionId = require('./External/uuid/nil.js').default;
+                window.sessionStorage.setItem("ws-adaptor-session", self.sessionId);
+                $tw.Bob.deleteSession(session.id);
+                session.destroy();
+                session = null;
+                /* setTimeout(function() {
+                  // Get the login status
+                  $tw.syncer.getStatus(function(err,isLoggedIn) {
+                    // Do a sync from the server
+                    $tw.syncer.syncFromServer();
+                  });
+                }, 1000); */
+              }
+            });
+          }
         }
       }
       // Invoke the callback if present
@@ -350,12 +343,12 @@ Attempt to login and invoke the callback(err)
 */
 WebsocketAdaptor.prototype.login = function(username,password,callback) {
 	let options = {
-		url: this.host + "challenge/tiddlywebplugins.tiddlyspace.cookie_form",
+		url: this.host + "challenge/bob-login",
 		type: "POST",
 		data: {
 			user: username,
 			password: password,
-			tiddlyweb_redirect: "/api/status" // workaround to marginalize automatic subsequent GET
+			tiddlyweb_redirect: "/status" // workaround to marginalize automatic subsequent GET
 		},
 		callback: function(err) {
 			callback(err);
@@ -373,7 +366,7 @@ WebsocketAdaptor.prototype.logout = function(callback) {
 		type: "POST",
 		data: {
 			csrf_token: this.getCsrfToken(),
-			tiddlyweb_redirect: "/api/status" // workaround to marginalize automatic subsequent GET
+			tiddlyweb_redirect: "/status" // workaround to marginalize automatic subsequent GET
 		},
 		callback: function(err,data) {
 			callback(err);
@@ -513,90 +506,6 @@ WebsocketAdaptor.prototype.deleteTiddler = function(title, options, callback) {
     });
   }
 }
-
-WebsocketAdaptor.prototype.shouldSync = function(tiddlerTitle) {
-  // assume that we are never syncing state and temp tiddlers.
-  // This may change later.
-  if(tiddlerTitle.startsWith('$:/state/') || tiddlerTitle.startsWith('$:/temp/')) {
-    return false;
-  }
-  // If the changed tiddler is the one that holds the exclude filter
-  // than update the exclude filter.
-  if(tiddlerTitle === '$:/plugins/OokTech/Bob/ExcludeSync') {
-    $tw.Bob.ExcludeFilter = this.wiki.getTiddlerText('$:/plugins/OokTech/Bob/ExcludeSync');
-  }
-  const list = this.wiki.filterTiddlers($tw.Bob.ExcludeFilter);
-  if(list.indexOf(tiddlerTitle) === -1) {
-    return true;
-  } else {
-    return false;
-  }
-}
-
-/*
-WebsocketAdaptor.prototype.getUpdatedTiddlers = function() {
-
-}
-*/
-
-// OPTIONAL
-/*
-// Loads skinny tiddlers, need specifics
-let thisTimerTemp = undefined
-function setupSkinnyTiddlerLoading() {
-  if(!this.wiki.getTiddler('$:/WikiSettings/split/ws-server')) {
-    clearTimeout(thisTimerTemp)
-    thisTimerTemp = setTimeout(function() {
-      setupSkinnyTiddlerLoading()
-    }, 100)
-  } else {
-    clearTimeout(thisTimerTemp)
-    if(this.wiki.getTiddlerDataCached('$:/WikiSettings/split/ws-server').rootTiddler === '$:/core/save/lazy-all') {
-      WebsocketAdaptor.prototype.getSkinnyTiddlers = function(callback) {
-        function handleSkinnyTiddlers(e) {
-          callback(null, e)
-        }
-        function sendThing() {
-          function setSendThingTimeout() {
-            setTimeout(function() {
-              if($tw.Bob.sessions) {
-                if($tw.Bob.sessions[0].socket.readyState === 1) {
-                  id = $tw.Bob.sendToServer(connectionIndex, message)
-                  $tw.rootWidget.addEventListener('skinny-tiddlers', function(e) {
-                    handleSkinnyTiddlers(e.detail)
-                  })
-                } else {
-                  setSendThingTimeout()
-                }
-              } else {
-                setSendThingTimeout()
-              }
-            }, 100)
-          }
-          if($tw.Bob.sessions) {
-            if($tw.Bob.sessions[0].socket.readyState === 1) {
-              id = $tw.Bob.sendToServer(connectionIndex, message)
-              $tw.rootWidget.addEventListener('skinny-tiddlers', function(e) {
-                handleSkinnyTiddlers(e.detail)
-              })
-            } else {
-              setSendThingTimeout()
-            }
-          } else {
-            setSendThingTimeout()
-          }
-        }
-        const message = {
-          type: 'getSkinnyTiddlers',
-          wiki: $tw.wikiName
-        }
-        let id
-        sendThing()
-      }
-      $tw.syncer.syncFromServer()
-    }
-  }
-}*/
 
 // Only set up the websockets if we are in the browser and have websockets.
 if($tw.browser && window.location.hostname && $tw.Bob) {

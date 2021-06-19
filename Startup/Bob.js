@@ -120,7 +120,7 @@ A core prototype to hand everything else onto.
     }
 
     // Create a new session
-    createSession (options) {debugger;
+    createSession (options) {
       if(!options.client){
         if(options.id == uuid_NIL || !this.hasSession(options.id) || (
           this.hasSession(options.id) && time.getUnixTime() > this.getSession(options.id).expires
@@ -134,13 +134,13 @@ A core prototype to hand everything else onto.
         this.sessions.set(options.id, session);
         return session;
       } else {
-        return this.getSession(options.id); 
+        return this.sessions.get(options.id); 
       }      
     }
 
     getSession (sessionId) {
       if(this.hasSession(sessionId)) {
-        return this.sessions.get(sessionId)
+        return this.sessions.get(sessionId);
       }
     }
 
@@ -152,26 +152,6 @@ A core prototype to hand everything else onto.
       if (this.hasSession(sessionId)) {
         this.sessions.delete(sessionId);
       }
-    }
-
-    getSessionsByUser (authenticatedUsername) {
-      var usersSessions = new Map();
-      for (let [id,session] of this.sessions.entries()) {
-        if (session.authenticatedUsername === authenticatedUsername) {
-          usersSessions.add(id,session);
-        }
-      }
-      return usersSessions;
-    }
-
-    getSessionsByWiki (wikiName) {
-      var wikiSessions = new Map();
-      for (let [id, session] of this.sessions.entries()) {
-        if (session.wikiName === wikiName) {
-          wikiSessions.add(id, session);
-        }
-      }
-      return wikiSessions;
     }
 
     /*
@@ -513,8 +493,7 @@ if($tw.node) {
     const mbuf = encoding.toUint8Array(encoder)
     doc.sessions.forEach((_, s) => {
       let message = {
-        type: 'y',
-        flag: messageSync,
+        type: 'y'+messageSync,
         doc: doc.name,
         y: Base64.fromUint8Array(mbuf)
       }
@@ -562,8 +541,7 @@ if($tw.node) {
         const abuf = encoding.toUint8Array(encoder)
         this.sessions.forEach((_, s) => {
           let message = {
-            type: 'y',
-            flag: messageAwareness,
+            type: 'y'+messageAwareness,
             doc: this.name,
             y: Base64.fromUint8Array(abuf)
           }
@@ -616,6 +594,26 @@ if($tw.node) {
     /*
       Session methods
     */
+    getSessionsByUser (authenticatedUsername) {
+      var usersSessions = new Map();
+      for (let [id,session] of this.sessions.entries()) {
+        if (session.authenticatedUsername === authenticatedUsername) {
+          usersSessions.add(id,session);
+        }
+      }
+      return usersSessions;
+    }
+
+    getSessionsByWiki (wikiName) {
+      var wikiSessions = new Map();
+      for (let [id, session] of this.sessions.entries()) {
+        if (session.wikiName === wikiName) {
+          wikiSessions.add(id, session);
+        }
+      }
+      return wikiSessions;
+    }
+
     /**
      * @param {WebsocketSession} session
      * @param {int} timeout
@@ -666,27 +664,27 @@ if($tw.node) {
           eventData = parsed||event;
           if(session.authenticateMessage(eventData)) {
             session.lastMessageReceived = time.getUnixTime();
-            if(eventData.type == "y" ) {
+            if(eventData.type.startsWith('y')) {
               let eventDoc = eventData.doc == session.wikiName? doc : session.getSubDoc(eventData.doc);
               let message = Base64.toUint8Array(eventData.y);
               const encoder = encoding.createEncoder()
               const decoder = decoding.createDecoder(message)
               const messageType = decoding.readVarUint(decoder)
               switch (messageType) {
-                case messageSync:
+                case messageSync: {
                   encoding.writeVarUint(encoder, messageSync)
                   syncProtocol.readSyncMessage(decoder, encoder, eventDoc, null)
                   if (encoding.length(encoder) > 1) {
                     const buf = encoding.toUint8Array(encoder)
                     let message = {
-                      type: 'y',
-                      flag: messageSync,
+                      type: 'y'+messageSync,
                       doc: eventDoc.name,
                       y: Base64.fromUint8Array(buf)
                     }
                     session.sendMessage(message);
                   }
                   break
+                }
                 case messageAwareness: {
                   awarenessProtocol.applyAwarenessUpdate(eventDoc.awareness, decoding.readVarUint8Array(decoder), session)
                   break

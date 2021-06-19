@@ -1,0 +1,2 @@
+title: $:/tags/SyncerDropdown
+list: $:/plugins/OokTech/Bob/syncer-actions/login-status $:/plugins/OokTech/Bob/syncer-actions/login $:/plugins/OokTech/Bob/syncer-actions/refresh $:/plugins/OokTech/Bob/syncer-actions/logout $:/plugins/OokTech/Bob/syncer-actions/save-snapshot $:/plugins/OokTech/Bob/syncer-actions/copy-logs

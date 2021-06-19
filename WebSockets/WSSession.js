@@ -110,7 +110,7 @@ const setupWS = (session) => {
         if(session.client && eventData.type == "handshake") {
           session.expires = eventData.expires;
         }
-        if(eventData.type == "y" ) {
+        if(eventData.type.startsWith('y')) {
           let eventDoc = eventData.doc == session.wikiName? session.doc : session.getSubDoc(eventData.doc);
           let buf = Base64.toUint8Array(eventData.y);
           const encoder = encoding.createEncoder();
@@ -120,13 +120,12 @@ const setupWS = (session) => {
           if (/** @type {any} */ (messageHandler)) {
             messageHandler(encoder, decoder, session, eventDoc, true, messageType);
           } else {
-            console.error('Unable to compute message');
+            console.error(`['${session.id}'] Unable to compute ${eventData.id} message, ydoc ${eventData.doc}`);
           }
           if (encoding.length(encoder) > 1) {
             const buf = encoding.toUint8Array(encoder)
             let message = {
-              type: 'y',
-              flag: messageType,
+              type: 'y'+messageType,
               doc: eventData.doc,
               y: Base64.fromUint8Array(buf)
             }
@@ -145,7 +144,7 @@ const setupWS = (session) => {
       // Handle the ws
       session.ws = null;
       session.connecting = false;
-      if (session.connected) {
+      if(session.connected) {
         session.connected = false;
         session.synced = false;
         // update awareness (all users except local are null)
@@ -155,7 +154,8 @@ const setupWS = (session) => {
           session);
         session.emit('status', [{ 
           status: 'disconnected', 
-          event: event 
+          code: event.code,
+          reason: event.reason 
         },session]);
       } else {
         session.unsuccessfulReconnects++;
@@ -169,10 +169,14 @@ const setupWS = (session) => {
           $tw.Bob.settings.reconnect.max
         );
         setTimeout(setupWS,delay,session);
+        if(session.unsuccessfulReconnects > 2) {
+          session.emit('status', [{
+            status: 'reconnecting', 
+          },session]);
+        }
       } else {
         session.emit('status', [{
-          status: 'aborted', 
-          event: event
+          status: 'aborted',
         },session]);
       }
     };
@@ -190,12 +194,7 @@ const setupWS = (session) => {
       session.connected = true;
       session.unsuccessfulReconnects = 0;
 
-      session.sendMessage(
-        { type: 'handshake' }, 
-        function() {
-          console.log(`['${session.id}'] Handshake ack recieved from ${session.url.href}`);;
-        }
-      );
+      session.sendMessage({ type: 'handshake' });
 
       session.emit('status', [{
         status: 'connected'
@@ -234,7 +233,7 @@ const setupHeartbeat = (session) => {
  */
  class WebsocketSession extends observable_js.Observable {
   /**
-   * @param {object} [options]
+   * @param {object} options
    * @param {UUID_v4} [options.id]
    * @param {Y.doc} [options.doc]
    * @param {string} [options.access] The user-session's access level
@@ -293,7 +292,7 @@ const setupHeartbeat = (session) => {
     this.username = options.username;
     this.wikiName = options.wikiName || $tw.wikiName;
 
-    this.on('handshake', function(status,session) {
+    this.on('handshake', function(event,session) {
       let doc = session.client? session.doc: $tw.Bob.getYDoc(session.wikiName)
       // send sync step 1
       const encoder = encoding.createEncoder()
@@ -301,8 +300,7 @@ const setupHeartbeat = (session) => {
       syncProtocol.writeSyncStep1(encoder, doc)
       const mbuf = encoding.toUint8Array(encoder)
       let message = {
-        type: 'y',
-        flag: messageSync,
+        type: 'y'+messageSync,
         doc: doc.name,
         y: Base64.fromUint8Array(mbuf)
       }
@@ -315,8 +313,7 @@ const setupHeartbeat = (session) => {
           encoding.writeVarUint8Array(encoderAwarenessState, awarenessProtocol.encodeAwarenessUpdate(session.awareness, [session.doc.clientID]));
           const abuf = encoding.toUint8Array(encoderAwarenessState)
           let message = {
-            type: 'y',
-            flag: messageAwareness,
+            type: 'y'+messageAwareness,
             doc: session.doc.name,
             y: Base64.fromUint8Array(abuf)
           }
@@ -331,8 +328,7 @@ const setupHeartbeat = (session) => {
           encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(doc.awareness, Array.from(awarenessStates.keys())))
           const abuf = encoding.toUint8Array(encoder)
           let message = {
-            type: 'y',
-            flag: messageAwareness,
+            type: 'y'+messageAwareness,
             doc: doc.name,
             y: Base64.fromUint8Array(abuf)
           }
@@ -372,8 +368,7 @@ const setupHeartbeat = (session) => {
           syncProtocol.writeUpdate(encoder, update);
           const buf = encoding.toUint8Array(encoder);
           let message = {
-            type: 'y',
-            flag: messageSync,
+            type: 'y'+messageSync,
             doc: this.doc.name,
             y: Base64.fromUint8Array(buf)
           }
@@ -392,8 +387,7 @@ const setupHeartbeat = (session) => {
         encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(awareness, changedClients));
         const buf = encoding.toUint8Array(encoder);
         let message = {
-          type: 'y',
-          flag: messageAwareness,
+          type: 'y'+messageAwareness,
           doc: this.doc.name,
           y: Base64.fromUint8Array(buf)
         }
@@ -488,13 +482,7 @@ const setupHeartbeat = (session) => {
           authenticatedUsername: this.authenticatedUsername
         },message);
         if (["ack", "ping", "pong"].indexOf(message.type) == -1) {
-          let note;
-          if (message.type == "y") {
-            note =`${message.type}-${message.flag} ${message.doc}`;
-          } else {
-            note = message.type;            
-          }
-          console.log(`['${message.sessionId}'] send-${message.id}:`, note);
+          console.log(`['${message.sessionId}'] send-${message.id}:`, message.type);
         }
         this.ws.send(JSON.stringify(message), err => { err != null && this.disconnect(err) });
       } catch (err) {
@@ -558,9 +546,13 @@ const setupHeartbeat = (session) => {
       && eventData.authenticatedUsername == this.authenticatedUsername
     );
     let eol = time.getUnixTime() > this.expires;
-    if(!authed || eol) {
+    if(!authed) {
       console.error(`['${this.id}'] WS authentication error`);
-      // kill the socket
+    }
+    if(eol) {
+      console.error(`['${this.id}'] WS session expired`);
+    }
+    if(!authed || eol) {  // kill the socket
       this.ws.close(4023, `Invalid session`);
     }
     return authed && !eol;

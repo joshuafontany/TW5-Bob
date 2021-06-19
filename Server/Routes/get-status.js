@@ -1,9 +1,9 @@
 /*\
-title: $:/plugins/OokTech/Bob/Server/Routes/get-ws-session.js
+title: $:/plugins/OokTech/Bob/Server/Routes/get-status.js
 type: application/javascript
 module-type: route
 
-GET /^\/api\/status\/?$/
+GET /^\/status\/?$/
 
 Returns server status information
 
@@ -16,7 +16,7 @@ Returns server status information
 
 exports.method = "GET";
 
-exports.path = /^\/api\/status$/;
+exports.path = /^\/status$/;
 
 exports.handler = function(request,response,state) {
   // build the status objects
