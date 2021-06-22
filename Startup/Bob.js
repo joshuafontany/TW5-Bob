@@ -25,6 +25,7 @@ A core prototype to hand everything else onto.
   const observable_js = require('./External/lib0/dist/observable.cjs');
   const {Base64} = require('./External/js-base64/base64.js');
   const { v4: uuid_v4, NIL: uuid_NIL, validate: uuid_validate } = require('./External/uuid/index.js');
+  const { uniqueNamesGenerator, adjectives, colors, animals, names } = require('./External/unique-names-generator/dist/index.js');
 
   // Polyfill because IE uses old javascript
   if(!String.prototype.startsWith) {
@@ -68,9 +69,9 @@ A core prototype to hand everything else onto.
       // Wikis
       this.Wikis = new Map();
 
-      // Ydocs
+      // YDocs
       this.Yversion = $tw.wiki.getTiddler('$:/plugins/OokTech/Bob/External/yjs/yjs.cjs').fields.version;
-      this.Ydocs = new Map();
+      this.YDocs = new Map();
       // disable gc when using snapshots!
       this.gcEnabled = $tw.node? (process.env.GC !== 'false' && process.env.GC !== '0'): true;
       /**
@@ -81,10 +82,8 @@ A core prototype to hand everything else onto.
       // Sessions
       this.sessions = new Map();
 
-      // Setup a Message Queue
+      // Messages
       this.clientId = 0; // The current client message id
-      this.serverId = 0; // The current server message id
-      this.tickets = new Map(); // The message ticket queue
 
       // Load the client-messagehandlers
       this.clientHandlers = {};
@@ -164,23 +163,13 @@ A core prototype to hand everything else onto.
       messages from a server have ids that starts with s.
     */
     getMessageId (client) {
-      return !!client ? "c" + this.clientId++: "s" + this.serverId++;
+      return "c" + this.clientId++;
     }
 
     handleMessage (eventData,session) {
       let handler = session.client? $tw.Bob.clientHandlers[eventData.type]: $tw.Bob.serverHandlers[eventData.type];
       // Make sure we have a handler for the message type
       if(typeof handler === 'function') {
-        // The following messages do not need to be acknowledged
-        let noAck = ['ack', 'ping', 'pong'];
-        if(eventData.id && noAck.indexOf(eventData.type) == -1) {
-          console.log(`['${eventData.sessionId}'] handle-${eventData.id}:`, eventData.type);
-          // Acknowledge the message
-          session.send({
-            id: 'ack' + eventData.id,
-            type: 'ack'
-          });
-        }
         // Determine the wiki instance
         let instance = $tw;
         if($tw.node && $tw.Bob.Wikis.has(eventData.wikiName)) {
@@ -191,72 +180,6 @@ A core prototype to hand everything else onto.
       } else {
         debugger;
         console.error(`['${session.id}'] WS handleMessage error: No handler for message of type ${eventData.type}`);
-      }
-    }
-
-    /*
-      This is the function for handling ack messages on both the server and
-      client.
-
-      It takes an ack message object as input and checks it against the tickets in
-      he message queue. If the queue has a ticket with an id that matches the ack
-      then the ticket's ack object is checked for any sessions waiting to be acklowledged.
-
-      If there is a truthy value in the session's ack state and it is a function, then
-      the callback function associated with the session is called. Finally the "waiting"
-      state for the session id is set to false. If all acks for the ticket are set to false 
-      than the ctime for that message is set to the current time so it can be properly
-      removed later.
-    */
-    handleMessageAck (message,instance) {
-      let messageId = message.id.slice(3),
-        ticket = $tw.Bob.getTicket(messageId);
-      if(ticket) {
-        // If there is a callback, call it
-        if(!!ticket.ack[this.id] && typeof ticket.ack[this.id] == "function") {
-          ticket.ack[this.id].call();
-        }
-        // Set the message as acknowledged (waiting == false).
-        ticket.ack[this.id] = false;
-        // Check if all the expected acks have been received
-        const keys = Object.keys(ticket.ack),
-          waiting = keys.filter(function(id) {
-          return !!ticket.ack[id];
-        });
-        // If not waiting on any acks then set the ctime.
-        if(!waiting.length && !ticket.ctime) {
-          ticket.ctime = time.getUnixTime();
-        }
-      } else {
-        console.log(`['${message.sessionId}'] WS handleMessageAck error: no message found for id ${messageId}`);
-        debugger;
-      }
-    }
-
-    /*
-      Ticket methods
-    */
-    hasTicket (messageId) {
-      return this.tickets.has(messageId);
-    }
-
-    getTicket (messageId) {
-      if (this.hasTicket(messageId)) {
-        return this.tickets.get(messageId);
-      } else {
-        return null;
-      }
-    }
-
-    setTicket (ticketData) {
-      if (ticketData.id) {
-        this.tickets.set(ticketData.id, ticketData);
-      }
-    }
-
-    deleteTicket (messageId) {
-      if (this.hasTicket(messageId)) {
-        this.tickets.delete(messageId);
       }
     }
 
@@ -353,8 +276,6 @@ A core prototype to hand everything else onto.
         If there are than it marks the tiddler as needing resolution and both versions are made available
         All connected browsers now see the tiddlers marked as in conflict and resolution is up to the people
     
-        This message is sent to the server, once the server receives it it respons with a special ack for it, when the browser receives that it deletes the unsent tiddler
-    
         What is a conflict?
     
         If both sides say to delete the same tiddler there is no conflict
@@ -394,7 +315,7 @@ A core prototype to hand everything else onto.
         try{
           // Get the name for this wiki for websocket messages
           $tw.wikiName = wikiName;
-          // Setup the Ydocs for the wiki
+          // Setup the YDoc for the wiki
           let wikiDoc = this.getYDoc($tw.wikiName);
 
           // Attach the providers 
@@ -435,14 +356,14 @@ A core prototype to hand everything else onto.
      * @return {Y.Doc}
      */
     getYDoc (docname, gc = this.gcEnabled) {
-      return map.setIfUndefined(this.Ydocs, docname, () => {
+      return map.setIfUndefined(this.YDocs, docname, () => {
         const doc = new Y.Doc(docname);
         doc.gc = gc;
         doc.name = docname;
         if (this.persistence !== null) {
           this.persistence.bindState(docname, doc);
         }
-        this.Ydocs.set(docname, doc);
+        this.YDocs.set(docname, doc);
         return doc;
       })
     }
@@ -497,7 +418,7 @@ if($tw.node) {
         doc: doc.name,
         y: Base64.fromUint8Array(mbuf)
       }
-      s.sendMessage(message);
+      s.send(message);
     })
     debugger;
   }
@@ -545,7 +466,7 @@ if($tw.node) {
             doc: this.name,
             y: Base64.fromUint8Array(abuf)
           }
-          s.sendMessage(message);
+          s.send(message);
         })
       }
       this.awareness.on('update', awarenessChangeHandler)
@@ -565,7 +486,16 @@ if($tw.node) {
       this.settings = JSON.parse($tw.wiki.getTiddler('$:/plugins/OokTech/Bob/DefaultSettings').fields.text || "{}");
       this.loadSettings(this.settings,$tw.boot.wikiPath);
 
-      // Ydocs
+      // Messages
+      this.serverId = 0; // The current server message id
+
+      // Users
+      this.anonId = 0; // Incremented when an anonymous userid is created
+      this.anonUsers = new Map();
+
+      // 
+
+      // YDocs
       if (typeof persistenceDir === 'string') {
         console.info('Persisting Y documents to "' + persistenceDir + '"')
         // @ts-ignore
@@ -594,6 +524,19 @@ if($tw.node) {
     /*
       Session methods
     */
+
+    setAnonUsername (state,session) {
+      // Query the request state server for the anon username parameter
+      let anon = state.server.get("anon-username")
+      session.username = (anon || '') + uniqueNamesGenerator({
+        dictionaries: [colors, adjectives, animals, names],
+        style: 'capital',
+        separator: '',
+        length: 3,
+        seed: $tw.Bob.anonId++
+      });
+    }
+
     getSessionsByUser (authenticatedUsername) {
       var usersSessions = new Map();
       for (let [id,session] of this.sessions.entries()) {
@@ -673,7 +616,22 @@ if($tw.node) {
               switch (messageType) {
                 case messageSync: {
                   encoding.writeVarUint(encoder, messageSync)
-                  syncProtocol.readSyncMessage(decoder, encoder, eventDoc, null)
+                  //syncProtocol.readSyncMessage(decoder, encoder, eventDoc, null)
+                  // Implement Read-Only Sessions
+                  const messageSyncType = decoding.readVarUint(decoder);
+                  switch (messageSyncType) {
+                    case syncProtocol.messageYjsSyncStep1:
+                      syncProtocol.readSyncStep1(decoder, encoder, doc)
+                      break
+                    case syncProtocol.messageYjsSyncStep2:
+                      if (!session.isReadOnly) syncProtocol.readSyncStep2(decoder, doc, null)
+                      break
+                    case syncProtocol.messageYjsUpdate:
+                      if (!session.isReadOnly) syncProtocol.readUpdate(decoder, doc, null)
+                      break
+                    default:
+                      throw new Error('Unknown message type')
+                  }
                   if (encoding.length(encoder) > 1) {
                     const buf = encoding.toUint8Array(encoder)
                     let message = {
@@ -681,7 +639,7 @@ if($tw.node) {
                       doc: eventDoc.name,
                       y: Base64.fromUint8Array(buf)
                     }
-                    session.sendMessage(message);
+                    session.send(message);
                   }
                   break
                 }
@@ -754,6 +712,19 @@ if($tw.node) {
     }
 
     /*
+      Message methods
+    */
+
+    /*
+      This returns a new id for a message.
+      Messages from a client (usually the browser) have ids that start with c, 
+      messages from a server have ids that starts with s.
+    */
+    getMessageId (client) {
+      return !!client ? "c" + this.clientId++: "s" + this.serverId++;
+    }
+
+    /*
       Yjs methods
     */
 
@@ -765,13 +736,13 @@ if($tw.node) {
      * @return {WSSharedDoc}
      */
     getYDoc (docname,gc = this.gcEnabled) {
-      return map.setIfUndefined(this.Ydocs, docname, () => {
+      return map.setIfUndefined(this.YDocs, docname, () => {
         const doc = new WSSharedDoc(docname);
         doc.gc = gc;
         if (this.persistence !== null) {
           this.persistence.bindState(docname, doc);
         }
-        this.Ydocs.set(docname, doc);
+        this.YDocs.set(docname, doc);
         return doc;
       })
     }
@@ -918,7 +889,7 @@ if($tw.node) {
           }
         }
       };
-      //this.getSession(data.sessionId).sendMessage(message);
+      //this.getSession(data.sessionId).send(message);
     }
 
     // Wiki methods
@@ -944,12 +915,12 @@ if($tw.node) {
           // Name the wiki
           instance.wikiName = wikiName;
           const fields = {
-            title: '$:/WikiName',
+            title: '$:/status/WikiName',
             text: wikiName
           };
           instance.wiki.addTiddler(new $tw.Tiddler(fields));
 
-          // Setup the Ydocs for the wiki
+          // Setup the YDoc for the wiki
           let wikiDoc = this.getYDoc(wikiName);
           
           // Setup the FileSystemMonitors

@@ -57,7 +57,7 @@ ActionUpdateSetting.prototype.refresh = function(changedTiddlers) {
 Invoke the action associated with this widget
 */
 ActionUpdateSetting.prototype.invokeAction = function(triggeringWidget,event) {
-  const wikiName = $tw.wiki.getTiddlerText("$:/WikiName");
+  const wikiName = $tw.wiki.getTiddlerText("$:/status/WikiName");
   let update = {};
   let useThis = update;
   let remove = false;

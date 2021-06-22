@@ -148,14 +148,14 @@ let addHooks = function(connectionIndex) {
         request.upload.addEventListener('error', transferFailed);
         request.upload.addEventListener('abort', transferCanceled);
 
-        let wikiPrefix = this.wiki.getTiddlerText('$:/WikiName') || '';
+        let wikiPrefix = this.wiki.getTiddlerText('$:/status/WikiName') || '';
         const uploadURL = '/api/upload';
         request.open('POST', uploadURL, true);
         // cookies are sent with the request so the authentication cookie
         // should be there if there is one.
         const thing = {
           tiddler: tiddler,
-          wiki: this.wiki.getTiddlerText('$:/WikiName')
+          wiki: this.wiki.getTiddlerText('$:/status/WikiName')
         }
         request.setRequestHeader('x-wiki-name',wikiPrefix);
         request.onreadystatechange = function() {
@@ -185,7 +185,7 @@ let addHooks = function(connectionIndex) {
         request.send(JSON.stringify(thing));
         // Change the tiddler fields and stuff
         const fields = {};
-        wikiPrefix = this.wiki.getTiddlerText('$:/WikiName') || '';
+        wikiPrefix = this.wiki.getTiddlerText('$:/status/WikiName') || '';
         wikiPrefix = wikiPrefix === '' ? '' : '/' + wikiPrefix;
         $tw.Bob.settings.fileURLPrefix = $tw.Bob.settings.fileURLPrefix || 'files';
         const uri = wikiPrefix + '/' + $tw.Bob.settings.fileURLPrefix + '/' + tiddler.fields.title;
@@ -223,7 +223,7 @@ WebsocketAdaptor.prototype.name = "wsadaptor";
 WebsocketAdaptor.prototype.supportsLazyLoading = true;
 
 WebsocketAdaptor.prototype.isReady = function() {
-  return $tw.Bob.Ydocs.has($tw.wikiname);
+  return $tw.Bob.YDocs.has($tw.wikiName);
 }
 
 WebsocketAdaptor.prototype.getHost = function() {
@@ -286,7 +286,7 @@ WebsocketAdaptor.prototype.getStatus = function(callback) {
 					self.recipe = json.space.recipe;
 				}
 				// Check if we're logged in
-				self.isLoggedIn = !!json.username && !json.anonymous;
+				self.isLoggedIn = !!json.username;
 				self.isReadOnly = !!json["read_only"];
 				self.isAnonymous = !!json.anonymous;
 
@@ -308,9 +308,6 @@ WebsocketAdaptor.prototype.getStatus = function(callback) {
             json.session.doc = $tw.Bob.getYDoc($tw.wikiName);
             let session = $tw.Bob.createSession(json.session);
             session.on("status",function(event,session) {
-              if(!session.isReady()) {
-                $tw.syncer.displayError(`['${session.id}'] Session disconencted - displaying alert`,$tw.language.getString("Error/XMLHttpRequest") + ": 0");
-              }
               if(event.status == "error" || (!!event.code && event.code == 4023)){
                 //Invalid session or connection rejected
                 self.sessionId = require('./External/uuid/nil.js').default;
@@ -318,13 +315,6 @@ WebsocketAdaptor.prototype.getStatus = function(callback) {
                 $tw.Bob.deleteSession(session.id);
                 session.destroy();
                 session = null;
-                /* setTimeout(function() {
-                  // Get the login status
-                  $tw.syncer.getStatus(function(err,isLoggedIn) {
-                    // Do a sync from the server
-                    $tw.syncer.syncFromServer();
-                  });
-                }, 1000); */
               }
             });
           }
@@ -389,18 +379,49 @@ WebsocketAdaptor.prototype.getCsrfToken = function() {
 	return csrf;
 };
 
+/*
+Get an array of skinny tiddler fields from the yjs doc
+*/
+WebsocketAdaptor.prototype.getUpdatedTiddlers = function(syncer,callback) {
+  let session = $tw.Bob.getSession(this.sessionId);
+  if(!session || !session.isReady()) {
+    return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
+  }
+	var self = this;
+	$tw.utils.httpRequest({
+		url: this.host + "recipes/" + this.recipe + "/tiddlers.json",
+		data: {
+			filter: "[all[tiddlers]] -[[$:/isEncrypted]] -[prefix[$:/temp/]] -[prefix[$:/status/]] -[[$:/boot/boot.js]] -[[$:/boot/bootprefix.js]] -[[$:/library/sjcl.js]] -[[$:/core]]"
+		},
+		callback: function(err,data) {
+			// Check for errors
+			if(err) {
+				return callback(err);
+			}
+			// Process the tiddlers to make sure the revision is a string
+			var tiddlers = JSON.parse(data);
+			for(var t=0; t<tiddlers.length; t++) {
+				tiddlers[t] = self.convertTiddlerFromTiddlyWebFormat(tiddlers[t]);
+			}
+			// Invoke the callback with the skinny tiddlers
+			callback(null,tiddlers);
+		}
+	});
+};
+
 // REQUIRED
 // This does whatever is necessary to actually store a tiddler
 WebsocketAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
-  // Starting with 5.1.24, all syncadptor method signatures follow the node.js
-	// standard of callback as last argument. This catches the previous signature:
-  options = options || {};
-  if(!!callback && typeof callback !== "function"){
-    let optionsArg = callback;
-  }
-  if(typeof options === "function"){
+  // Check for pre v5.2.0 method signature:
+  if(typeof callback !== "function" && typeof options === "function"){
+    var optionsArg = callback;
     callback = options;
-    options = optionsArg || {};
+    options = optionsArg;
+  }
+  options = options || {};
+  let session = $tw.Bob.getSession(this.sessionId);
+  if(!session || !session.isReady()) {
+    return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
   }
   if(!tiddler || !tiddler.fields.title){
     callback(new Error("No tiddler or title given."));
@@ -431,15 +452,16 @@ WebsocketAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
 // This does whatever is necessary to load a tiddler.
 // Used for lazy loading
 WebsocketAdaptor.prototype.loadTiddler = function(title, options, callback) {
-  // Starting with 5.1.24, all syncadptor method signatures follow the node.js
-	// standard of callback as last argument. This catches the previous signature:
-  options = options || {};
-  if(!!callback && typeof callback !== "function"){
-    let optionsArg = callback;
-  }
-  if(typeof options === "function"){
+  // Check for pre v5.2.0 method signature:
+  if(typeof callback !== "function" && typeof options === "function"){
+    var optionsArg = callback;
     callback = options;
-    options = optionsArg || {};
+    options = optionsArg;
+  }
+  options = options || {};
+  let session = $tw.Bob.getSession(this.sessionId);
+  if(!session || !session.isReady()) {
+    return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
   }
   let adaptorInfo = options.tiddlerInfo.adaptorInfo || this.getTiddlerInfo({fields: {title: title}}) || {};
   //Keeping track of "bags" and things would go here?
@@ -467,15 +489,16 @@ WebsocketAdaptor.prototype.loadTiddler = function(title, options, callback) {
 // REQUIRED
 // This does whatever is necessary to delete a tiddler
 WebsocketAdaptor.prototype.deleteTiddler = function(title, options, callback) {
-  // Starting with 5.1.24, all syncadptor method signatures follow the node.js
-	// standard of callback as last argument. This catches the previous signature:
-  options = options || {};
-  if(!!callback && typeof callback !== "function"){
-    let optionsArg = callback;
-  }
-  if(typeof options === "function"){
+  // Check for pre v5.2.0 method signature:
+  if(typeof callback !== "function" && typeof options === "function"){
+    var optionsArg = callback;
     callback = options;
-    options = optionsArg || {};
+    options = optionsArg;
+  }
+  options = options || {};
+  let session = $tw.Bob.getSession(this.sessionId);
+  if(!session || !session.isReady()) {
+    return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
   }
   let adaptorInfo = options.tiddlerInfo.adaptorInfo || this.getTiddlerInfo({fields: {title: title}}) || {};
   //Keeping track of "bags" and things would go here?

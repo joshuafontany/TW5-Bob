@@ -25,8 +25,8 @@ exports.handler = function(request,response,state) {
     session = $tw.Bob.createSession({
       id: state.queryParameters["session"],
       wikiName: state.queryParameters["wiki"],
-      authenticatedUsername: state.authenticatedUsername? state.authenticatedUsername: uuid_v4(),
-      username: state.authenticatedUsername || state.server.get("anon-username") || "",
+      authenticatedUsername: state.authenticatedUsername,
+      username: state.authenticatedUsername,
       access: $tw.Bob.wsServer.getUserAccess((!state.authenticatedUsername)? null: state.authenticatedUsername,state.queryParameters["wiki"]),
       isLoggedIn: !!state.authenticatedUsername,
       isReadOnly: !state.server.isAuthorized("writers",state.authenticatedUsername),
@@ -38,14 +38,17 @@ exports.handler = function(request,response,state) {
       request.connection.remoteAddress
     });
     session.url = state.urlInfo;
+    if(session.isAnonymous && !session.username) {
+      $tw.Bob.setAnonUsername(state,session);
+    }
     // Set a login window for 60 seconds.
     $tw.Bob.refreshSession(session,1000*60)
     console.log(`['${session.id}'] IP: ${session.ip} GET ${session.url.href}`);
   }
   let text = {
-		username: state.authenticatedUsername || state.server.get("anon-username") || "",
-		anonymous: !state.authenticatedUsername,
-		read_only: !state.server.isAuthorized("writers",state.authenticatedUsername),
+		username: session.username,
+		anonymous: session.isAnonymous,
+		read_only: session.isReadOnly,
 		sse_enabled: state.server.get("sse-enabled") === "yes",
 		space: {
 			recipe: "default"

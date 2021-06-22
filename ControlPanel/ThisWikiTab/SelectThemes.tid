@@ -9,7 +9,7 @@ caption: Manage Themes
   />
   <$action-websocketmessage
     $type='unloadWiki'
-    wikiName={{$:/WikiName}}
+    wikiName={{$:/status/WikiName}}
   />
 </$button> <<helpButton "$:/plugins/OokTech/Bob/AboutSavePluginSelection">>
 

@@ -15,13 +15,6 @@ This handles messages sent to the node process.
 "use strict";
 
 /* REQUIRED
-  The session handles incoming acks
-*/
-exports.ack = function(data,instance) {
-    $tw.Bob.handleMessageAck(data,instance);
-}
-
-/* REQUIRED
   This responds to a ping from a client.
   It echos back any data that was sent. This is used by the heartbeat to
   make sure that the server and browser are still connected.
@@ -55,10 +48,10 @@ exports.handshake = function(data,instance) {
     expires: this.expires,
     settings: $tw.Bob.getViewableSettings(this.id),
   };
-  this.sendMessage(message);
+  this.send(message);
   
   // Notify listeners
-  this.emit('handshake',[this]);
+  this.emit('handshake',[data,this]);
 }
 
   if(false) { // disable federation stuff now

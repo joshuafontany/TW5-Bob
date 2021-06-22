@@ -30,7 +30,7 @@ exports.startup = function() {
     // Initialise Bob in the browser
     $tw.Bob = new Bob();
     // Set this wiki as loaded
-    $tw.Bob.loadWiki($tw.wiki.getTiddlerText("$:/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", "")));
+    $tw.Bob.loadWiki($tw.wiki.getTiddlerText("$:/status/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", "")));
   }
 }
 

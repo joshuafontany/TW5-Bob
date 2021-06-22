@@ -67,7 +67,7 @@ ActionConvertWiki.prototype.invokeAction = function(triggeringWidget,event) {
   const fileElement = document.getElementById(this.inputName);
   if(fileElement) {
     const file = fileElement.files[0];
-    const wikiName = $tw.wiki.getTiddlerText("$:/WikiName");
+    const wikiName = $tw.wiki.getTiddlerText("$:/status/WikiName");
     // Read the file and pass it to the parsing stuff
     if(file) {
       $tw.wiki.readFileContent(file, file.type, false, undefined, function(output) {

@@ -172,8 +172,9 @@ SimpleServer.prototype.listen = function(port,host,prefix) {
           $tw.Bob.wsServer.emit('connection',ws,request,state);
         });
       } else {
-        console.log(`ws-server: upgrade denied GET ${request.url}`);
-        //socket.close(4023, `Invalid upgrade request`);
+        console.log(`ws-server: Unauthorized Upgrade GET ${request.url}`);
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
         return;
       }
     }
@@ -187,6 +188,7 @@ SimpleServer.prototype.verifyUpgrade = function(request) {
   && request.url.indexOf("session=") !== -1) {
     // Compose the state object
     var state = {};
+    state.server = this;
     state.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
       request.connection.remoteAddress;
     state.urlInfo = new $tw.Bob.url(request.url,this.httpServer.address);
@@ -210,20 +212,12 @@ SimpleServer.prototype.verifyUpgrade = function(request) {
     if(!this.isAuthorized(authorizationType,state.authenticatedUsername)) {
       return false;
     }
-    state.username = state.authenticatedUsername || this.get("anon-username") || "";
-    state.anonymous = !state.authenticatedUsername;
-    state.readOnly = !this.isAuthorized("writers",state.authenticatedUsername);
-    state.loggedIn = !state.anonymous && state.username !== "";
-    state.wikiName = state.urlInfo.searchParams.get('wiki');
     state.sessionId = state.urlInfo.searchParams.get("session");
     if($tw.Bob.hasSession(state.sessionId)) {
       let session = $tw.Bob.getSession(state.sessionId);
-      if(state.username == session.username
-      && state.wikiName == session.wikiName) {
-        return state;
-      }
-    } else {
-      return false;
+      return state.authenticatedUsername == session.authenticatedUsername
+        && state.urlInfo.searchParams.get('wiki') == session.wikiName
+        && state
     }
   } else {
     return false;

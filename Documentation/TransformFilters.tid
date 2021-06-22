@@ -24,7 +24,7 @@ transclusions from that wiki to create the name.
 
 This means that if you use this filter:
 
-`[addprefix{$:/WikiName}]`
+`[addprefix{$:/status/WikiName}]`
 
 and pull a tiddler called `This Tiddler` from a wiki called `MyWiki` the title
 when it gets pulled would be called:
@@ -33,7 +33,7 @@ when it gets pulled would be called:
 
 A perhaps more useful filter would be:
 
-`[addprefix[/]addprefix{$:/WikiName}addprefix[$:/imported/]]`
+`[addprefix[/]addprefix{$:/status/WikiName}addprefix[$:/imported/]]`
 
 which would result in the tiddler name
 

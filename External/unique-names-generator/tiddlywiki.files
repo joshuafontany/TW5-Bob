@@ -1,0 +1,29 @@
+{
+  "tiddlers": [
+   {
+      "file": "LICENSE",
+      "fields": {
+        "title": "$:/plugins/OokTech/Bob/External/unique-names-generator/LICENSE",
+        "type": "text/markdown",
+        "source": "https://www.npmjs.com/package/unique-names-generator"
+      }
+    },
+    {
+      "file": "README.md",
+      "fields": {
+        "title": "$:/plugins/OokTech/Bob/External/unique-names-generator/README",
+        "type": "text/markdown",
+        "source": "https://www.npmjs.com/package/unique-names-generator"
+      }
+    },
+    {
+      "file": "./dist/index.js",
+      "fields": {
+        "title": "$:/plugins/OokTech/Bob/External/unique-names-generator/dist/index.js",
+        "module-type": "library",
+        "type": "application/javascript",
+        "source": "https://www.npmjs.com/package/unique-names-generator"
+      }
+    }
+  ]
+}

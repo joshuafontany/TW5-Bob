@@ -268,7 +268,7 @@ ServerSide.prepareWiki = function(fullName, servePlugin, cache='yes') {
         wikiName: fullName
       }
     };
-    $tw.Bob.Wikis[fullName].wiki.addTiddler(new $tw.Tiddler({title: '$:/WikiName', text: fullName}))
+    $tw.Bob.Wikis[fullName].wiki.addTiddler(new $tw.Tiddler({title: '$:/status/WikiName', text: fullName}))
     const text = $tw.Bob.Wikis[fullName].wiki.renderTiddler("text/plain", $tw.Bob.settings['ws-server'].rootTiddler || "$:/core/save/all", options);
     // Only cache the wiki if it isn't too big.
     if(text.length < 10*1024*1024 && cache !== 'no') {

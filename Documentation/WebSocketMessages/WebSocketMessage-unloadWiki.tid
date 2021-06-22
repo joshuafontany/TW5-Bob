@@ -17,7 +17,7 @@ restarting the full server.
 |!wikiName |The name of the wiki to shut down. (No default) |
 
 If no wikiName is given than this message does nothing. To determine the
-wikiName for a wiki look in the $:/WikiName tiddler.
+wikiName for a wiki look in the $:/status/WikiName tiddler.
 
 !!Usage
 
@@ -31,7 +31,7 @@ A button that will unload the current wiki from memory:
   Unload Wiki
   <$action-websocketmessage
     $type='unloadWiki'
-    wikiName={{$:/WikiName}}
+    wikiName={{$:/status/WikiName}}
   />
 </$button>
 ```

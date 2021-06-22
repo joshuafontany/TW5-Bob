@@ -106,10 +106,6 @@ const setupWS = (session) => {
       eventData = parsed||event;
       if(session.authenticateMessage(eventData)) {
         session.lastMessageReceived = time.getUnixTime();
-        // If handshake, set the tokenRefresh before acking
-        if(session.client && eventData.type == "handshake") {
-          session.expires = eventData.expires;
-        }
         if(eventData.type.startsWith('y')) {
           let eventDoc = eventData.doc == session.wikiName? session.doc : session.getSubDoc(eventData.doc);
           let buf = Base64.toUint8Array(eventData.y);
@@ -129,7 +125,7 @@ const setupWS = (session) => {
               doc: eventData.doc,
               y: Base64.fromUint8Array(buf)
             }
-            session.sendMessage(message);
+            session.send(message);
           }
         } else {
           session.emit('message', [eventData, session]);
@@ -194,7 +190,7 @@ const setupWS = (session) => {
       session.connected = true;
       session.unsuccessfulReconnects = 0;
 
-      session.sendMessage({ type: 'handshake' });
+      session.send({ type: 'handshake' });
 
       session.emit('status', [{
         status: 'connected'
@@ -304,7 +300,7 @@ const setupHeartbeat = (session) => {
         doc: doc.name,
         y: Base64.fromUint8Array(mbuf)
       }
-      session.sendMessage(message);
+      session.send(message);
       if(session.client) {
         // broadcast local awareness state
         if (session.awareness.getLocalState() !== null) {
@@ -317,7 +313,7 @@ const setupHeartbeat = (session) => {
             doc: session.doc.name,
             y: Base64.fromUint8Array(abuf)
           }
-          session.sendMessage(message);
+          session.send(message);
         }
       } else {
         // broadcast the doc awareness states
@@ -332,7 +328,7 @@ const setupHeartbeat = (session) => {
             doc: doc.name,
             y: Base64.fromUint8Array(abuf)
           }
-          session.sendMessage(message);
+          session.send(message);
         }
       }
     })
@@ -372,7 +368,7 @@ const setupHeartbeat = (session) => {
             doc: this.doc.name,
             y: Base64.fromUint8Array(buf)
           }
-          this.sendMessage(message);
+          this.send(message);
         }
       };
       this.doc.on('update',this._updateHandler);
@@ -391,7 +387,7 @@ const setupHeartbeat = (session) => {
           doc: this.doc.name,
           y: Base64.fromUint8Array(buf)
         }
-        this.sendMessage(message);
+        this.send(message);
         
       };
       awareness.on('update', this._awarenessUpdateHandler);
@@ -477,11 +473,12 @@ const setupHeartbeat = (session) => {
     if(this.isReady()) {
       try {
         message = $tw.utils.extend({
+          id: $tw.Bob.getMessageId(this.client),
           wikiName: this.wikiName,
           sessionId: this.id,
           authenticatedUsername: this.authenticatedUsername
         },message);
-        if (["ack", "ping", "pong"].indexOf(message.type) == -1) {
+        if (["ping", "pong"].indexOf(message.type) == -1) {
           console.log(`['${message.sessionId}'] send-${message.id}:`, message.type);
         }
         this.ws.send(JSON.stringify(message), err => { err != null && this.disconnect(err) });
@@ -489,36 +486,6 @@ const setupHeartbeat = (session) => {
         this.disconnect(err);
       }
     }
-  }
-
-  /**
-   * @param {any} message mimimum message includes message.type
-   * @param {function} callback Optional callback
-   */
-  sendMessage (message,callback) {
-    let ticket;
-    if(message.id && $tw.Bob.hasTicket(message.id)) {
-      ticket = $tw.Bob.getTicket(message.id);
-    } else {
-      message.id = $tw.Bob.getMessageId(this.client);
-      ticket = {
-        id: message.id,
-        message: JSON.stringify(message),
-        qtime: time.getUnixTime(),
-        ctime: null,
-        ack: {}
-      };
-    }
-    if(!!callback && typeof callback == "function"){
-      ticket.ack[this.id] = function() {
-        return callback.call();
-      };
-    } else {
-      // Waiting = true
-      ticket.ack[this.id] = true;
-    }
-    $tw.Bob.setTicket(ticket);
-    this.send(message);
   }
 
   /**

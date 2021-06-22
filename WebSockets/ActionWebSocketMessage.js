@@ -82,7 +82,7 @@ ActionWebSocketMessage.prototype.invokeAction = function(triggeringWidget,event)
   }
 
   // This is needed for when you serve multiple wikis
-  const wikiName = $tw.wiki.getTiddlerText("$:/WikiName");
+  const wikiName = $tw.wiki.getTiddlerText("$:/status/WikiName");
   message.wiki = wikiName?wikiName:'';
 
   // For any other attributes passed to the widget add them to the message as

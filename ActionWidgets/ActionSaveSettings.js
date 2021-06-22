@@ -58,7 +58,7 @@ ActionSaveSettings.prototype.invokeAction = function(triggeringWidget,event) {
   let self = this;
   const tiddler = $tw.wiki.getTiddler('$:/WikiSettings/split');
   const settings = JSON.stringify(buildSettings(tiddler), "", 2);
-  const wikiName = $tw.wiki.getTiddlerText("$:/WikiName");
+  const wikiName = $tw.wiki.getTiddlerText("$:/status/WikiName");
   const message = {
     "type": "updateSetting",
     "settingsString": settings,

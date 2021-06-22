@@ -8,7 +8,7 @@ caption: This Wiki
   Unload Wiki
   <$action-websocketmessage
     $type='unloadWiki'
-    wikiName={{$:/WikiName}}
+    wikiName={{$:/status/WikiName}}
   />
 </$button> <<helpButton "$:/plugins/OokTech/Bob/AboutUnloadWiki">>
 

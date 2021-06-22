@@ -17,13 +17,6 @@ $tw.Bob will always be at the root $tw object on both node and browser.
 /*global $tw: false */
 "use strict";
 
-/* REQUIRED
-  The session handles incoming acks
-*/
-exports.ack = function (data,instance) {
-  $tw.Bob.handleMessageAck(data,instance);
-}
-
 /* REQUIRED MESSAGE HANDLER
   This handles a ping from a server. The server and browser make sure they
   are connected by sending pings periodically. Pings from servers are not
@@ -65,13 +58,8 @@ exports.handshake = function (data,instance) {
   // Start a heartbeat
   this.heartbeat(data);
 
-  // Sync to the server
-  if ($tw.Bob.tickets.entries().length > 0) {
-    $tw.Bob.syncToServer(this.id);
-  }
-
   // Notify listeners
-  this.emit('handshake',[this]);
+  this.emit('handshake',[data,this]);
 }
 
 /*
@@ -175,7 +163,7 @@ exports.listTiddlers = function (data) {
     type: 'clientTiddlerList',
     titles: response
   };
-  this.sendMessage(message);
+  this.send(message);
 }
 
 /*

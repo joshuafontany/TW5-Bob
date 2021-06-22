@@ -20,7 +20,7 @@ affect the imported tiddlers.
 |!resolution |The method used to handle conflicts (default: `manual`) |
 
 If nothing is given for the `fromWiki` or `filter` attributes than this message
-does nothing. To determine the wikiName for a wiki look in the $:/WikiName
+does nothing. To determine the wikiName for a wiki look in the $:/status/WikiName
 tiddler.
 
 There are there options for `resolution`
