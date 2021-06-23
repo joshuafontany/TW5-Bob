@@ -315,15 +315,13 @@ A core prototype to hand everything else onto.
         try{
           // Get the name for this wiki for websocket messages
           $tw.wikiName = wikiName;
+
           // Setup the YDoc for the wiki
           let wikiDoc = this.getYDoc($tw.wikiName);
 
-          // Attach the providers 
-
-          // Awareness
+          // Attach the providers
               
-          // Initialize the wiki subdocs
-
+          // Setup the observers
 
           // Set this wiki as loaded
           this.Wikis.set($tw.wikiName,$tw);
@@ -907,10 +905,10 @@ if($tw.node) {
           if (wikiName == 'RootWiki') {
             // We've already booted
           } else {
-              // Pass the command line arguments to the boot kernel
-              instance.boot.argv = ["+plugins/" + settings.syncadaptor, wikiPath];
-              // Boot the TW5 app
-              instance.boot.boot();
+            // Pass the command line arguments to the boot kernel
+            instance.boot.argv = ["+plugins/" + settings.syncadaptor, wikiPath];
+            // Boot the TW5 app
+            instance.boot.boot();
           }
           // Name the wiki
           instance.wikiName = wikiName;
@@ -919,9 +917,14 @@ if($tw.node) {
             text: wikiName
           };
           instance.wiki.addTiddler(new $tw.Tiddler(fields));
-
+          debugger;
           // Setup the YDoc for the wiki
           let wikiDoc = this.getYDoc(wikiName);
+
+          // Listen out for changes to tiddlers
+          instance.wiki.addEventListener("change",function(changes) {
+
+          })
           
           // Setup the FileSystemMonitors
           /*

@@ -243,19 +243,18 @@ WebsocketAdaptor.prototype.getHost = function() {
   return text;
 }
 
-WebsocketAdaptor.prototype.getTiddlerInfo = function(tiddler, options) {
-  /* Bag stuff here?
-  options = options || {};
-  return {
-		bag: tiddler.fields.bag
-  };
+WebsocketAdaptor.prototype.getTiddlerInfo = function(tiddler) {
+  /* 
+    Return the vector clock of the tiddler subdoc
   */
-  return {};
+  return {
+
+  };
 }
 
 WebsocketAdaptor.prototype.getTiddlerRevision = function(title) {
 	var tiddler = this.wiki.getTiddler(title);
-	return null //tiddler.fields.revision;
+	return tiddler.fields.revision;
 };
 
 /*
@@ -387,7 +386,18 @@ WebsocketAdaptor.prototype.getUpdatedTiddlers = function(syncer,callback) {
   if(!session || !session.isReady()) {
     return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
   }
-	var self = this;
+
+  // Keep track of which tiddlers we already know about
+  var previousTitles = Object.keys(syncer.tiddlerInfo);
+
+  let updates = {
+    modifications: [],
+    deletions: []
+  }
+  // Invoke the callback with the skinny tiddlers
+  callback(null,updates);
+
+/* 	var self = this;
 	$tw.utils.httpRequest({
 		url: this.host + "recipes/" + this.recipe + "/tiddlers.json",
 		data: {
@@ -406,7 +416,7 @@ WebsocketAdaptor.prototype.getUpdatedTiddlers = function(syncer,callback) {
 			// Invoke the callback with the skinny tiddlers
 			callback(null,tiddlers);
 		}
-	});
+	}); */
 };
 
 // REQUIRED
@@ -419,10 +429,16 @@ WebsocketAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
     options = optionsArg;
   }
   options = options || {};
+  // Save to the YDoc here
+
+  // Test the connection
   let session = $tw.Bob.getSession(this.sessionId);
   if(!session || !session.isReady()) {
     return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
+  } else {
+
   }
+
   if(!tiddler || !tiddler.fields.title){
     callback(new Error("No tiddler or title given."));
   } else {
