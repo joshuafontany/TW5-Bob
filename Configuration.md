@@ -45,9 +45,7 @@ marked in the explanations below.
     "port": 8080,
     "host": "127.0.0.1",
     "autoIncrementPort": "false",
-    "servePlugin": "true",
-    "servePluginWithoutLogin": "yes",
-    "pathprefix": ""
+    "path-prefix": ""
   },
   "heartbeat": {
     "interval":1000,
@@ -252,22 +250,12 @@ in windows replace `/home` with `C:\Users` and change the `/` into `\`.
   - `rootTiddler` changing this will probably break everything
   - `renderType` changing this will probably break everything
   - `serveType` changing this will probably break everything
-  - `pathprefix` a prefix for the path that wikis are served on.
+  - `path-prefix` a prefix for the path that wikis are served on.
   - `autoIncrementPort` if not set to `false` than the server
     will try using the given port (`8080` by default) and if it is in use it
     will try the next port up and continue until it finds an open port to use.
     If this is set to false than if the given port is in use an error is thrown
     and the process fails.
-  - `servePlugin` is not `false` than any child wiki served will include the
-    Bob plugin. So you can serve wikis that don't normally have the plugin and
-    edit them as though they did.
-  - `servePluginWithoutLogin` (external server only) if set to `no` and
-    `servePlugin` isn't set to `false` than the Bob plugin will only be served
-    to people who are logged in. So anyone not logged in a single file wiki
-    that doesn't save anything to the server and doesn't update when changes
-    are made to the wiki on the server. If this is set to `no` a person would
-    have to login and then reload the wiki to get the version with the Bob
-    plugin.
 - `heartbeat` settings for the heartbeat that makes sure the browser and server
   are still connected (mostly in the browser, but also if acting as a federated client). 
   You can almost certainly ignore these settings.
