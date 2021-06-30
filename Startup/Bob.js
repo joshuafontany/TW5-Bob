@@ -310,18 +310,47 @@ A core prototype to hand everything else onto.
       Wiki methods
     */
 
-    loadWiki (wikiName,cb) {
+    loadWiki (wikiName = $tw.wiki.getTiddlerText("$:/status/WikiName", $tw.wiki.getTiddlerText("$:/SiteTitle", "")),cb) { 
       if(wikiName && !this.Wikis.has(wikiName)) {
         try{
           // Get the name for this wiki for websocket messages
           $tw.wikiName = wikiName;
 
           // Setup the YDoc for the wiki
-          let wikiDoc = this.getYDoc($tw.wikiName);
+          let wikiDoc = this.getYDoc(wikiName);
+          let wikiMap = wikiDoc.getMap("wiki");
+          let wikiTitles = wikiDoc.getArray("titles");
+          let wikiTiddlers = wikiDoc.getArray("tiddlers");
+          //Attach the persistence provider here
 
-          // Attach the providers
-              
-          // Setup the observers
+          // Attach a y-tiddlywiki provider here
+          // This leaves each wiki's syncadaptor free to sync to disk or other storage
+
+          // Log the titles of all tiddlers we are syncing
+          wikiDoc.transact(() => {
+            wikiMap.set("titles", $tw.syncer.getSyncedTiddlers());
+          });
+
+          // Setup the wikiTiddlers yarray deepObserver
+          wikiTiddlers.observeDeep((events,transaction) => {
+            if (transaction.origin !== $tw) {
+              events.forEach(event => {
+                if(event.currentTarget !== wikiTiddlers) {
+                  // A tiddler map has updated
+                  console.log(event);
+                  let tiddlerFields = event.target.toJSON();
+                  $tw.syncer.storeTiddler(tiddlerFields);
+                } else {
+                  // A tiddler was added or removed
+                  console.log(event);
+                  let title = event.delta.removed;
+                  console.log("Deleting tiddler:",title);
+                  delete self.tiddlerInfo[title];
+                  $tw.wiki.deleteTiddler(title);
+                }
+              });
+            }
+          })
 
           // Set this wiki as loaded
           this.Wikis.set($tw.wikiName,$tw);
@@ -536,7 +565,7 @@ if($tw.node) {
     }
 
     getSessionsByUser (authenticatedUsername) {
-      var usersSessions = new Map();
+      let usersSessions = new Map();
       for (let [id,session] of this.sessions.entries()) {
         if (session.authenticatedUsername === authenticatedUsername) {
           usersSessions.add(id,session);
@@ -546,7 +575,7 @@ if($tw.node) {
     }
 
     getSessionsByWiki (wikiName) {
-      var wikiSessions = new Map();
+      let wikiSessions = new Map();
       for (let [id, session] of this.sessions.entries()) {
         if (session.wikiName === wikiName) {
           wikiSessions.add(id, session);
@@ -917,14 +946,93 @@ if($tw.node) {
             text: wikiName
           };
           instance.wiki.addTiddler(new $tw.Tiddler(fields));
-          debugger;
+
           // Setup the YDoc for the wiki
           let wikiDoc = this.getYDoc(wikiName);
+          let wikiMap = wikiDoc.getMap("wiki");
+          let wikiTitles = wikiDoc.getArray("titles");
+          let wikiTiddlers = wikiDoc.getArray("tiddlers");
+          //Attach the persistence provider here
 
-          // Listen out for changes to tiddlers
-          instance.wiki.addEventListener("change",function(changes) {
+          // Attach a y-tiddlywiki provider here
+          // This leaves each wiki's syncadaptor free to sync to disk or other storage
 
+          // Log the titles of all tiddlers we are syncing
+          wikiDoc.transact(() => {
+            wikiMap.set("titles", instance.syncer.getSyncedTiddlers());
+          });
+
+          // Setup the wikiTiddlers yarray deepObserver
+          wikiTiddlers.observeDeep((events,transaction) => {
+            if (transaction.origin !== instance) {
+              events.forEach(event => {
+                if(event.currentTarget !== wikiTiddlers) {
+                  // A tiddler map has updated
+                  console.log(event);
+                  let tiddlerFields = event.target.toJSON();
+                  instance.syncer.storeTiddler(tiddlerFields);
+                } else {
+                  // A tiddler was added or removed
+                  console.log(event);
+                  let title = event.delta.removed;
+                  console.log("Deleting tiddler:",title);
+                  delete self.tiddlerInfo[title];
+                  instance.wiki.deleteTiddler(title);
+                }
+              });
+            }
           })
+
+          // Setup the Wiki change event listener
+          instance.wiki.addEventListener("change",function(changes) {
+            let standardFields = [
+              "title",
+              "text",
+              "modified",
+              "modifier",
+              "created",
+              "creator",
+              "tags",
+              "type",
+              "list",
+              "caption"
+            ];
+            // Filter the changes to match the syncer settings
+            let filteredChanges = instance.syncer.getSyncedTiddlers(function(callback) {
+              $tw.utils.each(changes,function(change,title) {
+                let tiddler = instance.wiki.tiddlerExists(title) && instance.wiki.getTiddler(title);
+                callback(change,title,tiddler);
+              });
+            });
+            $tw.utils.each(filteredChanges,function(change,title,tiddler) {
+              let index = wikiTitles.toArray().indexOf(title);
+              if(tiddler && change.modified) {
+                let tiddlerFields = tiddler.getFieldStrings();
+                wikiDoc.transact(() => {
+                  let tiddlerMap = index == -1? ydoc.getMap(title): wikiTiddlers.get(index);
+                  standardFields.forEach(field => {
+                    if (tiddlerFields[field]) {
+                      tiddlerMap.set(field,fieldStrings[field]);
+                      delete tiddlerFields[field];
+                    }
+                  });
+                  tiddlerMap.set("fields",fieldStrings);
+                  tiddlerMap.set("revision",instance.wiki.getChangeCount(title).toString());
+                  if(index == -1){
+                    wikiTiddlers.push(tiddlerMap);
+                    wikiTitles.push(title);
+                  }
+                  wikiMap.set("titles", instance.syncer.getSyncedTiddlers());
+                },instance);                                
+              }else if(change.deleted && index !== -1) {
+                wikiDoc.transact(() => {
+                  wikiTiddlers.delete(index,1);
+                  wikiTitles.delete(index,1);
+                  wikiMap.set("titles", instance.syncer.getSyncedTiddlers());
+                },instance);
+              }
+            });
+          });
           
           // Setup the FileSystemMonitors
           /*

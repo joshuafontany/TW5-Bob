@@ -22,7 +22,7 @@ exports.info = {
 exports.platforms = ["node"];
 
 const SaverServer = require('../SaverServer.js').SaverServer,
-  SimpleServer = require('../SimpleServer.js').SimpleServer,
+  MultiServer = require('../MultiServer.js').MultiServer,
   WebSocketServer = require('../WSServer.js').WebSocketServer;
 
 const Command = function(params,commander,callback) {
@@ -50,10 +50,11 @@ Command.prototype.execute = function() {
     $tw.saverServer.listen();
   }
   // Set up http(s) server as $tw.Bob.server.httpServer
-  $tw.Bob.settings['ws-server']['required-plugins'].push($tw.Bob.settings['ws-server'].syncadaptor);
+  let requiredPlugins = "OokTech/Bob," + $tw.Bob.settings['ws-server'].syncadaptor;
   let variables = $tw.utils.extend(self.params,$tw.Bob.settings['ws-server']);
-	$tw.Bob.server = new SimpleServer({
+	$tw.Bob.server = new MultiServer({
 		wiki: this.commander.wiki,
+    requiredPlugins: requiredPlugins,
 		variables: variables
 	});
 	let httpServer = $tw.Bob.server.listen();

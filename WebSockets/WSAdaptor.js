@@ -220,10 +220,10 @@ function WebsocketAdaptor(options) {
 // The name of the syncadaptor
 WebsocketAdaptor.prototype.name = "wsadaptor";
 
-WebsocketAdaptor.prototype.supportsLazyLoading = true;
+WebsocketAdaptor.prototype.supportsLazyLoading = false;
 
 WebsocketAdaptor.prototype.isReady = function() {
-  return $tw.Bob.YDocs.has($tw.wikiName);
+  return $tw.Bob.Wikis.has($tw.wikiName);
 }
 
 WebsocketAdaptor.prototype.getHost = function() {
@@ -245,17 +245,12 @@ WebsocketAdaptor.prototype.getHost = function() {
 
 WebsocketAdaptor.prototype.getTiddlerInfo = function(tiddler) {
   /* 
-    Return the vector clock of the tiddler subdoc
+    Return the vector clock of the tiddler?
   */
   return {
 
   };
 }
-
-WebsocketAdaptor.prototype.getTiddlerRevision = function(title) {
-	var tiddler = this.wiki.getTiddler(title);
-	return tiddler.fields.revision;
-};
 
 /*
 Get the current status of the user
@@ -336,8 +331,7 @@ WebsocketAdaptor.prototype.login = function(username,password,callback) {
 		type: "POST",
 		data: {
 			user: username,
-			password: password,
-			tiddlyweb_redirect: "/status" // workaround to marginalize automatic subsequent GET
+			password: password
 		},
 		callback: function(err) {
 			callback(err);
@@ -354,8 +348,7 @@ WebsocketAdaptor.prototype.logout = function(callback) {
 		url: this.host + "logout",
 		type: "POST",
 		data: {
-			csrf_token: this.getCsrfToken(),
-			tiddlyweb_redirect: "/status" // workaround to marginalize automatic subsequent GET
+      session_id: this.sessionId
 		},
 		callback: function(err,data) {
 			callback(err);
@@ -366,29 +359,19 @@ WebsocketAdaptor.prototype.logout = function(callback) {
 };
 
 /*
-Retrieve the CSRF token from its cookie
-*/
-WebsocketAdaptor.prototype.getCsrfToken = function() {
-	let regex = /^(?:.*; )?csrf_token=([^(;|$)]*)(?:;|$)/,
-		match = regex.exec(document.cookie),
-		csrf = null;
-	if(match && (match.length === 2)) {
-		csrf = match[1];
-	}
-	return csrf;
-};
-
-/*
-Get an array of skinny tiddler fields from the yjs doc
+Get an array of skinny tiddler fields from the yjs doc?
 */
 WebsocketAdaptor.prototype.getUpdatedTiddlers = function(syncer,callback) {
-  let session = $tw.Bob.getSession(this.sessionId);
-  if(!session || !session.isReady()) {
-    return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
-  }
-
-  // Keep track of which tiddlers we already know about
-  var previousTitles = Object.keys(syncer.tiddlerInfo);
+  $tw.syncer.getStatus(function(err,isLoggedIn) {
+    if(err) {
+      callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
+    } else {
+      // Do a sync from the server
+      $tw.syncer.syncFromServer();
+    }
+  });
+  /*  // Keep track of which tiddlers we already know about
+  let previousTitles = Object.keys(syncer.tiddlerInfo);
 
   let updates = {
     modifications: [],
@@ -397,7 +380,7 @@ WebsocketAdaptor.prototype.getUpdatedTiddlers = function(syncer,callback) {
   // Invoke the callback with the skinny tiddlers
   callback(null,updates);
 
-/* 	var self = this;
+	let self = this;
 	$tw.utils.httpRequest({
 		url: this.host + "recipes/" + this.recipe + "/tiddlers.json",
 		data: {
@@ -409,8 +392,8 @@ WebsocketAdaptor.prototype.getUpdatedTiddlers = function(syncer,callback) {
 				return callback(err);
 			}
 			// Process the tiddlers to make sure the revision is a string
-			var tiddlers = JSON.parse(data);
-			for(var t=0; t<tiddlers.length; t++) {
+			let tiddlers = JSON.parse(data);
+			for(let t=0; t<tiddlers.length; t++) {
 				tiddlers[t] = self.convertTiddlerFromTiddlyWebFormat(tiddlers[t]);
 			}
 			// Invoke the callback with the skinny tiddlers
@@ -424,43 +407,55 @@ WebsocketAdaptor.prototype.getUpdatedTiddlers = function(syncer,callback) {
 WebsocketAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
   // Check for pre v5.2.0 method signature:
   if(typeof callback !== "function" && typeof options === "function"){
-    var optionsArg = callback;
+    let optionsArg = callback;
     callback = options;
     options = optionsArg;
   }
   options = options || {};
-  // Save to the YDoc here
-
+  if(this.isReadOnly) {
+		return callback(null,options.tiddlerInfo.adaptorInfo);
+	}
   // Test the connection
   let session = $tw.Bob.getSession(this.sessionId);
   if(!session || !session.isReady()) {
     return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
   } else {
+      // Save to the YDoc here
+      let wikiDoc = this.getYDoc(wikiName);
+      let wikiMap = wikiDoc.getMap("wiki");
+      let wikiTitles = wikiDoc.getArray("titles");
+      let wikiTiddlers = wikiDoc.getArray("tiddlers");
 
-  }
-
-  if(!tiddler || !tiddler.fields.title){
-    callback(new Error("No tiddler or title given."));
-  } else {
-    let adaptorInfo = options.tiddlerInfo.adaptorInfo || this.getTiddlerInfo({fields: {title: title}}) || {};
-    if(!this.shouldSync(tiddler.fields.title)) {
-      callback(null, adaptorInfo);
-    }
-    //Keeping track of "bags" and things would go here?
-    const message = {
-      type: 'saveTiddler',
-      tiddler: tempTid,
-      wiki: $tw.wikiName,
-      changeCount: options.changeCount,
-      tiddlerInfo: options.tiddlerInfo
-    };
-    $tw.Bob.sendToServer(connectionIndex, message, function(err, id){
-      if(err){
-        callback(err);
-      }
-      adaptorInfo.lastMessageId = id;
-      callback(null, adaptorInfo);
-    });
+      let standardFields = [
+        "title",
+        "text",
+        "modified",
+        "modifier",
+        "created",
+        "creator",
+        "tags",
+        "type",
+        "list",
+        "caption"
+      ];
+      let tiddlerFields = tiddler.getFieldStrings(),
+        index = wikiTitles.toArray().indexOf(tiddler.fields.title);
+      wikiDoc.transact(() => {
+        let tiddlerMap = index == -1? ydoc.getMap(title): wikiTiddlers.get(index);
+        standardFields.forEach(field => {
+          if (tiddlerFields[field]) {
+            tiddlerMap.set(field,fieldStrings[field]);
+            delete tiddlerFields[field];
+          }
+        });
+        tiddlerMap.set("fields",fieldStrings);
+        if(index == -1){
+          wikiTiddlers.push(tiddlerMap);
+          wikiTitles.push(tiddler.fields.title);
+        }
+        wikiMap.set("titles", $tw.syncer.getSyncedTiddlers());
+      },$tw);
+      callback(null,options.tiddlerInfo.adaptorInfo,null);
   }
 }
 
@@ -470,7 +465,7 @@ WebsocketAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
 WebsocketAdaptor.prototype.loadTiddler = function(title, options, callback) {
   // Check for pre v5.2.0 method signature:
   if(typeof callback !== "function" && typeof options === "function"){
-    var optionsArg = callback;
+    let optionsArg = callback;
     callback = options;
     options = optionsArg;
   }
@@ -479,6 +474,8 @@ WebsocketAdaptor.prototype.loadTiddler = function(title, options, callback) {
   if(!session || !session.isReady()) {
     return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
   }
+  callback(null, null, options.tiddlerInfo.adaptorInfo)
+  /* 
   let adaptorInfo = options.tiddlerInfo.adaptorInfo || this.getTiddlerInfo({fields: {title: title}}) || {};
   //Keeping track of "bags" and things would go here?
   //Why prevent loading of system tiddlers?
@@ -499,7 +496,7 @@ WebsocketAdaptor.prototype.loadTiddler = function(title, options, callback) {
       adaptorInfo.lastMessageId = id;
       callback(null, null, adaptorInfo);
     });
-  }
+  } */
 }
 
 // REQUIRED
@@ -507,42 +504,25 @@ WebsocketAdaptor.prototype.loadTiddler = function(title, options, callback) {
 WebsocketAdaptor.prototype.deleteTiddler = function(title, options, callback) {
   // Check for pre v5.2.0 method signature:
   if(typeof callback !== "function" && typeof options === "function"){
-    var optionsArg = callback;
+    let optionsArg = callback;
     callback = options;
     options = optionsArg;
   }
   options = options || {};
+  if(this.isReadOnly) {
+		return callback(null,options.tiddlerInfo.adaptorInfo);
+	}
   let session = $tw.Bob.getSession(this.sessionId);
   if(!session || !session.isReady()) {
     return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
-  }
-  let adaptorInfo = options.tiddlerInfo.adaptorInfo || this.getTiddlerInfo({fields: {title: title}}) || {};
-  //Keeping track of "bags" and things would go here?
-  if(!this.shouldSync(title)) {
-    callback(null, adaptorInfo);
   } else {
-    // We have an additional check for tiddlers that start with
-    // $:/state because popups get deleted before the check is done.
-    // Without this than every time there is a popup the dirty
-    // indicator turns on
-    const message = {
-      type: 'deleteTiddler',
-      tiddler:{
-        fields:{
-          title:title
-        }
-      },
-      wiki: $tw.wikiName,
-      changeCount: options.changeCount,
-      tiddlerInfo: options.tiddlerInfo
-    };
-    $tw.Bob.sendToServer(connectionIndex, message, function(err, id){
-      if(err){
-        callback(err);
-      }
-      adaptorInfo.lastMessageId = id;
-      callback(null, adaptorInfo);
-    });
+    let index = wikiTitles.toArray().indexOf(title);
+    wikiDoc.transact(() => {
+      wikiTiddlers.delete(index,1);
+      wikiTitles.delete(index,1);
+      wikiMap.set("titles", $tw.syncer.getSyncedTiddlers());
+    },$tw);
+    callback(null,null);
   }
 }
 
