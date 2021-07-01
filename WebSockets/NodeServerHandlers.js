@@ -19,7 +19,7 @@ This handles messages sent to the node process.
   It echos back any data that was sent. This is used by the heartbeat to
   make sure that the server and browser are still connected.
 */
-exports.ping = function(data,instance) {
+exports.ping = function(data,wiki) {
 
   // When the server receives a ping it sends back a pong.
   let message = $tw.utils.extend(data,{type: 'pong'});
@@ -30,7 +30,7 @@ exports.ping = function(data,instance) {
   This handles the pong response of a ping.
   How do we use this in the server? Server to server communication?
 */
-exports.pong = function(data,instance) {
+exports.pong = function(data,wiki) {
   // Who did we ping?
 }
 
@@ -39,7 +39,7 @@ exports.pong = function(data,instance) {
   update the access token. The server responds by confirming the handshake.
   Once confirmed, the client will start a heartbeat and connect Y providers.
 */
-exports.handshake = function(data,instance) {
+exports.handshake = function(data,wiki) {
   // Refresh the session to expire in 60 minutes
   $tw.Bob.refreshSession(this,1000*60*60);
   // Respond to the initial "handshake" message to initialise everything.
@@ -173,7 +173,7 @@ exports.handshake = function(data,instance) {
   /*
     This lets us shutdown the server from within the wiki.
   */
-  exports.shutdownServer = function(data,instance) {
+  exports.shutdownServer = function(data,wiki) {
     $tw.Bob.logger.log('Shutting down server.', {level:0});
     // TODO figure out if there are any cleanup tasks we should do here.
     process.exit();
@@ -185,7 +185,7 @@ exports.handshake = function(data,instance) {
     viewers - the list of people who can view the wiki
     editors - the list of people who can edit the wiki
   */
-  exports.setWikiPermissions = function(data,instance) {
+  exports.setWikiPermissions = function(data,wiki) {
     // If the person doing this is owner of the wiki they can continue
     if($tw.ExternalServer) {
       $tw.ExternalServer.updatePermissions(data);
@@ -221,7 +221,7 @@ exports.handshake = function(data,instance) {
     For now we can send a list of tiddlers in the browser and any on the server
     that aren't listed need to be sent.
   */
-  exports.syncChanges = function(data,instance) {
+  exports.syncChanges = function(data,wiki) {
     // Make sure that the wiki that the syncing is for is actually loaded
     // TODO make sure that this works for wikis that are under multiple levels
     $tw.ServerSide.loadWiki(data.wiki);
@@ -381,7 +381,7 @@ exports.handshake = function(data,instance) {
     })
   }
 
-  exports.updateSetting = function(data,instance) {
+  exports.updateSetting = function(data,wiki) {
     const path = require('path');
     const fs = require('fs');
     if(data.remove && typeof data.remove === 'string') {
@@ -470,7 +470,7 @@ exports.handshake = function(data,instance) {
     This updates the settings.json file based on the changes that have been made
     in the browser.
   */
-  exports.saveSettings = function(data,instance) {
+  exports.saveSettings = function(data,wiki) {
     if($tw.ExternalServer) {
       // save the settings to the database
       $tw.saveSetting($tw.Bob.settings);
@@ -551,7 +551,7 @@ exports.handshake = function(data,instance) {
     wiki. And it also need to find all of the tiddlers for the wiki and remove
     them. But I don't know how to do that without deleting the tiddlers.
   */
-  exports.unloadWiki = function(data,instance) {
+  exports.unloadWiki = function(data,wiki) {
     $tw.Bob.unloadWiki(data.wikiName);
   }
 

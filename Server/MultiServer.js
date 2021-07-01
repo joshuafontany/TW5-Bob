@@ -65,8 +65,7 @@ MultiServer.prototype.requestHandler = function(request,response,options) {
     return
   }
   // Compose the options object
-  options.instance = $tw.Bob.Wikis.get(options.wikiName);
-  options.wiki = options.instance.wiki;
+  options.wiki = $tw.Bob.Wikis.get(options.wikiName);;
   // Call the parent method
   Object.getPrototypeOf(MultiServer.prototype).requestHandler.call(this,request,response,options);
 };
@@ -79,7 +78,7 @@ MultiServer.prototype.requestHandler = function(request,response,options) {
   prefix: optional prefix (falls back to value of "path-prefix" variable)
 */
 MultiServer.prototype.listen = function(port,host,prefix) {
-  let listen = Server.prototype.listen.call(this,port,host,prefix);
+  this.httpServer = Server.prototype.listen.call(this,port,host,prefix);
   let self = this;
   this.httpServer.on('upgrade', function(request,socket,head) {
     if($tw.Bob.wsServer && request.headers.upgrade === 'websocket') {
@@ -97,7 +96,7 @@ MultiServer.prototype.listen = function(port,host,prefix) {
       }
     }
   });
-	return listen
+	return this.httpServer
 };
 
 MultiServer.prototype.verifyUpgrade = function(request) {
@@ -108,8 +107,9 @@ MultiServer.prototype.verifyUpgrade = function(request) {
     state.server = this;
     state.ip = request.headers['x-forwarded-for'] ? request.headers['x-forwarded-for'].split(/\s*,\s*/)[0]:
       request.connection.remoteAddress;
-    state.urlInfo = new $tw.Bob.url(request.url,this.httpServer.address);
-    state.pathPrefix = request.pathPrefix || this.get("path-prefix") || "";
+    state.serverAddress = this.protocol + "://" + this.httpServer.address().address + ":" + this.httpServer.address().port;
+    state.urlInfo = new $tw.Bob.url(request.url,state.serverAddress);
+    state.pathPrefix = request.pathPrefix || this.get("path-prefix") || "";debugger;
     // Get the principals authorized to access this resource
     var authorizationType = "readers";
     // Check whether anonymous access is granted

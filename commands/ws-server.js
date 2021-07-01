@@ -50,7 +50,7 @@ Command.prototype.execute = function() {
     $tw.saverServer.listen();
   }
   // Set up http(s) server as $tw.Bob.server.httpServer
-  let requiredPlugins = "OokTech/Bob," + $tw.Bob.settings['ws-server'].syncadaptor;
+  let requiredPlugins = ["+OokTech/Bob"].concat($tw.Bob.settings['required-plugins']).join(',');
   let variables = $tw.utils.extend(self.params,$tw.Bob.settings['ws-server']);
 	$tw.Bob.server = new MultiServer({
 		wiki: this.commander.wiki,

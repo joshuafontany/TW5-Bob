@@ -7,7 +7,7 @@ Handlers for messages sent to the wsClient (mostly in the browser).
 
 `this` is always the session object,
 `data` is the current message data,
-`instance` is the current $tw instance (if diffrent from the `RootWiki` $tw)
+`wiki` is the current $tw wiki (if diffrent from the `RootWiki` $tw)
 
 $tw.Bob will always be at the root $tw object on both node and browser.
 \*/
@@ -22,7 +22,7 @@ $tw.Bob will always be at the root $tw object on both node and browser.
   are connected by sending pings periodically. Pings from servers are not
   used in the heartbeat. The pong response echos back whatever was sent.
 */
-exports.ping = function (data,instance) {
+exports.ping = function (data,wiki) {
   // When the client receives a ping it sends back a pong.
   let message = $tw.utils.extend(data, { type: 'pong' });
   this.send(message);
@@ -32,7 +32,7 @@ exports.ping = function (data,instance) {
   This handles the pong response of a client's ping. It is used as the 
   heartbeat to ensure that the session to the server is still live.
 */
-exports.pong = function (data,instance) {
+exports.pong = function (data,wiki) {
   // If this pong is part of a heartbeat then send another heartbeat
   if (data.id == "heartbeat") {
     this.heartbeat(data);
@@ -47,7 +47,7 @@ exports.pong = function (data,instance) {
   It is called directly after logging in, and then once an hour to
   update the client access token.
 */
-exports.handshake = function (data,instance) {
+exports.handshake = function (data,wiki) {
   // Set the session expiration
   this.expires = data.expires;
 
@@ -78,14 +78,14 @@ exports.handshake = function (data,instance) {
     }
   }
 */
-exports.saveTiddler = function (data,instance) {
+exports.saveTiddler = function (data,wiki) {
   if(data.tiddler && data.tiddler.fields
     && typeof data.tiddler.fields.title === 'string') {
     // The title must exist and must be a string, everything else is optional
     let update = new $tw.Tiddler(data.tiddler.fields),
-    tiddler = instance.wiki.getTiddler(data.tiddler.fields.title);
+    tiddler = wiki.getTiddler(data.tiddler.fields.title);
     if (!tiddler || !tiddler.isEqual(update)) {
-      instance.syncer.storeTiddler(update.fields);
+      $tw.syncer.storeTiddler(update.fields);
     }
   } else {
     console.error(`['${this.id}'] Save Tiddler error: Invalid tiddler`)
@@ -96,11 +96,11 @@ exports.saveTiddler = function (data,instance) {
   When the client receive a "loaded" tiddler from the server,
   it is handled by the syncer.
 */
-exports.loadTiddler = function (data,instance) {
+exports.loadTiddler = function (data,wiki) {
   // Update the info stored about this tiddler
   if (data.tiddler && data.tiddler.fields
     && typeof data.tiddler.fields.title === 'string') {
-    instance.syncer.storeTiddler(data.tiddler.fields);
+    $tw.syncer.storeTiddler(data.tiddler.fields);
   } else {
     console.error(`['${this.id}'] Load Tiddler error: Invalid tiddler`)
   }
@@ -110,10 +110,10 @@ exports.loadTiddler = function (data,instance) {
   This message handles the deleteTiddler message for the client. Note that
   this removes the tiddler from the client wiki in the browser and on node.
 */
-exports.deleteTiddler = function (data,instance) {
+exports.deleteTiddler = function (data,wiki) {
   if (data.tiddler && data.tiddler.fields
     && typeof data.tiddler.fields.title === 'string') {
-    instance.wiki.deleteTiddler(title);
+    wiki.deleteTiddler(title);
   } else {
     console.error(`['${this.id}'] Delete Tiddler error: Invalid tiddler`)
   }
@@ -124,9 +124,9 @@ exports.deleteTiddler = function (data,instance) {
   'skinny-tiddlers' event with the received tiddlers.
   It is handled by the syncadaptor.
 */
-exports.skinnyTiddlers = function (data,instance) {
+exports.skinnyTiddlers = function (data,wiki) {
   const skinnyTiddlers = new CustomEvent('skinny-tiddlers', { bubbles: true, detail: data.tiddlers || [] })
-  instance.rootWidget.dispatchEvent(skinnyTiddlers)
+  $tw.rootWidget.dispatchEvent(skinnyTiddlers)
 }
 
 /*

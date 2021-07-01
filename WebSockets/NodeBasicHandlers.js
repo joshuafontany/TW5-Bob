@@ -20,7 +20,7 @@ This handles messages sent to the node process.
     exist in the browser version of the wiki. This is different than the list of
     all tiddlers on disk in the server.
   */
-  exports.clientTiddlerList = function(data,instance) {
+  exports.clientTiddlerList = function(data,wiki) {
     // Save the list of tiddlers in the connected client
     this.state.tiddlers = data.titles;
   }
