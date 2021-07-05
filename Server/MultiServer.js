@@ -109,7 +109,7 @@ MultiServer.prototype.verifyUpgrade = function(request) {
       request.connection.remoteAddress;
     state.serverAddress = this.protocol + "://" + this.httpServer.address().address + ":" + this.httpServer.address().port;
     state.urlInfo = new $tw.Bob.url(request.url,state.serverAddress);
-    state.pathPrefix = request.pathPrefix || this.get("path-prefix") || "";debugger;
+    state.pathPrefix = request.pathPrefix || this.get("path-prefix") || "";
     // Get the principals authorized to access this resource
     var authorizationType = "readers";
     // Check whether anonymous access is granted

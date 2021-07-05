@@ -211,6 +211,10 @@ function WebsocketAdaptor(options) {
     this.isReadOnly = false;
     this.isAnonymous = true;
     this.sessionId = window.sessionStorage.getItem("ws-adaptor-session") || require('./External/uuid/nil.js').default;
+    this.updates = {
+      modifications: [],
+      deletions: []
+    };
     //addHooks(this.clientId);
 }
 
@@ -301,14 +305,29 @@ WebsocketAdaptor.prototype.getStatus = function(callback) {
             json.session.url.searchParams.append("session", json.session.id);
             json.session.doc = $tw.Bob.getYDoc($tw.wikiName);
             let session = $tw.Bob.createSession(json.session);
+            // Event handlers
+            let tiddlerHandler = function(events,transaction){
+              if (transaction.origin !== session) {         
+                events.forEach(event => {
+                  console.log(event);
+                  debugger; 
+                  // Push tiddler title to updates array
+                  if(self.updates.modifications.indexOf() == -1) {
+                    self.updates.modifications.push(self.updates.length);
+                  }
+                });
+              }
+            };
+            session.doc.on('tiddlers',tiddlerHandler)
             session.on("status",function(event,session) {
-              if(event.status == "error" || (!!event.code && event.code == 4023)){
-                //Invalid session or connection rejected
-                self.sessionId = require('./External/uuid/nil.js').default;
-                window.sessionStorage.setItem("ws-adaptor-session", self.sessionId);
-                $tw.Bob.deleteSession(session.id);
-                session.destroy();
-                session = null;
+              if(event.status == "error" || (!!event.code && event.code == 4023)) {
+                  // Invalid session or connection rejected
+                  session.doc.off('tiddlers',tiddlerHandler);
+                  self.sessionId = require('./External/uuid/nil.js').default;
+                  window.sessionStorage.setItem("ws-adaptor-session", self.sessionId);
+                  $tw.Bob.deleteSession(session.id);
+                  session.destroy();
+                  session = null;
               }
             });
           }
@@ -362,44 +381,13 @@ WebsocketAdaptor.prototype.logout = function(callback) {
 Get an array of skinny tiddler fields from the yjs doc?
 */
 WebsocketAdaptor.prototype.getUpdatedTiddlers = function(syncer,callback) {
-  $tw.syncer.getStatus(function(err,isLoggedIn) {
-    if(err) {
-      callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
-    } else {
-      // Do a sync from the server
-      $tw.syncer.syncFromServer();
-    }
-  });
-  /*  // Keep track of which tiddlers we already know about
-  let previousTitles = Object.keys(syncer.tiddlerInfo);
-
+  // Invoke the callback with the updated tiddler titles
   let updates = {
-    modifications: [],
-    deletions: []
+    modifications: $tw.utils.extend([],this.updates.modifications),
+    deletions: $tw.utils.extend([],this.updates.deletions)
   }
-  // Invoke the callback with the skinny tiddlers
+  this.updates.deletions = [];
   callback(null,updates);
-
-	let self = this;
-	$tw.utils.httpRequest({
-		url: this.host + "recipes/" + this.recipe + "/tiddlers.json",
-		data: {
-			filter: "[all[tiddlers]] -[[$:/isEncrypted]] -[prefix[$:/temp/]] -[prefix[$:/status/]] -[[$:/boot/boot.js]] -[[$:/boot/bootprefix.js]] -[[$:/library/sjcl.js]] -[[$:/core]]"
-		},
-		callback: function(err,data) {
-			// Check for errors
-			if(err) {
-				return callback(err);
-			}
-			// Process the tiddlers to make sure the revision is a string
-			let tiddlers = JSON.parse(data);
-			for(let t=0; t<tiddlers.length; t++) {
-				tiddlers[t] = self.convertTiddlerFromTiddlyWebFormat(tiddlers[t]);
-			}
-			// Invoke the callback with the skinny tiddlers
-			callback(null,tiddlers);
-		}
-	}); */
 };
 
 // REQUIRED
@@ -421,10 +409,10 @@ WebsocketAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
     return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
   } else {
       // Save to the YDoc here
-      let wikiDoc = this.getYDoc(wikiName);
-      let wikiMap = wikiDoc.getMap("wiki");
+      let wikiDoc = $tw.Bob.getYDoc($tw.wikiName);
       let wikiTitles = wikiDoc.getArray("titles");
-      let wikiTiddlers = wikiDoc.getArray("tiddlers");
+      let wikiTiddlers = wikiDoc.getArray("tiddlers");  
+      let tiddlerIndex = wikiTitles.toArray().indexOf(tiddler.fields.title);
 
       let standardFields = [
         "title",
@@ -438,10 +426,9 @@ WebsocketAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
         "list",
         "caption"
       ];
-      let tiddlerFields = tiddler.getFieldStrings(),
-        index = wikiTitles.toArray().indexOf(tiddler.fields.title);
-      wikiDoc.transact(() => {
-        let tiddlerMap = index == -1? ydoc.getMap(title): wikiTiddlers.get(index);
+      wikiDoc.transact(() => {debugger;
+        let tiddlerFields = tiddler.getFieldStrings();
+        let tiddlerMap = tiddlerIndex == -1? wiikiDoc.getMap(title): wikiTiddlers.get(tiddlerIndex);
         standardFields.forEach(field => {
           if (tiddlerFields[field]) {
             tiddlerMap.set(field,fieldStrings[field]);
@@ -449,7 +436,7 @@ WebsocketAdaptor.prototype.saveTiddler = function(tiddler, options, callback) {
           }
         });
         tiddlerMap.set("fields",fieldStrings);
-        if(index == -1){
+        if(tiddlerIndex == -1){
           wikiTiddlers.push(tiddlerMap);
           wikiTitles.push(tiddler.fields.title);
         }
@@ -470,33 +457,21 @@ WebsocketAdaptor.prototype.loadTiddler = function(title, options, callback) {
     options = optionsArg;
   }
   options = options || {};
-  let session = $tw.Bob.getSession(this.sessionId);
-  if(!session || !session.isReady()) {
-    return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
-  }
-  callback(null, null, options.tiddlerInfo.adaptorInfo)
-  /* 
-  let adaptorInfo = options.tiddlerInfo.adaptorInfo || this.getTiddlerInfo({fields: {title: title}}) || {};
-  //Keeping track of "bags" and things would go here?
-  //Why prevent loading of system tiddlers?
-  if(title.slice(0,3) === '$:/') {
-    callback(null, null, adaptorInfo);
-  } else {
-    const message = {
-      type:'getFullTiddler',
-      title: title,
-      wiki: $tw.wikiName,
-      changeCount: options.changeCount,
-      tiddlerInfo: options.tiddlerInfo
+  let updateIndex = this.updates.modifications.indexOf(title),
+    tiddlerFields = null;
+  try {
+    let wikiDoc = $tw.Bob.getYDoc($tw.wikiName);
+    let wikiTitles = wikiDoc.getArray("titles");
+    let wikiTiddlers = wikiDoc.getArray("tiddlers");  
+    let tiddlerIndex = wikiTitles.toArray().indexOf(title);
+    let tiddlerFields = wikiTiddlers.get(tiddlerIndex).toJSON();
+    if(updateIndex !== -1) {
+      this.updates.modifications.splice(updateIndex,1)
     }
-    $tw.Bob.sendToServer(connectionIndex, message, function(err, id){
-      if(err){
-        callback(err);
-      }
-      adaptorInfo.lastMessageId = id;
-      callback(null, null, adaptorInfo);
-    });
-  } */
+    callback(null, tiddlerFields, options.tiddlerInfo.adaptorInfo);
+  } catch (error) {
+    callback(error)
+  }
 }
 
 // REQUIRED
@@ -516,10 +491,13 @@ WebsocketAdaptor.prototype.deleteTiddler = function(title, options, callback) {
   if(!session || !session.isReady()) {
     return callback($tw.language.getString("Error/XMLHttpRequest") + ": 0");
   } else {
-    let index = wikiTitles.toArray().indexOf(title);
+    let wikiDoc = $tw.Bob.getYDoc($tw.wikiName);
+    let wikiTitles = wikiDoc.getArray("titles");
+    let wikiTiddlers = wikiDoc.getArray("tiddlers");  
+    let tiddlerIndex = wikiTitles.toArray().indexOf(title);
     wikiDoc.transact(() => {
-      wikiTiddlers.delete(index,1);
-      wikiTitles.delete(index,1);
+      wikiTiddlers.delete(tiddlerIndex,1);
+      wikiTitles.delete(tiddlerIndex,1);
       wikiMap.set("titles", $tw.syncer.getSyncedTiddlers());
     },$tw);
     callback(null,null);

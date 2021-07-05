@@ -326,30 +326,9 @@ A core prototype to hand everything else onto.
           // Attach a y-tiddlywiki provider here
           // This leaves each wiki's syncadaptor free to sync to disk or other storage
 
-          // Log the titles of all tiddlers we are syncing
-          wikiDoc.transact(() => {
-            wikiMap.set("titles", $tw.syncer.getSyncedTiddlers());
-          });
-
           // Setup the wikiTiddlers yarray deepObserver
           wikiTiddlers.observeDeep((events,transaction) => {
-            if (transaction.origin !== $tw) {
-              events.forEach(event => {
-                if(event.currentTarget !== wikiTiddlers) {
-                  // A tiddler map has updated
-                  console.log(event);
-                  let tiddlerFields = event.target.toJSON();
-                  $tw.syncer.storeTiddler(tiddlerFields);
-                } else {
-                  // A tiddler was added or removed
-                  console.log(event);
-                  let title = event.delta.removed;
-                  console.log("Deleting tiddler:",title);
-                  delete self.tiddlerInfo[title];
-                  $tw.wiki.deleteTiddler(title);
-                }
-              });
-            }
+            wikiDoc.emit('tiddlers',[events,transaction])
           })
 
           // Set this wiki as loaded
@@ -990,6 +969,7 @@ if($tw.node) {
 
           // Setup the wikiTiddlers yarray deepObserver
           wikiTiddlers.observeDeep((events,transaction) => {
+            console.log(events,transaction);debugger;
             if (transaction.origin !== $i && !!$i.syncer) {
               events.forEach(event => {
                 if(event.currentTarget !== wikiTiddlers) {
